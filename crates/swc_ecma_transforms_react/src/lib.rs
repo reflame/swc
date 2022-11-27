@@ -18,6 +18,7 @@ mod jsx_self;
 mod jsx_src;
 mod pure_annotations;
 mod refresh;
+mod refresh_setup;
 
 /// `@babel/preset-react`
 ///
