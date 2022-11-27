@@ -1,5 +1,5 @@
 {
-    "name": "@swc/core-darwin-x64",
+    "name": "@lewisl9029/swc-core-darwin-x64",
     "version": "1.2.130",
     "os": [
         "darwin"

@@ -113,7 +113,9 @@ describe("Plugins", () => {
                     };
 
                     if (shouldUsePrebuiltHost) {
-                        const { transformSync } = require("@swc/core");
+                        const {
+                            transformSync,
+                        } = require("@lewisl9029/swc-core");
 
                         return transformSync(code, options);
                     } else {

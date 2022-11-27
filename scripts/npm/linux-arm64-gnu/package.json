@@ -1,5 +1,5 @@
 {
-    "name": "@swc/core-linux-arm64-gnu",
+    "name": "@lewisl9029/swc-core-linux-arm64-gnu",
     "version": "1.2.130",
     "os": [
         "linux"
