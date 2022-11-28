@@ -26,7 +26,7 @@ export const blah = 1234
 const $reflamePreviousRefreshReg = self.$RefreshReg$
 const $reflamePreviousRefreshSig = self.$RefreshSig$
 self.$RefreshReg$ = (type, id) => {
-    const fullId = "/test.js" + " " + id;
+    const fullId = `/test.js ${id}`
     self.$reflame.reactRefreshRuntime.register(type, fullId)
 }
 self.$RefreshSig$ = self.$reflame.reactRefreshRuntime.createSignatureFunctionForTransform
@@ -44,9 +44,9 @@ self.$reflame.registerAcceptCallback({
   pathname: "/test.js",
   callback: ({ pathname, resourceId }) => {
     if (resourceId) {
-      console.debug('accepting', pathname, 'to', resourceId)
+      console.debug("accepting", pathname, "to", resourceId)
     } else {
-      console.debug('accepting', pathname)
+      console.debug("accepting", pathname)
     }
 
     self.$reflame.performReactRefresh()
