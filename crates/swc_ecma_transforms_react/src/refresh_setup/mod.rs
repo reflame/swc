@@ -21,6 +21,9 @@ impl VisitMut for RefreshSetup {
     fn visit_mut_module_items(&mut self, module_items: &mut Vec<ModuleItem>) {
         module_items.visit_mut_children_with(self);
 
+        // TODO: wrote out the entire AST manually due to internal_quote! not working
+        // properly
+        // See if adjusting import source could make things work again?
         // Intuitively this feels like it should be faster than individual .inserts
         // TODO: benchmark if doing individual inserts makes a difference?
         let statements_before = [
