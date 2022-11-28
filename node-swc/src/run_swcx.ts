@@ -38,25 +38,25 @@ const isMusl = () => (() => {
 
 const platformPackagesMap: Record<string, Partial<Record<string, string>>> = {
   "android": {
-    "arm64": "@swc/core-android-arm64",
-    "arm": "@swc/core-android-arm-eabi",
+    "arm64": "@lewisl9029/swc-core-android-arm64",
+    "arm": "@lewisl9029/swc-core-android-arm-eabi",
   },
   "win32": {
-    "x64": "@swc/core-win32-x64-msvc",
-    "ia32": "@swc/core-win32-ia32-msvc",
-    "arm64": "@swc/core-win32-arm64-msvc"
+    "x64": "@lewisl9029/swc-core-win32-x64-msvc",
+    "ia32": "@lewisl9029/swc-core-win32-ia32-msvc",
+    "arm64": "@lewisl9029/swc-core-win32-arm64-msvc"
   },
   "darwin": {
-    "x64": "@swc/core-darwin-x64",
-    "arm64": "@swc/core-darwin-arm64",
+    "x64": "@lewisl9029/swc-core-darwin-x64",
+    "arm64": "@lewisl9029/swc-core-darwin-arm64",
   },
   "freebsd": {
-    "x64": "@swc/core-freebsd-x64",
+    "x64": "@lewisl9029/swc-core-freebsd-x64",
   },
   "linux": {
     "x64": `@swc/core-linux-x64-${isMusl() ? 'musl' : 'gnu'}`,
     "arm64": `@swc/core-linux-arm64-${isMusl() ? 'musl' : 'gnu'}`,
-    "arm": "@swc/core-linux-arm64-gnu"
+    "arm": "@lewisl9029/swc-core-linux-arm64-gnu"
   },
 };
 
