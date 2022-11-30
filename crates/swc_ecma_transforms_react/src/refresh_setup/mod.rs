@@ -1,21 +1,13 @@
-use std::io::{Error, ErrorKind};
-
 use serde::{Deserialize, Deserializer, Serialize};
 use swc_common::DUMMY_SP;
 use swc_ecma_ast::*;
 use swc_ecma_quote_macros::internal_quote;
 use swc_ecma_visit::{as_folder, Fold, VisitMut, VisitMutWith};
-#[derive(Debug, Clone, Serialize, Deserialize, Eq, PartialEq)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
 pub struct RefreshSetupOptions {
     pub pathname: Option<String>,
-}
-
-impl Default for RefreshSetupOptions {
-    fn default() -> Self {
-        RefreshSetupOptions { pathname: None }
-    }
 }
 
 #[derive(Deserialize)]
@@ -65,8 +57,10 @@ impl VisitMut for RefreshSetup {
         module_items.visit_mut_children_with(self);
 
         let pathname = match &self.options.pathname {
-            String => self.options.pathname.as_ref().unwrap(),
-            None => panic!("wrong pathname"),
+            Some(_) => self.options.pathname.as_ref().unwrap(),
+            None => {
+                panic!("wrong pathname")
+            }
         };
 
         // Intuitively this feels like it should be faster than individual .inserts
