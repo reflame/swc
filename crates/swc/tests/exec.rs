@@ -1,6 +1,6 @@
 use std::{
     env,
-    fs::{self, create_dir_all, rename},
+    fs::{create_dir_all, rename},
     path::{Component, Path, PathBuf},
     process::Command,
     sync::Arc,
