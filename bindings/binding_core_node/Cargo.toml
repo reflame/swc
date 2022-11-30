@@ -65,4 +65,4 @@ swc_core = { version = "0.43.31", features = [
   "ecma_visit",
   "base_node",
   "base_concurrent",
-  ] }
+], path = "../../crates/swc_core" }
