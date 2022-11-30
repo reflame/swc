@@ -25,7 +25,10 @@ use swc_ecma_utils::{
 use swc_ecma_visit::{as_folder, noop_visit_mut_type, Fold, VisitMut, VisitMutWith};
 
 use self::static_check::should_use_create_element;
-use crate::refresh::options::{deserialize_refresh, RefreshOptions};
+use crate::{
+    refresh::options::{deserialize_refresh, RefreshOptions},
+    refresh_setup::{deserialize_refresh_setup, RefreshSetupOptions},
+};
 
 mod static_check;
 #[cfg(test)]
@@ -84,6 +87,10 @@ pub struct Options {
     #[serde(default, deserialize_with = "deserialize_refresh")]
     // default to disabled since this is still considered as experimental by now
     pub refresh: Option<RefreshOptions>,
+
+    #[serde(default, deserialize_with = "deserialize_refresh_setup")]
+    // default to disabled since this is still considered as experimental by now
+    pub refresh_setup: Option<RefreshSetupOptions>,
 }
 
 pub fn default_import_source() -> String {
