@@ -5,6 +5,20 @@
 
 
 
+- **(es/parser)** Fix `typeof` in `TSCallSignatureDeclaration` (#6553) ([aa28aa0](https://github.com/swc-project/swc/commit/aa28aa0c7fefcaea063340c711a5ea8a3ba60e7b))
+
+### Miscellaneous Tasks
+
+
+
+- **(ci)** Add debug logs for cli binaries (#6556) ([8083484](https://github.com/swc-project/swc/commit/80834843f4180bc292f8b2959b1390a07bec0a77))
+
+## [1.3.21] - 2022-11-30
+
+### Bug Fixes
+
+
+
 - **(ci)** Fix publish action for binaries (#6517) ([2ac3201](https://github.com/swc-project/swc/commit/2ac32017bad112956a781b0d003782988655409c))
 
 
@@ -42,6 +56,9 @@
 
 
 - **(bindings)** Fix jemalloc on aarch64 (#6541) ([d56b5a8](https://github.com/swc-project/swc/commit/d56b5a890a69a9a9177eed2a955f2c959fd1eaa1))
+
+
+- **(swc_core)** Reexport more modules (#6548) ([9b58cce](https://github.com/swc-project/swc/commit/9b58cce10bf5d313b6397c0366222c51db19eaca))
 
 ### Performance
 
