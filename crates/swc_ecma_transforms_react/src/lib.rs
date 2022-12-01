@@ -10,6 +10,7 @@ pub use self::{
     jsx_src::jsx_src,
     pure_annotations::pure_annotations,
     refresh::{options::RefreshOptions, refresh},
+    refresh_setup::{refresh_setup, RefreshSetupOptions},
 };
 
 mod display_name;
@@ -18,6 +19,7 @@ mod jsx_self;
 mod jsx_src;
 mod pure_annotations;
 mod refresh;
+mod refresh_setup;
 
 /// `@babel/preset-react`
 ///
@@ -45,6 +47,7 @@ where
     let development = development.unwrap_or(false);
 
     let refresh_options = options.refresh.take();
+    let refresh_setup_options = options.refresh_setup.take();
 
     chain!(
         jsx_src(development, cm.clone()),
@@ -56,6 +59,7 @@ where
             comments.clone(),
             top_level_mark
         ),
+        refresh_setup(development, refresh_setup_options),
         jsx(cm, comments.clone(), options, top_level_mark),
         display_name(),
         pure_annotations(comments),
