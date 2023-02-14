@@ -67,4 +67,4 @@ swc_core = { version = "0.59.26", features = [
   "base_node",
   "base_concurrent",
 ], path = "../../crates/swc_core" }
-swc_node_base = "0.5.8"
+swc_node_base = { version = "0.5.8", path = "../../crates/swc_node_base" }
