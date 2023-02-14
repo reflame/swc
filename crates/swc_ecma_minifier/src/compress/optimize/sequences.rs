@@ -3,6 +3,10 @@ use std::mem::take;
 use swc_atoms::js_word;
 use swc_common::{util::take::Take, Spanned, DUMMY_SP};
 use swc_ecma_ast::*;
+use swc_ecma_usage_analyzer::{
+    alias::{collect_infects_from, AccessKind, AliasConfig},
+    util::is_global_var_with_pure_property_access,
+};
 use swc_ecma_utils::{
     contains_arguments, contains_this_expr, prepend_stmts, undefined, ExprExt, IdentUsageFinder,
     StmtLike,
@@ -15,17 +19,13 @@ use super::{is_pure_undefined, Optimizer};
 #[cfg(feature = "debug")]
 use crate::debug::dump;
 use crate::{
-    alias::{collect_infects_from, AccessKind, AliasConfig},
     compress::{
         optimize::{unused::PropertyAccessOpts, util::replace_id_with_expr},
         util::{is_directive, is_ident_used_by, replace_expr},
     },
     mode::Mode,
     option::CompressOptions,
-    util::{
-        idents_used_by, idents_used_by_ignoring_nested, is_global_var_with_pure_property_access,
-        ExprOptExt, ModuleItemExt,
-    },
+    util::{idents_used_by, idents_used_by_ignoring_nested, ExprOptExt, ModuleItemExt},
 };
 
 /// Methods related to the option `sequences`. All methods are noop if
@@ -1170,8 +1170,8 @@ where
                                 .expand_infected(self.module_info, ids_used_by_a_init, 64);
 
                         let deps = match deps {
-                            Ok(v) => v,
-                            Err(()) => return false,
+                            Some(v) => v,
+                            _ => return false,
                         };
                         if deps.contains(&(e.to_id(), AccessKind::Reference))
                             || deps.contains(&(e.to_id(), AccessKind::Call))
@@ -1479,7 +1479,13 @@ where
             )
         };
 
-        if b.is_lit() || b.is_class() || b.is_fn_expr() || b.is_arrow() {
+        if b.is_lit()
+            || b.is_class()
+            || b.is_fn_expr()
+            || b.is_arrow()
+            || b.is_await_expr()
+            || b.is_yield_expr()
+        {
             return Ok(false);
         }
 
@@ -1546,7 +1552,9 @@ where
         }
 
         match b {
-            Expr::Update(..) | Expr::Arrow(..) | Expr::Fn(..) => return Ok(false),
+            Expr::Update(..) | Expr::Arrow(..) | Expr::Fn(..) | Expr::OptChain(..) => {
+                return Ok(false)
+            }
 
             Expr::Cond(b) => {
                 trace_op!("seq: Try test of cond");
@@ -2442,15 +2450,6 @@ impl Visit for UsageCounter<'_> {
         }
     }
 
-    fn visit_super_prop_expr(&mut self, e: &SuperPropExpr) {
-        if let SuperProp::Computed(c) = &e.prop {
-            let old = self.in_lhs;
-            self.in_lhs = false;
-            c.expr.visit_with(self);
-            self.in_lhs = old;
-        }
-    }
-
     fn visit_pat(&mut self, p: &Pat) {
         let old = self.in_lhs;
         self.in_lhs = true;
@@ -2463,6 +2462,21 @@ impl Visit for UsageCounter<'_> {
         self.in_lhs = true;
         p.visit_children_with(self);
         self.in_lhs = old;
+    }
+
+    fn visit_prop_name(&mut self, p: &PropName) {
+        if let PropName::Computed(p) = p {
+            p.visit_with(self)
+        }
+    }
+
+    fn visit_super_prop_expr(&mut self, e: &SuperPropExpr) {
+        if let SuperProp::Computed(c) = &e.prop {
+            let old = self.in_lhs;
+            self.in_lhs = false;
+            c.expr.visit_with(self);
+            self.in_lhs = old;
+        }
     }
 }
 

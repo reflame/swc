@@ -91,14 +91,6 @@
  3 | }
    `----
 
-  x StyleBlock
-   ,-[$DIR/tests/recovery/bad-url-token/whitespace-in-middle/input.css:1:1]
- 1 | a {
- 2 |     background-image: url(   ./image.jpg  a  );
-   :     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
- 3 | }
-   `----
-
   x Declaration
    ,-[$DIR/tests/recovery/bad-url-token/whitespace-in-middle/input.css:1:1]
  1 | a {
@@ -131,7 +123,7 @@
  3 | }
    `----
 
-  x BadUrl { name: Atom('url' type=static), raw_name: "url", raw_value: "   ./image.jpg  a  " }
+  x BadUrl { raw: "url(   ./image.jpg  a  )" }
    ,-[$DIR/tests/recovery/bad-url-token/whitespace-in-middle/input.css:1:1]
  1 | a {
  2 |     background-image: url(   ./image.jpg  a  );

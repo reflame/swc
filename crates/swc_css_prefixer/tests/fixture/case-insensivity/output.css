@@ -2,11 +2,23 @@ a {
   -webkit-appearance: NONE;
   -moz-appearance: NONE;
   -ms-appearance: NONE;
-  APPEARANCE: NONE;
+  appearance: NONE;
 }
 b {
   -webkit-appearance: AUTO;
   -moz-appearance: AUTO;
   -ms-appearance: AUTO;
-  APPEARANCE: AUTO;
+  appearance: AUTO;
+}
+c {
+  -webkit-appearance: NONE;
+  -moz-appearance: NONE;
+  -ms-appearance: NONE;
+  appearance: NONE;
+}
+d {
+  -webkit-appearance: NONE;
+  -moz-appearance: NONE;
+  -ms-appearance: NONE;
+  appearance: NONE;
 }

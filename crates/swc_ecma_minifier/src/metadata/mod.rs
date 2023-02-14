@@ -1,14 +1,49 @@
+use std::hash::Hash;
+
+use rustc_hash::FxHashSet;
 use swc_common::{
     comments::{Comment, CommentKind, Comments},
-    EqIgnoreSpan, Mark, Span, SyntaxContext,
+    EqIgnoreSpan, Span, SyntaxContext,
 };
 use swc_ecma_ast::*;
+use swc_ecma_usage_analyzer::marks::Marks;
 use swc_ecma_utils::find_pat_ids;
 use swc_ecma_visit::{
     noop_visit_mut_type, noop_visit_type, Visit, VisitMut, VisitMutWith, VisitWith,
 };
 
-use crate::{marks::Marks, option::CompressOptions};
+use crate::option::CompressOptions;
+
+#[derive(Debug, Eq)]
+struct HashEqIgnoreSpanExprRef<'a>(&'a Expr);
+
+impl<'a> PartialEq for HashEqIgnoreSpanExprRef<'a> {
+    fn eq(&self, other: &Self) -> bool {
+        Ident::within_ignored_ctxt(|| self.0.eq_ignore_span(other.0))
+    }
+}
+
+impl<'a> Hash for HashEqIgnoreSpanExprRef<'a> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        // In pratice, most of cases/input we are dealing with are Expr::Member or
+        // Expr::Ident.
+        match self.0 {
+            Expr::Ident(i) => {
+                i.sym.hash(state);
+            }
+            Expr::Member(i) => {
+                Self(&i.obj).hash(state);
+                if let MemberProp::Ident(prop) = &i.prop {
+                    prop.sym.hash(state);
+                }
+            }
+            _ => {
+                // Other expression kind would fallback to the same empty hash.
+                // So, their will spend linear time to do comparisons.
+            }
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests;
@@ -18,13 +53,21 @@ pub(crate) fn info_marker<'a>(
     options: Option<&'a CompressOptions>,
     comments: Option<&'a dyn Comments>,
     marks: Marks,
-    unresolved_mark: Mark,
+    // unresolved_mark: Mark,
 ) -> impl 'a + VisitMut {
+    let pure_funcs = options.map(|options| {
+        options
+            .pure_funcs
+            .iter()
+            .map(|f| HashEqIgnoreSpanExprRef(f))
+            .collect()
+    });
     InfoMarker {
         options,
         comments,
         marks,
-        unresolved_mark,
+        pure_funcs,
+        // unresolved_mark,
         state: Default::default(),
     }
 }
@@ -36,11 +79,12 @@ struct State {
 }
 
 struct InfoMarker<'a> {
+    #[allow(dead_code)]
     options: Option<&'a CompressOptions>,
-
+    pure_funcs: Option<FxHashSet<HashEqIgnoreSpanExprRef<'a>>>,
     comments: Option<&'a dyn Comments>,
     marks: Marks,
-    unresolved_mark: Mark,
+    // unresolved_mark: Mark,
     state: State,
 }
 
@@ -123,17 +167,12 @@ impl VisitMut for InfoMarker<'_> {
 
         if self.has_pure(n.span) {
             n.span = n.span.apply_mark(self.marks.pure);
-        } else if let Some(options) = self.options {
+        } else if let Some(pure_fns) = &self.pure_funcs {
             if let Callee::Expr(e) = &n.callee {
                 // Check for pure_funcs
-
-                if options
-                    .pure_funcs
-                    .iter()
-                    .any(|pure_func| Ident::within_ignored_ctxt(|| e.eq_ignore_span(pure_func)))
-                {
+                if pure_fns.contains(&HashEqIgnoreSpanExprRef(e)) {
                     n.span = n.span.apply_mark(self.marks.pure);
-                }
+                };
             }
         }
     }
@@ -178,12 +217,12 @@ impl VisitMut for InfoMarker<'_> {
                 )
             })
         {
-            if is_standalone(&mut n.function, self.unresolved_mark) {
-                // self.state.is_bundle = true;
+            // if is_standalone(&mut n.function, self.unresolved_mark) {
+            //     // self.state.is_bundle = true;
 
-                // n.function.span =
-                // n.function.span.apply_mark(self.marks.standalone);
-            }
+            //     // n.function.span =
+            //     // n.function.span.apply_mark(self.marks.standalone);
+            // }
         }
     }
 
@@ -267,71 +306,71 @@ impl Visit for TopLevelBindingCollector {
     }
 }
 
-fn is_standalone<N>(n: &mut N, unresolved_mark: Mark) -> bool
-where
-    N: VisitMutWith<IdentCollector>,
-{
-    let unresolved_ctxt = SyntaxContext::empty().apply_mark(unresolved_mark);
+// fn is_standalone<N>(n: &mut N, unresolved_mark: Mark) -> bool
+// where
+//     N: VisitMutWith<IdentCollector>,
+// {
+//     let unresolved_ctxt = SyntaxContext::empty().apply_mark(unresolved_mark);
 
-    let bindings = {
-        let mut v = IdentCollector {
-            ids: Default::default(),
-            for_binding: true,
-            is_pat_decl: false,
-        };
-        n.visit_mut_with(&mut v);
-        v.ids
-    };
+//     let bindings = {
+//         let mut v = IdentCollector {
+//             ids: Default::default(),
+//             for_binding: true,
+//             is_pat_decl: false,
+//         };
+//         n.visit_mut_with(&mut v);
+//         v.ids
+//     };
 
-    let used = {
-        let mut v = IdentCollector {
-            ids: Default::default(),
-            for_binding: false,
-            is_pat_decl: false,
-        };
-        n.visit_mut_with(&mut v);
-        v.ids
-    };
+//     let used = {
+//         let mut v = IdentCollector {
+//             ids: Default::default(),
+//             for_binding: false,
+//             is_pat_decl: false,
+//         };
+//         n.visit_mut_with(&mut v);
+//         v.ids
+//     };
 
-    for used_id in &used {
-        if used_id.0.starts_with("__WEBPACK_EXTERNAL_MODULE_") {
-            continue;
-        }
+//     for used_id in &used {
+//         if used_id.0.starts_with("__WEBPACK_EXTERNAL_MODULE_") {
+//             continue;
+//         }
 
-        match &*used_id.0 {
-            "__webpack_require__" | "exports" => continue,
-            _ => {}
-        }
+//         match &*used_id.0 {
+//             "__webpack_require__" | "exports" => continue,
+//             _ => {}
+//         }
 
-        if used_id.1 == unresolved_ctxt {
-            // if cfg!(feature = "debug") {
-            //     debug!("bundle: Ignoring {}{:?} (top level)", used_id.0,
-            // used_id.1); }
-            continue;
-        }
+//         if used_id.1 == unresolved_ctxt {
+//             // if cfg!(feature = "debug") {
+//             //     debug!("bundle: Ignoring {}{:?} (top level)", used_id.0,
+//             // used_id.1); }
+//             continue;
+//         }
 
-        if bindings.contains(used_id) {
-            // if cfg!(feature = "debug") {
-            //     debug!(
-            //         "bundle: Ignoring {}{:?} (local to fn)",
-            //         used_id.0,
-            //         used_id.1
-            //     );
-            // }
-            continue;
-        }
+//         if bindings.contains(used_id) {
+//             // if cfg!(feature = "debug") {
+//             //     debug!(
+//             //         "bundle: Ignoring {}{:?} (local to fn)",
+//             //         used_id.0,
+//             //         used_id.1
+//             //     );
+//             // }
+//             continue;
+//         }
 
-        trace_op!(
-            "bundle: Due to {}{:?}, it's not a bundle",
-            used_id.0,
-            used_id.1
-        );
+//         trace_op!(
+//             "bundle: Due to {}{:?}, it's not a bundle",
+//             used_id.0,
+//             used_id.1
+//         );
 
-        return false;
-    }
+//         return false;
+//     }
 
-    true
-}
+//     true
+// }
 
 struct IdentCollector {
     ids: Vec<Id>,

@@ -2,15 +2,15 @@ use swc_atoms::js_word;
 use swc_common::{util::take::Take, EqIgnoreSpan, Spanned};
 use swc_ecma_ast::*;
 use swc_ecma_transforms_optimization::simplify::expr_simplifier;
+use swc_ecma_usage_analyzer::alias::{collect_infects_from, AliasConfig};
 use swc_ecma_utils::{class_has_side_effect, find_pat_ids, ExprExt};
 use swc_ecma_visit::VisitMutWith;
 
 use super::Optimizer;
 use crate::{
-    alias::{collect_infects_from, AliasConfig},
-    analyzer::VarUsageInfo,
     compress::optimize::util::is_valid_for_lhs,
     mode::Mode,
+    program_data::VarUsageInfo,
     util::{
         idents_captured_by, idents_used_by, idents_used_by_ignoring_nested, size::SizeWithCtxt,
     },
@@ -29,7 +29,7 @@ where
         &mut self,
         ident: &mut Ident,
         init: &mut Expr,
-        should_preserve: bool,
+        mut should_preserve: bool,
         can_drop: bool,
     ) {
         trace_op!(
@@ -58,6 +58,7 @@ where
             if !usage.var_initialized {
                 return;
             }
+
             if self.data.top.used_arguments && usage.declared_as_fn_param {
                 return;
             }
@@ -76,7 +77,7 @@ where
                 return;
             }
 
-            if usage.cond_init || usage.used_above_decl {
+            if usage.used_above_decl {
                 log_abort!("inline: [x] It's cond init or used before decl",);
                 return;
             }
@@ -94,6 +95,8 @@ where
 
             let is_inline_enabled =
                 self.options.reduce_vars || self.options.collapse_vars || self.options.inline != 0;
+
+            should_preserve |= !self.options.top_level() && usage.is_top_level;
 
             self.vars.inline_with_multi_replacer(init);
 
@@ -356,8 +359,8 @@ where
                     }
 
                     Expr::Ident(id) if !id.eq_ignore_span(ident) => {
-                        if let Some(v_usage) = self.data.vars.get(&id.to_id()) {
-                            if v_usage.reassigned() || !v_usage.declared {
+                        if let Some(init_usage) = self.data.vars.get(&id.to_id()) {
+                            if init_usage.reassigned() || !init_usage.declared {
                                 return;
                             }
                         }
@@ -733,6 +736,11 @@ where
                 })
                 .cloned()
             {
+                if !matches!(&*value, Expr::Ident(..) | Expr::Member(..)) && self.ctx.is_update_arg
+                {
+                    return;
+                }
+
                 self.changed = true;
                 report_change!("inline: Replacing a variable `{}` with cheap expression", i);
 

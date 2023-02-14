@@ -20,12 +20,21 @@ pub struct Ident {
 }
 
 impl EqIgnoreSpan for Ident {
+    #[inline]
     fn eq_ignore_span(&self, other: &Self) -> bool {
         self.value == other.value
     }
 }
 
+impl PartialEq<str> for Ident {
+    #[inline]
+    fn eq(&self, other: &str) -> bool {
+        &*self.value == other
+    }
+}
+
 impl Take for Ident {
+    #[inline]
     fn dummy() -> Self {
         Self {
             span: Default::default(),
@@ -45,6 +54,7 @@ pub struct CustomIdent {
 }
 
 impl EqIgnoreSpan for CustomIdent {
+    #[inline]
     fn eq_ignore_span(&self, other: &Self) -> bool {
         self.value == other.value
     }
@@ -60,8 +70,16 @@ pub struct DashedIdent {
 }
 
 impl EqIgnoreSpan for DashedIdent {
+    #[inline]
     fn eq_ignore_span(&self, other: &Self) -> bool {
         self.value == other.value
+    }
+}
+
+impl PartialEq<str> for DashedIdent {
+    #[inline]
+    fn eq(&self, other: &str) -> bool {
+        &*self.value == other
     }
 }
 
@@ -436,14 +454,21 @@ pub enum UrlModifier {
 }
 
 #[ast_node("UnicodeRange")]
-#[derive(Eq, Hash, EqIgnoreSpan)]
+#[derive(Eq, Hash)]
 pub struct UnicodeRange {
     pub span: Span,
-    pub prefix: char,
     #[cfg_attr(feature = "rkyv", with(swc_atoms::EncodeJsWord))]
     pub start: JsWord,
     #[cfg_attr(feature = "rkyv", with(swc_atoms::EncodeJsWord))]
     pub end: Option<JsWord>,
+    pub raw: Option<Atom>,
+}
+
+impl EqIgnoreSpan for UnicodeRange {
+    #[inline]
+    fn eq_ignore_span(&self, other: &Self) -> bool {
+        self.start == other.start && self.end == other.end
+    }
 }
 
 #[ast_node("CalcSum")]

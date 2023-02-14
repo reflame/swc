@@ -505,7 +505,7 @@ where
                 }
                 TruePlusMinus::Plus => {
                     punct!("+");
-                    punct!("/");
+                    punct!("?");
                 }
                 TruePlusMinus::Minus => {
                     punct!("-");
@@ -970,6 +970,11 @@ where
     #[emitter]
     fn emit_ts_type_param(&mut self, n: &TsTypeParam) -> Result {
         self.emit_leading_comments_of_span(n.span(), false)?;
+
+        if n.is_const {
+            keyword!("const");
+            space!();
+        }
 
         if n.is_in {
             keyword!("in");

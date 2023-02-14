@@ -151,6 +151,7 @@ pub fn resolver(
         config: InnerConfig {
             handle_types: typescript,
             unresolved_mark,
+            top_level_mark,
         },
     })
 }
@@ -211,6 +212,7 @@ struct Resolver<'a> {
 struct InnerConfig {
     handle_types: bool,
     unresolved_mark: Mark,
+    top_level_mark: Mark,
 }
 
 impl<'a> Resolver<'a> {
@@ -232,7 +234,11 @@ impl<'a> Resolver<'a> {
         F: for<'aa> FnOnce(&mut Resolver<'aa>),
     {
         let mut child = Resolver {
-            current: Scope::new(kind, Mark::new(), Some(&self.current)),
+            current: Scope::new(
+                kind,
+                Mark::fresh(self.config.top_level_mark),
+                Some(&self.current),
+            ),
             ident_type: IdentType::Ref,
             config: self.config,
             in_type: self.in_type,
@@ -974,8 +980,10 @@ impl<'a> VisitMut for Resolver<'a> {
         // Always resolve the import declaration identifiers even if it's type only.
         // We need to analyze these identifiers for type stripping purposes.
         self.ident_type = IdentType::Binding;
+        let old_in_type = self.in_type;
         self.in_type = n.type_only;
         n.visit_mut_children_with(self);
+        self.in_type = old_in_type;
     }
 
     fn visit_mut_import_named_specifier(&mut self, s: &mut ImportNamedSpecifier) {

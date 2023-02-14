@@ -15,7 +15,11 @@
  12 | |   }
  13 | |   
  14 | |   @--custom {}
- 15 | `-> @--library1-custom {}
+ 15 | |   @--library1-custom {}
+ 16 | |   
+ 17 | |   .class {
+ 18 | |       --vendor-property: --vendor-function("test");
+ 19 | `-> }
     `----
 
   x Rule
@@ -99,14 +103,6 @@
  3 |     --accent-color: #006;
    `----
 
-  x StyleBlock
-   ,-[$DIR/tests/fixture/dashed-ident/input.css:1:1]
- 1 | :root {
- 2 |     --main-color: #06c;
-   :     ^^^^^^^^^^^^^^^^^^
- 3 |     --accent-color: #006;
-   `----
-
   x Declaration
    ,-[$DIR/tests/fixture/dashed-ident/input.css:1:1]
  1 | :root {
@@ -148,14 +144,6 @@
    `----
 
   x ComponentValue
-   ,-[$DIR/tests/fixture/dashed-ident/input.css:2:1]
- 2 |     --main-color: #06c;
- 3 |     --accent-color: #006;
-   :     ^^^^^^^^^^^^^^^^^^^^
- 4 | }
-   `----
-
-  x StyleBlock
    ,-[$DIR/tests/fixture/dashed-ident/input.css:2:1]
  2 |     --main-color: #06c;
  3 |     --accent-color: #006;
@@ -291,14 +279,6 @@
  8 | }
    `----
 
-  x StyleBlock
-   ,-[$DIR/tests/fixture/dashed-ident/input.css:6:1]
- 6 | .foo {
- 7 |     --fg-color: blue;
-   :     ^^^^^^^^^^^^^^^^
- 8 | }
-   `----
-
   x Declaration
    ,-[$DIR/tests/fixture/dashed-ident/input.css:6:1]
  6 | .foo {
@@ -331,7 +311,7 @@
  8 | }
    `----
 
-  x Ident { value: Atom('blue' type=inline), raw: "blue" }
+  x Ident { value: Atom('blue' type=static), raw: "blue" }
    ,-[$DIR/tests/fixture/dashed-ident/input.css:6:1]
  6 | .foo {
  7 |     --fg-color: blue;
@@ -468,14 +448,6 @@
     `----
 
   x ComponentValue
-    ,-[$DIR/tests/fixture/dashed-ident/input.css:10:1]
- 10 | #foo h1 {
- 11 |     color: var(--main-color);
-    :     ^^^^^^^^^^^^^^^^^^^^^^^^
- 12 | }
-    `----
-
-  x StyleBlock
     ,-[$DIR/tests/fixture/dashed-ident/input.css:10:1]
  10 | #foo h1 {
  11 |     color: var(--main-color);
@@ -665,4 +637,156 @@
  14 | @--custom {}
  15 | @--library1-custom {}
     :                    ^
+    `----
+
+  x Rule
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:16:1]
+ 16 |     
+ 17 | ,-> .class {
+ 18 | |       --vendor-property: --vendor-function("test");
+ 19 | `-> }
+    `----
+
+  x QualifiedRule
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:16:1]
+ 16 |     
+ 17 | ,-> .class {
+ 18 | |       --vendor-property: --vendor-function("test");
+ 19 | `-> }
+    `----
+
+  x SelectorList
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:16:1]
+ 16 | 
+ 17 | .class {
+    : ^^^^^^
+ 18 |     --vendor-property: --vendor-function("test");
+    `----
+
+  x ComplexSelector
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:16:1]
+ 16 | 
+ 17 | .class {
+    : ^^^^^^
+ 18 |     --vendor-property: --vendor-function("test");
+    `----
+
+  x CompoundSelector
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:16:1]
+ 16 | 
+ 17 | .class {
+    : ^^^^^^
+ 18 |     --vendor-property: --vendor-function("test");
+    `----
+
+  x SubclassSelector
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:16:1]
+ 16 | 
+ 17 | .class {
+    : ^^^^^^
+ 18 |     --vendor-property: --vendor-function("test");
+    `----
+
+  x ClassSelector
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:16:1]
+ 16 | 
+ 17 | .class {
+    : ^^^^^^
+ 18 |     --vendor-property: --vendor-function("test");
+    `----
+
+  x Ident
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:16:1]
+ 16 | 
+ 17 | .class {
+    :  ^^^^^
+ 18 |     --vendor-property: --vendor-function("test");
+    `----
+
+  x SimpleBlock
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:16:1]
+ 16 |     
+ 17 | ,-> .class {
+ 18 | |       --vendor-property: --vendor-function("test");
+ 19 | `-> }
+    `----
+
+  x LBrace
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:16:1]
+ 16 | 
+ 17 | .class {
+    :        ^
+ 18 |     --vendor-property: --vendor-function("test");
+    `----
+
+  x ComponentValue
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:17:1]
+ 17 | .class {
+ 18 |     --vendor-property: --vendor-function("test");
+    :     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 19 | }
+    `----
+
+  x Declaration
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:17:1]
+ 17 | .class {
+ 18 |     --vendor-property: --vendor-function("test");
+    :     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+ 19 | }
+    `----
+
+  x DeclarationName
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:17:1]
+ 17 | .class {
+ 18 |     --vendor-property: --vendor-function("test");
+    :     ^^^^^^^^^^^^^^^^^
+ 19 | }
+    `----
+
+  x DashedIdent
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:17:1]
+ 17 | .class {
+ 18 |     --vendor-property: --vendor-function("test");
+    :     ^^^^^^^^^^^^^^^^^
+ 19 | }
+    `----
+
+  x ComponentValue
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:17:1]
+ 17 | .class {
+ 18 |     --vendor-property: --vendor-function("test");
+    :                        ^^^^^^^^^^^^^^^^^^^^^^^^^
+ 19 | }
+    `----
+
+  x Function
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:17:1]
+ 17 | .class {
+ 18 |     --vendor-property: --vendor-function("test");
+    :                        ^^^^^^^^^^^^^^^^^^^^^^^^^
+ 19 | }
+    `----
+
+  x DashedIdent
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:17:1]
+ 17 | .class {
+ 18 |     --vendor-property: --vendor-function("test");
+    :                        ^^^^^^^^^^^^^^^^^
+ 19 | }
+    `----
+
+  x ComponentValue
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:17:1]
+ 17 | .class {
+ 18 |     --vendor-property: --vendor-function("test");
+    :                                          ^^^^^^
+ 19 | }
+    `----
+
+  x String { value: Atom('test' type=inline), raw: "\"test\"" }
+    ,-[$DIR/tests/fixture/dashed-ident/input.css:17:1]
+ 17 | .class {
+ 18 |     --vendor-property: --vendor-function("test");
+    :                                          ^^^^^^
+ 19 | }
     `----

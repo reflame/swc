@@ -5,12 +5,12 @@ use swc_atoms::js_word;
 use swc_common::{collections::AHashMap, SyntaxContext, DUMMY_SP};
 use swc_ecma_ast::*;
 use swc_ecma_transforms_optimization::simplify::{expr_simplifier, ExprSimplifierConfig};
+use swc_ecma_usage_analyzer::marks::Marks;
 use swc_ecma_utils::{undefined, ExprCtx, ExprExt};
 use swc_ecma_visit::VisitMutWith;
 
 use crate::{
     compress::{compressor, pure_optimizer, PureOptimizerConfig},
-    marks::Marks,
     mode::Mode,
 };
 
@@ -88,10 +88,13 @@ impl Evaluator {
         match e {
             Expr::Seq(s) => return self.eval(s.exprs.last()?),
 
-            Expr::Lit(l @ Lit::Null(..))
-            | Expr::Lit(l @ Lit::Num(..) | l @ Lit::Str(..) | l @ Lit::BigInt(..)) => {
-                return Some(EvalResult::Lit(l.clone()))
-            }
+            Expr::Lit(
+                l @ Lit::Num(..)
+                | l @ Lit::Str(..)
+                | l @ Lit::BigInt(..)
+                | l @ Lit::Bool(..)
+                | l @ Lit::Null(..),
+            ) => return Some(EvalResult::Lit(l.clone())),
 
             Expr::Tpl(t) => {
                 return self.eval_tpl(t);

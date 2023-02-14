@@ -6,6 +6,7 @@ use std::path::PathBuf;
 
 use preset_env_base::query::{targets_to_versions, Query};
 pub use preset_env_base::{query::Targets, version::Version, BrowserData, Versions};
+use regenerator::RegeneratorVisitor;
 use serde::Deserialize;
 use swc_atoms::{js_word, JsWord};
 use swc_common::{chain, collections::AHashSet, comments::Comments, FromVariant, Mark, DUMMY_SP};
@@ -21,8 +22,8 @@ use swc_ecma_transforms::{
     pass::{noop, Optional},
     Assumptions,
 };
-use swc_ecma_utils::prepend_stmts;
-use swc_ecma_visit::{Fold, FoldWith, VisitWith};
+use swc_ecma_utils::{prepend_stmts, ExprFactory};
+use swc_ecma_visit::{as_folder, Fold, VisitMut, VisitMutWith, VisitWith};
 
 pub use self::transform_data::Feature;
 
@@ -311,7 +312,7 @@ where
 
     chain!(
         pass,
-        Polyfills {
+        as_folder(Polyfills {
             mode: c.mode,
             regenerator: should_enable!(Regenerator, true),
             corejs: c.core_js.unwrap_or(Version {
@@ -323,7 +324,8 @@ where
             targets,
             includes: included_modules,
             excludes: excluded_modules,
-        }
+            global_mark
+        })
     )
 }
 
@@ -336,12 +338,17 @@ struct Polyfills {
     regenerator: bool,
     includes: AHashSet<String>,
     excludes: AHashSet<String>,
+    global_mark: Mark,
 }
-
-impl Fold for Polyfills {
-    fn fold_module(&mut self, mut m: Module) -> Module {
-        let span = m.span;
-
+impl Polyfills {
+    fn collect<T>(&mut self, m: &mut T) -> Vec<JsWord>
+    where
+        T: VisitWith<corejs2::UsageVisitor>
+            + VisitWith<corejs3::UsageVisitor>
+            + VisitMutWith<corejs2::Entry>
+            + VisitMutWith<corejs3::Entry>
+            + VisitWith<RegeneratorVisitor>,
+    {
         let required = match self.mode {
             None => Default::default(),
             Some(Mode::Usage) => {
@@ -365,7 +372,7 @@ impl Fold for Polyfills {
                     _ => unimplemented!("corejs version other than 2 / 3"),
                 };
 
-                if regenerator::is_required(&m) {
+                if regenerator::is_required(m) {
                     r.insert("regenerator-runtime/runtime.js");
                 }
 
@@ -374,24 +381,27 @@ impl Fold for Polyfills {
             Some(Mode::Entry) => match self.corejs {
                 Version { major: 2, .. } => {
                     let mut v = corejs2::Entry::new(self.targets, self.regenerator);
-                    m = m.fold_with(&mut v);
+                    m.visit_mut_with(&mut v);
                     v.imports
                 }
 
                 Version { major: 3, .. } => {
                     let mut v = corejs3::Entry::new(self.targets, self.corejs, !self.regenerator);
-                    m = m.fold_with(&mut v);
+                    m.visit_mut_with(&mut v);
                     v.imports
                 }
 
                 _ => unimplemented!("corejs version other than 2 / 3"),
             },
         };
-        let required = required
-            .into_iter()
-            .filter(|s| !self.excludes.contains(&**s))
+        required
+            .iter()
+            .filter(|s| {
+                !s.starts_with("esnext") || !required.contains(&s.replace("esnext", "es").as_str())
+            })
+            .filter(|s| !self.excludes.contains(&***s))
             .map(|s| -> JsWord {
-                if s != "regenerator-runtime/runtime.js" {
+                if *s != "regenerator-runtime/runtime.js" {
                     format!("core-js/modules/{}.js", s).into()
                 } else {
                     "regenerator-runtime/runtime.js".to_string().into()
@@ -404,8 +414,13 @@ impl Fold for Polyfills {
                     "regenerator-runtime/runtime.js".to_string().into()
                 }
             }))
-            .collect::<Vec<_>>();
-
+            .collect::<Vec<_>>()
+    }
+}
+impl VisitMut for Polyfills {
+    fn visit_mut_module(&mut self, m: &mut Module) {
+        let span = m.span;
+        let required = self.collect(m);
         if cfg!(debug_assertions) {
             let mut v = required.into_iter().collect::<Vec<_>>();
             v.sort();
@@ -447,12 +462,66 @@ impl Fold for Polyfills {
         }
 
         m.body.retain(|item| !matches!(item, ModuleItem::ModuleDecl(ModuleDecl::Import(ImportDecl { src, .. })) if src.span == DUMMY_SP && src.value == js_word!("")));
-
-        m
     }
 
-    fn fold_script(&mut self, _: Script) -> Script {
-        unimplemented!("automatic polyfill for scripts")
+    fn visit_mut_script(&mut self, m: &mut Script) {
+        let span = m.span;
+        let required = self.collect(m);
+        if cfg!(debug_assertions) {
+            let mut v = required.into_iter().collect::<Vec<_>>();
+            v.sort();
+            prepend_stmts(
+                &mut m.body,
+                v.into_iter().map(|src| {
+                    Stmt::Expr(ExprStmt {
+                        span: DUMMY_SP,
+                        expr: CallExpr {
+                            span,
+                            callee: Expr::Ident(Ident {
+                                span: DUMMY_SP.apply_mark(self.global_mark),
+                                sym: js_word!("require"),
+                                optional: false,
+                            })
+                            .as_callee(),
+                            args: vec![Str {
+                                span: DUMMY_SP,
+                                value: src,
+                                raw: None,
+                            }
+                            .as_arg()],
+                            type_args: None,
+                        }
+                        .into(),
+                    })
+                }),
+            );
+        } else {
+            prepend_stmts(
+                &mut m.body,
+                required.into_iter().map(|src| {
+                    Stmt::Expr(ExprStmt {
+                        span: DUMMY_SP,
+                        expr: CallExpr {
+                            span,
+                            callee: Expr::Ident(Ident {
+                                span: DUMMY_SP.apply_mark(self.global_mark),
+                                sym: js_word!("require"),
+                                optional: false,
+                            })
+                            .as_callee(),
+                            args: vec![Str {
+                                span: DUMMY_SP,
+                                value: src,
+                                raw: None,
+                            }
+                            .as_arg()],
+                            type_args: None,
+                        }
+                        .into(),
+                    })
+                }),
+            );
+        }
     }
 }
 

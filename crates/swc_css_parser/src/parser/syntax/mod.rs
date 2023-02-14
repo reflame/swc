@@ -47,6 +47,12 @@ where
         let mut rules = vec![];
 
         // Repeatedly consume the next input token:
+
+        // Reset the `is_top_level` value
+        let ctx = Ctx {
+            is_top_level: false,
+            ..self.ctx
+        };
         loop {
             // <EOF-token>
             // Return the list of rules.
@@ -70,21 +76,28 @@ where
                     // Otherwise, reconsume the current input token. Consume a qualified rule. If
                     // anything is returned, append it to the list of rules.
                     else {
-                        rules.push(Rule::QualifiedRule(self.parse()?));
+                        let qualified_rule = self.with_ctx(ctx).parse_as::<Box<QualifiedRule>>()?;
+
+                        rules.push(Rule::QualifiedRule(qualified_rule));
                     }
                 }
                 // <at-keyword-token>
                 // Reconsume the current input token. Consume an at-rule, and append the returned
                 // value to the list of rules.
                 tok!("@") => {
-                    rules.push(Rule::AtRule(self.parse()?));
+                    let at_rule = self.with_ctx(ctx).parse_as::<Box<AtRule>>()?;
+
+                    rules.push(Rule::AtRule(at_rule));
                 }
                 // anything else
                 // Reconsume the current input token. Consume a qualified rule. If anything is
                 // returned, append it to the list of rules.
+                //
+                // For better recovery we parse broken code into the list of component values and
+                // append it to the list of rules.
                 _ => {
                     let state = self.input.state();
-                    let qualified_rule = self.parse();
+                    let qualified_rule = self.with_ctx(ctx).parse_as::<Box<QualifiedRule>>();
 
                     match qualified_rule {
                         Ok(i) => rules.push(Rule::QualifiedRule(i)),
@@ -99,7 +112,8 @@ where
                             };
 
                             while !is_one_of!(self, EOF) {
-                                let component_value = self.parse_as::<ComponentValue>()?;
+                                let component_value =
+                                    self.with_ctx(ctx).parse_as::<ComponentValue>()?;
 
                                 list_of_component_values.children.push(component_value);
                             }
@@ -134,16 +148,17 @@ where
                 unreachable!()
             }
         };
-        let name = if at_keyword_name.0.starts_with("--") {
+        let is_dashed_ident = at_keyword_name.0.starts_with("--");
+        let name = if is_dashed_ident {
             AtRuleName::DashedIdent(DashedIdent {
                 span: Span::new(span.lo + BytePos(1), span.hi, Default::default()),
-                value: at_keyword_name.0,
+                value: at_keyword_name.0[2..].into(),
                 raw: Some(at_keyword_name.1),
             })
         } else {
             AtRuleName::Ident(Ident {
                 span: Span::new(span.lo + BytePos(1), span.hi, Default::default()),
-                value: at_keyword_name.0,
+                value: at_keyword_name.0.to_ascii_lowercase(),
                 raw: Some(at_keyword_name.1),
             })
         };
@@ -181,7 +196,7 @@ where
                     at_rule.span = span!(self, span.lo);
 
                     // Canonicalization against a grammar
-                    if self.ctx.need_canonicalize {
+                    if !is_dashed_ident && self.ctx.need_canonicalize {
                         at_rule = self.canonicalize_at_rule_prelude(at_rule)?;
                     }
 
@@ -199,7 +214,7 @@ where
                     at_rule.span = span!(self, span.lo);
 
                     // Canonicalization against a grammar
-                    if self.ctx.need_canonicalize {
+                    if !is_dashed_ident && self.ctx.need_canonicalize {
                         at_rule = self.canonicalize_at_rule_prelude(at_rule)?;
                         at_rule = self.canonicalize_at_rule_block(at_rule)?;
                     }
@@ -330,7 +345,7 @@ where
                         );
                         list_of_component_values
                             .children
-                            .push(ComponentValue::PreservedToken(token_and_span));
+                            .push(ComponentValue::PreservedToken(Box::new(token_and_span)));
                     }
                 }
                 // <at-keyword-token>
@@ -480,7 +495,7 @@ where
                         );
                         list_of_component_values
                             .children
-                            .push(ComponentValue::PreservedToken(token_and_span));
+                            .push(ComponentValue::PreservedToken(Box::new(token_and_span)));
                     }
                 }
                 // <at-keyword-token>
@@ -504,10 +519,9 @@ where
                 // it to the list of declarations.
                 tok!("ident") => {
                     let span = self.input.cur_span();
-                    let cur = self.input.bump().unwrap();
                     let mut temporary_list = ListOfComponentValues {
                         span: Default::default(),
-                        children: vec![ComponentValue::PreservedToken(cur)],
+                        children: vec![],
                     };
 
                     while !is_one_of!(self, ";", EOF) {
@@ -591,16 +605,23 @@ where
         //
         // Return nothing.
         let span = self.input.cur_span();
-        let is_dashed_ident = match cur!(self) {
-            Token::Ident { value, .. } => value.starts_with("--"),
+        let declaration_name = match cur!(self) {
+            Token::Ident { value, .. } => value,
             _ => {
                 return Err(Error::new(span, ErrorKind::Expected("ident")));
             }
         };
+        let is_dashed_ident = declaration_name.starts_with("--");
         let name = if is_dashed_ident {
-            DeclarationName::DashedIdent(self.parse()?)
+            let ident = self.parse()?;
+
+            DeclarationName::DashedIdent(ident)
         } else {
-            DeclarationName::Ident(self.parse()?)
+            let mut ident: Ident = self.parse()?;
+
+            ident.value = ident.value.to_ascii_lowercase();
+
+            DeclarationName::Ident(ident)
         };
         let mut declaration = Declaration {
             span: Default::default(),
@@ -637,7 +658,7 @@ where
 
             match &component_value {
                 // Optimization for step 6
-                ComponentValue::PreservedToken(TokenAndSpan {
+                ComponentValue::PreservedToken(box TokenAndSpan {
                     span,
                     token: Token::Delim { value: '!', .. },
                     ..
@@ -656,7 +677,7 @@ where
 
                     exclamation_point_span = Some(*span);
                 }
-                ComponentValue::PreservedToken(TokenAndSpan {
+                ComponentValue::PreservedToken(box TokenAndSpan {
                     token: Token::WhiteSpace { .. },
                     ..
                 }) => match (&exclamation_point_span, &important_ident) {
@@ -674,12 +695,12 @@ where
                     }
                 },
                 ComponentValue::PreservedToken(
-                    token_and_span @ TokenAndSpan {
+                    token_and_span @ box TokenAndSpan {
                         token: Token::Ident { value, .. },
                         ..
                     },
                 ) if exclamation_point_span.is_some()
-                    && value.to_ascii_lowercase() == js_word!("important") =>
+                    && matches_eq_ignore_ascii_case!(value, js_word!("important")) =>
                 {
                     important_ident = Some(token_and_span.clone());
                 }
@@ -722,14 +743,14 @@ where
                 Default::default(),
             );
             let value = match important_ident.token {
-                Token::Ident { value, raw } => (value, raw),
+                Token::Ident { value, raw, .. } => (value, raw),
                 _ => {
                     unreachable!();
                 }
             };
             let value = Ident {
                 span: important_ident.span,
-                value: value.0,
+                value: value.0.to_ascii_lowercase(),
                 raw: Some(value.1),
             };
 
@@ -791,16 +812,16 @@ where
                             ..self.ctx
                         }
                     })
-                    .parse_as::<Function>()?;
+                    .parse_as::<Box<Function>>()?;
 
                 Ok(ComponentValue::Function(function))
             }
             // Otherwise, return the current input token.
             _ => {
-                let token = self.input.bump();
+                let token_and_span = self.input.bump();
 
-                match token {
-                    Some(t) => Ok(ComponentValue::PreservedToken(t)),
+                match token_and_span {
+                    Some(t) => Ok(ComponentValue::PreservedToken(Box::new(t))),
                     _ => {
                         unreachable!();
                     }
@@ -905,16 +926,25 @@ where
         // Create a function with its name equal to the value of the current input token
         // and with its value initially set to an empty list.
         let span = self.input.cur_span();
-        let ident = match bump!(self) {
+        let function_name = match bump!(self) {
             Token::Function { value, raw } => (value, raw),
             _ => {
                 unreachable!()
             }
         };
-        let name = Ident {
-            span: Span::new(span.lo, span.hi - BytePos(1), Default::default()),
-            value: ident.0,
-            raw: Some(ident.1),
+        let is_dashed_ident = function_name.0.starts_with("--");
+        let name = if is_dashed_ident {
+            FunctionName::DashedIdent(DashedIdent {
+                span: Span::new(span.lo, span.hi - BytePos(1), Default::default()),
+                value: function_name.0[2..].into(),
+                raw: Some(function_name.1),
+            })
+        } else {
+            FunctionName::Ident(Ident {
+                span: Span::new(span.lo, span.hi - BytePos(1), Default::default()),
+                value: function_name.0.to_ascii_lowercase(),
+                raw: Some(function_name.1),
+            })
         };
         let mut function = Function {
             span: Default::default(),
@@ -957,7 +987,7 @@ where
         function.span = span!(self, span.lo);
 
         // Canonicalization against a grammar
-        if self.ctx.need_canonicalize {
+        if !is_dashed_ident && self.ctx.need_canonicalize {
             function = self.canonicalize_function_value(function)?;
         }
 

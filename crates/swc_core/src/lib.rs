@@ -12,8 +12,8 @@ pub mod quote;
 pub extern crate swc_ecma_quote_macros;
 
 // Plugins
-#[cfg(feature = "__plugin_transform")]
-#[cfg_attr(docsrs, doc(cfg(feature = "__plugin_transform")))]
+#[cfg(feature = "__common_plugin_transform")]
+#[cfg_attr(docsrs, doc(cfg(feature = "__common_plugin_transform")))]
 pub mod plugin;
 
 #[cfg(feature = "__ecma")]
@@ -107,6 +107,12 @@ pub mod ecma {
     #[cfg_attr(docsrs, doc(cfg(feature = "ecma_preset_env")))]
     pub mod preset_env {
         pub use swc_ecma_preset_env::*;
+    }
+
+    #[cfg(feature = "ecma_usage_analyzer")]
+    #[cfg_attr(docsrs, doc(cfg(feature = "ecma_usage_analyzer")))]
+    pub mod usage_analyzer {
+        pub use swc_ecma_usage_analyzer::*;
     }
 
     // visit* interfaces

@@ -449,7 +449,7 @@
         return array ? hex : "#" + hex.join("");
     }
 }), Array.alias("extend", "append");
-var fireEvent, $pick = function() {
+var $pick = function() {
     return Array.from(arguments).pick();
 };
 String.implement({
@@ -743,7 +743,7 @@ var $try = Function.attempt;
     indexOf: "keyOf",
     contains: "hasValue"
 }), function() {
-    var XMLHTTP, MSXML2, MSXML, document1 = this.document, window1 = document1.window = this, ua = navigator.userAgent.toLowerCase(), platform = navigator.platform.toLowerCase(), UA = ua.match(/(opera|ie|firefox|chrome|version)[\s\/:]([\w\d\.]+)?.*?(safari|version[\s\/:]([\w\d\.]+)|$)/) || [
+    var document1 = this.document, window1 = document1.window = this, ua = navigator.userAgent.toLowerCase(), platform = navigator.platform.toLowerCase(), UA = ua.match(/(opera|ie|firefox|chrome|version)[\s\/:]([\w\d\.]+)?.*?(safari|version[\s\/:]([\w\d\.]+)|$)/) || [
         null,
         "unknown",
         0
@@ -764,19 +764,22 @@ var $try = Function.attempt;
         },
         Plugins: {}
     };
-    Browser1[Browser1.name] = !0, Browser1[Browser1.name + parseInt(Browser1.version, 10)] = !0, Browser1.Platform[Browser1.Platform.name] = !0, Browser1.Request = (XMLHTTP = function() {
-        return new XMLHttpRequest();
-    }, MSXML2 = function() {
-        return new ActiveXObject("MSXML2.XMLHTTP");
-    }, MSXML = function() {
-        return new ActiveXObject("Microsoft.XMLHTTP");
-    }, Function.attempt(function() {
-        return XMLHTTP(), XMLHTTP;
-    }, function() {
-        return MSXML2(), MSXML2;
-    }, function() {
-        return MSXML(), MSXML;
-    })), Browser1.Features.xhr = !!Browser1.Request;
+    Browser1[Browser1.name] = !0, Browser1[Browser1.name + parseInt(Browser1.version, 10)] = !0, Browser1.Platform[Browser1.Platform.name] = !0, Browser1.Request = function() {
+        var XMLHTTP = function() {
+            return new XMLHttpRequest();
+        }, MSXML2 = function() {
+            return new ActiveXObject("MSXML2.XMLHTTP");
+        }, MSXML = function() {
+            return new ActiveXObject("Microsoft.XMLHTTP");
+        };
+        return Function.attempt(function() {
+            return XMLHTTP(), XMLHTTP;
+        }, function() {
+            return MSXML2(), MSXML2;
+        }, function() {
+            return MSXML(), MSXML;
+        });
+    }(), Browser1.Features.xhr = !!Browser1.Request;
     var version = (Function.attempt(function() {
         return navigator.plugins["Shockwave Flash"].description;
     }, function() {
@@ -819,7 +822,7 @@ var $try = Function.attempt;
     var arrayFrom = Array.from;
     try {
         arrayFrom(document1.html.childNodes);
-    } catch (e1) {
+    } catch (e) {
         Array.from = function(item) {
             if ("string" != typeof item && Type.isEnumerable(item) && "array" != typeOf(item)) {
                 for(var i = item.length, array = Array(i); i--;)array[i] = item[i];
@@ -1210,44 +1213,44 @@ Event.Keys = {}, Event.Keys = new Hash(Event.Keys), function() {
                 testNode.style.display = "none", testNode.appendChild(document1.createComment("")), starSelectsComments = testNode.getElementsByTagName("*").length > 1;
                 try {
                     testNode.innerHTML = "foo</foo>", starSelectsClosed = (selected = testNode.getElementsByTagName("*")) && !!selected.length && "/" == selected[0].nodeName.charAt(0);
-                } catch (e1) {}
+                } catch (e) {}
                 features.brokenStarGEBTN = starSelectsComments || starSelectsClosed;
                 try {
                     testNode.innerHTML = '<a name="' + id + '"></a><b id="' + id + '"></b>', features.idGetsName = document1.getElementById(id) === testNode.firstChild;
-                } catch (e2) {}
+                } catch (e) {}
                 if (testNode.getElementsByClassName) {
                     try {
                         testNode.innerHTML = '<a class="f"></a><a class="b"></a>', testNode.getElementsByClassName("b").length, testNode.firstChild.className = "b", cachedGetElementsByClassName = 2 != testNode.getElementsByClassName("b").length;
-                    } catch (e3) {}
+                    } catch (e) {}
                     try {
                         testNode.innerHTML = '<a class="a"></a><a class="f b a"></a>', brokenSecondClassNameGEBCN = 2 != testNode.getElementsByClassName("a").length;
-                    } catch (e4) {}
+                    } catch (e) {}
                     features.brokenGEBCN = cachedGetElementsByClassName || brokenSecondClassNameGEBCN;
                 }
                 if (testNode.querySelectorAll) {
                     try {
                         testNode.innerHTML = "foo</foo>", selected = testNode.querySelectorAll("*"), features.starSelectsClosedQSA = selected && !!selected.length && "/" == selected[0].nodeName.charAt(0);
-                    } catch (e5) {}
+                    } catch (e) {}
                     try {
                         testNode.innerHTML = '<a class="MiX"></a>', features.brokenMixedCaseQSA = !testNode.querySelectorAll(".MiX").length;
-                    } catch (e6) {}
+                    } catch (e) {}
                     try {
                         testNode.innerHTML = '<select><option selected="selected">a</option></select>', features.brokenCheckedQSA = 0 == testNode.querySelectorAll(":checked").length;
-                    } catch (e7) {}
+                    } catch (e) {}
                     try {
                         testNode.innerHTML = '<a class=""></a>', features.brokenEmptyAttributeQSA = 0 != testNode.querySelectorAll('[class*=""]').length;
-                    } catch (e8) {}
+                    } catch (e) {}
                 }
                 try {
                     testNode.innerHTML = '<form action="s"><input id="action"/></form>', brokenFormAttributeGetter = "s" != testNode.firstChild.getAttribute("action");
-                } catch (e9) {}
+                } catch (e) {}
                 if (features.nativeMatchesSelector = root.matchesSelector || root.mozMatchesSelector || root.webkitMatchesSelector, features.nativeMatchesSelector) try {
                     features.nativeMatchesSelector.call(root, ":slick"), features.nativeMatchesSelector = null;
-                } catch (e10) {}
+                } catch (e) {}
             }
             try {
                 root.slick_expando = 1, delete root.slick_expando, features.getUID = this.getUIDHTML;
-            } catch (e11) {
+            } catch (e) {
                 features.getUID = this.getUIDXML;
             }
             testRoot.removeChild(testNode), testNode = selected = testRoot = null, features.getAttribute = features.isHTMLDocument && brokenFormAttributeGetter ? function(node, name) {
@@ -1683,9 +1686,11 @@ var Element = function(tag, props) {
     }
     return document.newElement(tag, props);
 };
-Browser.Element && (Element.prototype = Browser.Element.prototype, Element.prototype._fireEvent = (fireEvent = Element.prototype.fireEvent, function(type, event) {
-    return fireEvent.call(this, type, event);
-})), new Type("Element", Element).mirror(function(name) {
+Browser.Element && (Element.prototype = Browser.Element.prototype, Element.prototype._fireEvent = function(fireEvent) {
+    return function(type, event) {
+        return fireEvent.call(this, type, event);
+    };
+}(Element.prototype.fireEvent)), new Type("Element", Element).mirror(function(name) {
     if (!Array.prototype[name]) {
         var obj = {};
         obj[name] = function() {
@@ -1797,29 +1802,32 @@ Elements.prototype = {
         getWindow: function() {
             return this.window;
         },
-        id: ((types = {
-            string: function(id, nocash, doc) {
-                return (id = Slick.find(doc, "#" + id.replace(/(\W)/g, "\\$1"))) ? types.element(id, nocash) : null;
-            },
-            element: function(el, nocash) {
-                if (Slick.uidOf(el), !nocash && !el.$family && !/^(?:object|embed)$/i.test(el.tagName)) {
-                    var fireEvent = el.fireEvent;
-                    el._fireEvent = function(type, event) {
-                        return fireEvent(type, event);
-                    }, Object.append(el, Element.Prototype);
+        id: function() {
+            var types = {
+                string: function(id, nocash, doc) {
+                    return (id = Slick.find(doc, "#" + id.replace(/(\W)/g, "\\$1"))) ? types.element(id, nocash) : null;
+                },
+                element: function(el, nocash) {
+                    if (Slick.uidOf(el), !nocash && !el.$family && !/^(?:object|embed)$/i.test(el.tagName)) {
+                        var fireEvent = el.fireEvent;
+                        el._fireEvent = function(type, event) {
+                            return fireEvent(type, event);
+                        }, Object.append(el, Element.Prototype);
+                    }
+                    return el;
+                },
+                object: function(obj, nocash, doc) {
+                    return obj.toElement ? types.element(obj.toElement(doc), nocash) : null;
                 }
-                return el;
-            },
-            object: function(obj, nocash, doc) {
-                return obj.toElement ? types.element(obj.toElement(doc), nocash) : null;
-            }
-        }).textnode = types.whitespace = types.window = types.document = function(zero) {
-            return zero;
-        }, function(el, nocash, doc) {
-            if (el && el.$family && el.uniqueNumber) return el;
-            var type = typeOf(el);
-            return types[type] ? types[type](el, nocash, doc || document) : null;
-        })
+            };
+            return types.textnode = types.whitespace = types.window = types.document = function(zero) {
+                return zero;
+            }, function(el, nocash, doc) {
+                if (el && el.$family && el.uniqueNumber) return el;
+                var type = typeOf(el);
+                return types[type] ? types[type](el, nocash, doc || document) : null;
+            };
+        }()
     }), null == window.$ && Window.implement("$", function(el, nc) {
         return document.id(el, nc, this.document);
     }), Window.implement({
@@ -1840,7 +1848,7 @@ Elements.prototype = {
             return document.id(Slick.find(this, expression));
         }
     });
-    var types, div, set, translations, contains = {
+    var contains = {
         contains: function(element) {
             return Slick.contains(this, element);
         }
@@ -2024,7 +2032,9 @@ Elements.prototype = {
         var value = node.value;
         node.type = type, node.value = value;
     }), input = null;
-    var pollutesGetAttribute = ((div = document.createElement("div")).random = "attribute", "attribute" == div.getAttribute("random"));
+    var pollutesGetAttribute = function(div) {
+        return div.random = "attribute", "attribute" == div.getAttribute("random");
+    }(document.createElement("div"));
     Element.implement({
         setProperty: function(name, value) {
             var setter = propertySetters[name.toLowerCase()];
@@ -2222,52 +2232,55 @@ Elements.prototype = {
             this.innerHTML = "";
         }
     };
-    var div1 = document.createElement("div");
-    div1.innerHTML = "<nav></nav>";
-    var supportsHTML5Elements = 1 == div1.childNodes.length;
+    var div = document.createElement("div");
+    div.innerHTML = "<nav></nav>";
+    var supportsHTML5Elements = 1 == div.childNodes.length;
     if (!supportsHTML5Elements) for(var tags = "abbr article aside audio canvas datalist details figcaption figure footer header hgroup mark meter nav output progress section summary time video".split(" "), fragment = document.createDocumentFragment(), l = tags.length; l--;)fragment.createElement(tags[l]);
-    div1 = null;
+    div = null;
     var supportsTableInnerHTML = Function.attempt(function() {
         return document.createElement("table").innerHTML = "<tr><td></td></tr>", !0;
     }), tr = document.createElement("tr"), html = "<td></td>";
     tr.innerHTML = html;
     var supportsTRInnerHTML = tr.innerHTML == html;
-    tr = null, (!supportsTableInnerHTML || !supportsTRInnerHTML || !supportsHTML5Elements) && (Element.Properties.html.set = (set = Element.Properties.html.set, (translations = {
-        table: [
-            1,
-            "<table>",
-            "</table>"
-        ],
-        select: [
-            1,
-            "<select>",
-            "</select>"
-        ],
-        tbody: [
-            2,
-            "<table><tbody>",
-            "</tbody></table>"
-        ],
-        tr: [
-            3,
-            "<table><tbody><tr>",
-            "</tr></tbody></table>"
-        ]
-    }).thead = translations.tfoot = translations.tbody, function(html) {
-        var wrap = translations[this.get("tag")];
-        if (wrap || supportsHTML5Elements || (wrap = [
-            0,
-            "",
-            ""
-        ]), !wrap) return set.call(this, html);
-        var level = wrap[0], wrapper = document.createElement("div"), target = wrapper;
-        for(supportsHTML5Elements || fragment.appendChild(wrapper), wrapper.innerHTML = [
-            wrap[1],
-            html,
-            wrap[2]
-        ].flatten().join(""); level--;)target = target.firstChild;
-        this.empty().adopt(target.childNodes), supportsHTML5Elements || fragment.removeChild(wrapper), wrapper = null;
-    }));
+    tr = null, supportsTableInnerHTML && supportsTRInnerHTML && supportsHTML5Elements || (Element.Properties.html.set = function(set) {
+        var translations = {
+            table: [
+                1,
+                "<table>",
+                "</table>"
+            ],
+            select: [
+                1,
+                "<select>",
+                "</select>"
+            ],
+            tbody: [
+                2,
+                "<table><tbody>",
+                "</tbody></table>"
+            ],
+            tr: [
+                3,
+                "<table><tbody><tr>",
+                "</tr></tbody></table>"
+            ]
+        };
+        return translations.thead = translations.tfoot = translations.tbody, function(html) {
+            var wrap = translations[this.get("tag")];
+            if (wrap || supportsHTML5Elements || (wrap = [
+                0,
+                "",
+                ""
+            ]), !wrap) return set.call(this, html);
+            var level = wrap[0], wrapper = document.createElement("div"), target = wrapper;
+            for(supportsHTML5Elements || fragment.appendChild(wrapper), wrapper.innerHTML = [
+                wrap[1],
+                html,
+                wrap[2]
+            ].flatten().join(""); level--;)target = target.firstChild;
+            this.empty().adopt(target.childNodes), supportsHTML5Elements || fragment.removeChild(wrapper), wrapper = null;
+        };
+    }(Element.Properties.html.set));
     var testForm = document.createElement("form");
     testForm.innerHTML = "<select><option>s</option></select>", "s" != testForm.firstChild.value && (Element.Properties.value = {
         set: function(value) {

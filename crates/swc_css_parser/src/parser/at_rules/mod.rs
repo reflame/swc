@@ -1,5 +1,5 @@
 use swc_atoms::{js_word, JsWord};
-use swc_common::Span;
+use swc_common::{Span, Spanned};
 use swc_css_ast::*;
 
 use super::{input::ParserInput, PResult, Parser};
@@ -35,7 +35,11 @@ where
                         if value.starts_with("--") {
                             ColorProfileName::DashedIdent(self.parse()?)
                         } else {
-                            ColorProfileName::Ident(self.parse()?)
+                            let mut name: Ident = self.parse()?;
+
+                            name.value = name.value.to_ascii_lowercase();
+
+                            ColorProfileName::Ident(name)
                         }
                     }
                     _ => {
@@ -175,7 +179,9 @@ where
 
                 let layer_name = if !is!(self, EOF) {
                     match cur!(self) {
-                        Token::Ident { value, .. } if *value.to_ascii_lowercase() == *"layer" => {
+                        Token::Ident { value, .. }
+                            if matches_eq_ignore_ascii_case!(value, js_word!("layer")) =>
+                        {
                             let name = ImportLayerName::Ident(self.parse()?);
 
                             self.input.skip_ws();
@@ -183,7 +189,7 @@ where
                             Some(Box::new(name))
                         }
                         Token::Function { value, .. }
-                            if *value.to_ascii_lowercase() == *"layer" =>
+                            if matches_eq_ignore_ascii_case!(value, js_word!("layer")) =>
                         {
                             let ctx = Ctx {
                                 in_import_at_rule: true,
@@ -435,7 +441,7 @@ where
                 let declaration_list: Vec<DeclarationOrAtRule> = self.parse()?;
                 let declaration_list: Vec<ComponentValue> = declaration_list
                     .into_iter()
-                    .map(ComponentValue::DeclarationOrAtRule)
+                    .map(ComponentValue::from)
                     .collect();
 
                 declaration_list
@@ -447,22 +453,19 @@ where
                         ..self.ctx
                     };
                     let style_blocks = self.with_ctx(ctx).parse_as::<Vec<StyleBlock>>()?;
-                    let style_blocks: Vec<ComponentValue> = style_blocks
-                        .into_iter()
-                        .map(ComponentValue::StyleBlock)
-                        .collect();
+                    let style_blocks: Vec<ComponentValue> =
+                        style_blocks.into_iter().map(ComponentValue::from).collect();
 
                     style_blocks
                 }
                 _ => {
                     let ctx = Ctx {
-                        is_top_level: false,
                         in_container_at_rule: true,
                         ..self.ctx
                     };
                     let rule_list = self.with_ctx(ctx).parse_as::<Vec<Rule>>()?;
                     let rule_list: Vec<ComponentValue> =
-                        rule_list.into_iter().map(ComponentValue::Rule).collect();
+                        rule_list.into_iter().map(ComponentValue::from).collect();
 
                     rule_list
                 }
@@ -471,7 +474,7 @@ where
                 let declaration_list: Vec<DeclarationOrAtRule> = self.parse()?;
                 let declaration_list: Vec<ComponentValue> = declaration_list
                     .into_iter()
-                    .map(ComponentValue::DeclarationOrAtRule)
+                    .map(ComponentValue::from)
                     .collect();
 
                 declaration_list
@@ -485,21 +488,15 @@ where
                 match self.ctx.block_contents_grammar {
                     BlockContentsGrammar::StyleBlock => {
                         let style_blocks: Vec<StyleBlock> = self.parse()?;
-                        let style_blocks: Vec<ComponentValue> = style_blocks
-                            .into_iter()
-                            .map(ComponentValue::StyleBlock)
-                            .collect();
+                        let style_blocks: Vec<ComponentValue> =
+                            style_blocks.into_iter().map(ComponentValue::from).collect();
 
                         style_blocks
                     }
                     _ => {
-                        let ctx = Ctx {
-                            is_top_level: false,
-                            ..self.ctx
-                        };
-                        let rule_list = self.with_ctx(ctx).parse_as::<Vec<Rule>>()?;
+                        let rule_list = self.parse_as::<Vec<Rule>>()?;
                         let rule_list: Vec<ComponentValue> =
-                            rule_list.into_iter().map(ComponentValue::Rule).collect();
+                            rule_list.into_iter().map(ComponentValue::from).collect();
 
                         rule_list
                     }
@@ -509,7 +506,7 @@ where
                 let declaration_list: Vec<DeclarationOrAtRule> = self.parse()?;
                 let declaration_list: Vec<ComponentValue> = declaration_list
                     .into_iter()
-                    .map(ComponentValue::DeclarationOrAtRule)
+                    .map(ComponentValue::from)
                     .collect();
 
                 declaration_list
@@ -522,7 +519,7 @@ where
                 let declaration_list = self.with_ctx(ctx).parse_as::<Vec<DeclarationOrAtRule>>()?;
                 let declaration_list: Vec<ComponentValue> = declaration_list
                     .into_iter()
-                    .map(ComponentValue::DeclarationOrAtRule)
+                    .map(ComponentValue::from)
                     .collect();
 
                 declaration_list
@@ -539,7 +536,7 @@ where
                 let declaration_list: Vec<DeclarationOrAtRule> = self.parse()?;
                 let declaration_list: Vec<ComponentValue> = declaration_list
                     .into_iter()
-                    .map(ComponentValue::DeclarationOrAtRule)
+                    .map(ComponentValue::from)
                     .collect();
 
                 declaration_list
@@ -548,7 +545,7 @@ where
                 let declaration_list: Vec<DeclarationOrAtRule> = self.parse()?;
                 let declaration_list: Vec<ComponentValue> = declaration_list
                     .into_iter()
-                    .map(ComponentValue::DeclarationOrAtRule)
+                    .map(ComponentValue::from)
                     .collect();
 
                 declaration_list
@@ -565,7 +562,6 @@ where
             | js_word!("-ms-keyframes") => {
                 let ctx = Ctx {
                     block_contents_grammar: BlockContentsGrammar::RuleList,
-                    is_top_level: false,
                     in_keyframes_at_rule: true,
                     ..self.ctx
                 };
@@ -579,7 +575,7 @@ where
                                 ErrorKind::Unexpected("at-rules are not allowed here"),
                             ));
 
-                            ComponentValue::Rule(Rule::AtRule(at_rule))
+                            ComponentValue::AtRule(at_rule)
                         }
                         Rule::QualifiedRule(qualified_rule) => {
                             let locv = match qualified_rule.prelude {
@@ -612,23 +608,21 @@ where
                                 Ok(keyframes_selectors)
                             }) {
                                 Ok(keyframes_selectors) => {
-                                    ComponentValue::KeyframeBlock(KeyframeBlock {
+                                    ComponentValue::KeyframeBlock(Box::new(KeyframeBlock {
                                         span: qualified_rule.span,
                                         prelude: keyframes_selectors,
                                         block: qualified_rule.block,
-                                    })
+                                    }))
                                 }
                                 Err(err) => {
                                     self.errors.push(err);
 
-                                    ComponentValue::Rule(Rule::ListOfComponentValues(Box::new(
-                                        locv,
-                                    )))
+                                    ComponentValue::ListOfComponentValues(Box::new(locv))
                                 }
                             }
                         }
                         Rule::ListOfComponentValues(locv) => {
-                            ComponentValue::Rule(Rule::ListOfComponentValues(locv))
+                            ComponentValue::ListOfComponentValues(locv)
                         }
                     })
                     .collect();
@@ -636,34 +630,24 @@ where
                 rule_list
             }
             js_word!("layer") => {
-                let ctx = Ctx {
-                    is_top_level: false,
-                    ..self.ctx
-                };
-                let rule_list = self.with_ctx(ctx).parse_as::<Vec<Rule>>()?;
+                let rule_list = self.parse_as::<Vec<Rule>>()?;
                 let rule_list: Vec<ComponentValue> =
-                    rule_list.into_iter().map(ComponentValue::Rule).collect();
+                    rule_list.into_iter().map(ComponentValue::from).collect();
 
                 rule_list
             }
             js_word!("media") => match self.ctx.block_contents_grammar {
                 BlockContentsGrammar::StyleBlock => {
                     let style_blocks: Vec<StyleBlock> = self.parse()?;
-                    let style_blocks: Vec<ComponentValue> = style_blocks
-                        .into_iter()
-                        .map(ComponentValue::StyleBlock)
-                        .collect();
+                    let style_blocks: Vec<ComponentValue> =
+                        style_blocks.into_iter().map(ComponentValue::from).collect();
 
                     style_blocks
                 }
                 _ => {
-                    let ctx = Ctx {
-                        is_top_level: false,
-                        ..self.ctx
-                    };
-                    let rule_list = self.with_ctx(ctx).parse_as::<Vec<Rule>>()?;
+                    let rule_list = self.parse_as::<Vec<Rule>>()?;
                     let rule_list: Vec<ComponentValue> =
-                        rule_list.into_iter().map(ComponentValue::Rule).collect();
+                        rule_list.into_iter().map(ComponentValue::from).collect();
 
                     rule_list
                 }
@@ -675,10 +659,8 @@ where
             }
             js_word!("nest") => {
                 let style_blocks: Vec<StyleBlock> = self.parse()?;
-                let style_blocks: Vec<ComponentValue> = style_blocks
-                    .into_iter()
-                    .map(ComponentValue::StyleBlock)
-                    .collect();
+                let style_blocks: Vec<ComponentValue> =
+                    style_blocks.into_iter().map(ComponentValue::from).collect();
 
                 style_blocks
             }
@@ -691,7 +673,7 @@ where
                     .parse_as::<Vec<DeclarationOrAtRule>>()?;
                 let declaration_list: Vec<ComponentValue> = declaration_list
                     .into_iter()
-                    .map(ComponentValue::DeclarationOrAtRule)
+                    .map(ComponentValue::from)
                     .collect();
 
                 declaration_list
@@ -717,7 +699,7 @@ where
                 let declaration_list: Vec<DeclarationOrAtRule> = self.parse()?;
                 let declaration_list: Vec<ComponentValue> = declaration_list
                     .into_iter()
-                    .map(ComponentValue::DeclarationOrAtRule)
+                    .map(ComponentValue::from)
                     .collect();
 
                 declaration_list
@@ -726,7 +708,7 @@ where
                 let declaration_list: Vec<DeclarationOrAtRule> = self.parse()?;
                 let declaration_list: Vec<ComponentValue> = declaration_list
                     .into_iter()
-                    .map(ComponentValue::DeclarationOrAtRule)
+                    .map(ComponentValue::from)
                     .collect();
 
                 declaration_list
@@ -734,21 +716,15 @@ where
             js_word!("supports") => match self.ctx.block_contents_grammar {
                 BlockContentsGrammar::StyleBlock => {
                     let style_blocks: Vec<StyleBlock> = self.parse()?;
-                    let style_blocks: Vec<ComponentValue> = style_blocks
-                        .into_iter()
-                        .map(ComponentValue::StyleBlock)
-                        .collect();
+                    let style_blocks: Vec<ComponentValue> =
+                        style_blocks.into_iter().map(ComponentValue::from).collect();
 
                     style_blocks
                 }
                 _ => {
-                    let ctx = Ctx {
-                        is_top_level: false,
-                        ..self.ctx
-                    };
-                    let rule_list = self.with_ctx(ctx).parse_as::<Vec<Rule>>()?;
+                    let rule_list = self.parse_as::<Vec<Rule>>()?;
                     let rule_list: Vec<ComponentValue> =
-                        rule_list.into_iter().map(ComponentValue::Rule).collect();
+                        rule_list.into_iter().map(ComponentValue::from).collect();
 
                     rule_list
                 }
@@ -757,7 +733,7 @@ where
                 let declaration_list: Vec<DeclarationOrAtRule> = self.parse()?;
                 let declaration_list: Vec<ComponentValue> = declaration_list
                     .into_iter()
-                    .map(ComponentValue::DeclarationOrAtRule)
+                    .map(ComponentValue::from)
                     .collect();
 
                 declaration_list
@@ -780,7 +756,9 @@ where
 
         let supports = if !is!(self, EOF) {
             match cur!(self) {
-                Token::Function { value, .. } if *value.to_ascii_lowercase() == *"supports" => {
+                Token::Function { value, .. }
+                    if matches_eq_ignore_ascii_case!(value, js_word!("supports")) =>
+                {
                     let ctx = Ctx {
                         in_import_at_rule: true,
                         ..self.ctx
@@ -828,12 +806,15 @@ where
 
                 match cur!(self) {
                     Token::Function { value, .. }
-                        if (&*value.to_ascii_lowercase() == "local"
-                            || &*value.to_ascii_lowercase() == "global") =>
+                        if matches_eq_ignore_ascii_case!(
+                            value,
+                            js_word!("local"),
+                            js_word!("global")
+                        ) =>
                     {
                         let span = self.input.cur_span();
                         let pseudo = match bump!(self) {
-                            Token::Function { value, raw, .. } => Ident {
+                            Token::Function { value, raw } => Ident {
                                 span: span!(self, span.lo),
                                 value,
                                 raw: Some(raw),
@@ -860,8 +841,11 @@ where
                         )))
                     }
                     Token::Ident { value, .. }
-                        if (&*value.to_ascii_lowercase() == "local"
-                            || &*value.to_ascii_lowercase() == "global") =>
+                        if matches_eq_ignore_ascii_case!(
+                            value,
+                            js_word!("local"),
+                            js_word!("global")
+                        ) =>
                     {
                         let pseudo = self.parse()?;
 
@@ -890,7 +874,7 @@ where
             tok!("ident") => {
                 let custom_ident: CustomIdent = self.parse()?;
 
-                if &*custom_ident.value.to_ascii_lowercase() == "none" {
+                if matches_eq_ignore_ascii_case!(custom_ident.value, js_word!("none")) {
                     return Err(Error::new(
                         custom_ident.span,
                         ErrorKind::InvalidCustomIdent(custom_ident.value),
@@ -916,10 +900,11 @@ where
     fn parse(&mut self) -> PResult<KeyframeSelector> {
         match cur!(self) {
             tok!("ident") => {
-                let ident: Ident = self.parse()?;
-                let normalized_ident_value = ident.value.to_ascii_lowercase();
+                let mut ident: Ident = self.parse()?;
 
-                if &*normalized_ident_value != "from" && &*normalized_ident_value != "to" {
+                ident.value = ident.value.to_ascii_lowercase();
+
+                if ident.value != js_word!("from") && ident.value != js_word!("to") {
                     return Err(Error::new(
                         ident.span,
                         ErrorKind::Expected("'from' or 'to' idents"),
@@ -934,7 +919,7 @@ where
 
                 return Err(Error::new(
                     span,
-                    ErrorKind::Expected("ident or percentage token"),
+                    ErrorKind::Expected("'from', 'to' or percentage"),
                 ));
             }
         }
@@ -1031,7 +1016,11 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("not") => {
-                Some(self.parse()?)
+                let mut ident: Ident = self.parse()?;
+
+                ident.value = ident.value.to_ascii_lowercase();
+
+                Some(ident)
             }
             _ => {
                 return Err(Error::new(
@@ -1061,7 +1050,11 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("and") => {
-                Some(self.parse()?)
+                let mut ident: Ident = self.parse()?;
+
+                ident.value = ident.value.to_ascii_lowercase();
+
+                Some(ident)
             }
             _ => {
                 return Err(Error::new(
@@ -1091,7 +1084,11 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("or") => {
-                Some(self.parse()?)
+                let mut ident: Ident = self.parse()?;
+
+                ident.value = ident.value.to_ascii_lowercase();
+
+                Some(ident)
             }
             _ => {
                 return Err(Error::new(
@@ -1184,7 +1181,9 @@ where
 
                 Ok(SupportsFeature::Declaration(Box::new(declaration)))
             }
-            Token::Function { value, .. } if &*value.to_ascii_lowercase() == "selector" => {
+            Token::Function { value, .. }
+                if matches_eq_ignore_ascii_case!(&**value, "selector") =>
+            {
                 // TODO improve me
                 let ctx = Ctx {
                     in_supports_at_rule: true,
@@ -1288,9 +1287,7 @@ where
                 value: function_name,
                 ..
             } => {
-                if &*function_name.to_ascii_lowercase() == "url"
-                    || &*function_name.to_ascii_lowercase() == "src"
-                {
+                if matches_eq_ignore_ascii_case!(function_name, js_word!("url"), js_word!("src")) {
                     Ok(DocumentPreludeMatchingFunction::Url(self.parse()?))
                 } else {
                     // TODO improve me
@@ -1313,7 +1310,7 @@ where
     I: ParserInput,
 {
     fn parse(&mut self) -> PResult<MediaQueryList> {
-        let query = self.parse()?;
+        let query: MediaQuery = self.parse()?;
         let mut queries = vec![query];
 
         // TODO error recovery
@@ -1335,13 +1332,13 @@ where
         }
 
         let start_pos = match queries.first() {
-            Some(MediaQuery { span, .. }) => span.lo,
+            Some(first) => first.span_lo(),
             _ => {
                 unreachable!();
             }
         };
         let last_pos = match queries.last() {
-            Some(MediaQuery { span, .. }) => span.hi,
+            Some(last) => last.span_hi(),
             _ => {
                 unreachable!();
             }
@@ -1431,7 +1428,11 @@ where
     fn parse(&mut self) -> PResult<MediaType> {
         match cur!(self) {
             _ if !is_one_of_case_insensitive_ident!(self, "not", "and", "or", "only", "layer") => {
-                Ok(MediaType::Ident(self.parse()?))
+                let mut name: Ident = self.parse()?;
+
+                name.value = name.value.to_ascii_lowercase();
+
+                Ok(MediaType::Ident(name))
             }
             _ => {
                 let span = self.input.cur_span();
@@ -1553,7 +1554,11 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("not") => {
-                Some(self.parse()?)
+                let mut ident: Ident = self.parse()?;
+
+                ident.value = ident.value.to_ascii_lowercase();
+
+                Some(ident)
             }
             _ => {
                 return Err(Error::new(
@@ -1583,7 +1588,11 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("and") => {
-                Some(self.parse()?)
+                let mut ident: Ident = self.parse()?;
+
+                ident.value = ident.value.to_ascii_lowercase();
+
+                Some(ident)
             }
             _ => {
                 return Err(Error::new(
@@ -1613,7 +1622,11 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("or") => {
-                Some(self.parse()?)
+                let mut ident: Ident = self.parse()?;
+
+                ident.value = ident.value.to_ascii_lowercase();
+
+                Some(ident)
             }
             _ => {
                 return Err(Error::new(
@@ -1686,6 +1699,24 @@ where
         expect!(self, "(");
 
         self.input.skip_ws();
+
+        match cur!(self) {
+            // The <extension-name> can then be used in a media feature. It must be used in a
+            // boolean context; using them in a normal or range context is a syntax error.
+            Token::Ident { value, .. } if value.starts_with("--") => {
+                let name = MediaFeatureName::ExtensionName(self.parse()?);
+
+                self.input.skip_ws();
+
+                expect!(self, ")");
+
+                return Ok(MediaFeature::Boolean(MediaFeatureBoolean {
+                    span: span!(self, span.lo),
+                    name,
+                }));
+            }
+            _ => {}
+        };
 
         let left = self.parse()?;
 
@@ -1871,7 +1902,13 @@ where
 
                 Ok(MediaFeatureValue::Number(left))
             }
-            tok!("ident") => Ok(MediaFeatureValue::Ident(self.parse()?)),
+            tok!("ident") => {
+                let mut name: Ident = self.parse()?;
+
+                name.value = name.value.to_ascii_lowercase();
+
+                Ok(MediaFeatureValue::Ident(name))
+            }
             tok!("dimension") => Ok(MediaFeatureValue::Dimension(self.parse()?)),
             Token::Function { value, .. } if is_math_function(value) => {
                 let function = self.parse()?;
@@ -1891,7 +1928,7 @@ where
     I: ParserInput,
 {
     fn parse(&mut self) -> PResult<PageSelectorList> {
-        let selector = self.parse()?;
+        let selector: PageSelector = self.parse()?;
         let mut selectors = vec![selector];
 
         loop {
@@ -1909,13 +1946,13 @@ where
         }
 
         let start_pos = match selectors.first() {
-            Some(PageSelector { span, .. }) => span.lo,
+            Some(first) => first.span_lo(),
             _ => {
                 unreachable!();
             }
         };
         let last_pos = match selectors.last() {
-            Some(PageSelector { span, .. }) => span.hi,
+            Some(last) => last.span_hi(),
             _ => {
                 unreachable!();
             }
@@ -1993,12 +2030,19 @@ where
 
         let value = match cur!(self) {
             Token::Ident { value, .. }
-                if matches!(
-                    &*value.to_ascii_lowercase(),
-                    "left" | "right" | "first" | "blank"
+                if matches_eq_ignore_ascii_case!(
+                    value,
+                    js_word!("left"),
+                    js_word!("right"),
+                    js_word!("first"),
+                    js_word!("blank")
                 ) =>
             {
-                self.parse()?
+                let mut name: Ident = self.parse()?;
+
+                name.value = name.value.to_ascii_lowercase();
+
+                name
             }
             _ => {
                 let span = self.input.cur_span();
@@ -2150,7 +2194,11 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("not") => {
-                Some(self.parse()?)
+                let mut ident: Ident = self.parse()?;
+
+                ident.value = ident.value.to_ascii_lowercase();
+
+                Some(ident)
             }
             _ => {
                 return Err(Error::new(
@@ -2180,7 +2228,11 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("and") => {
-                Some(self.parse()?)
+                let mut ident: Ident = self.parse()?;
+
+                ident.value = ident.value.to_ascii_lowercase();
+
+                Some(ident)
             }
             _ => {
                 return Err(Error::new(
@@ -2210,7 +2262,11 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("or") => {
-                Some(self.parse()?)
+                let mut ident: Ident = self.parse()?;
+
+                ident.value = ident.value.to_ascii_lowercase();
+
+                Some(ident)
             }
             _ => {
                 return Err(Error::new(
@@ -2464,7 +2520,13 @@ where
 
                 Ok(SizeFeatureValue::Number(left))
             }
-            tok!("ident") => Ok(SizeFeatureValue::Ident(self.parse()?)),
+            tok!("ident") => {
+                let mut name: Ident = self.parse()?;
+
+                name.value = name.value.to_ascii_lowercase();
+
+                Ok(SizeFeatureValue::Ident(name))
+            }
             tok!("dimension") => Ok(SizeFeatureValue::Dimension(self.parse()?)),
             Token::Function { value, .. } if is_math_function(value) => {
                 let function = self.parse()?;
@@ -2490,8 +2552,15 @@ where
             return Err(Error::new(span, ErrorKind::Expected("indent token")));
         }
 
+        // All extensions defined in this specification use a common syntax for defining
+        // their ”names”: the <extension-name> production. An <extension-name> is any
+        // identifier that starts with two dashes (U+002D HYPHEN-MINUS), like --foo, or
+        // even exotic names like -- or ------. The CSS language will never use
+        // identifiers of this form for any language-defined purpose, so it’s safe to
+        // use them for author-defined purposes without ever having to worry about
+        // colliding with CSS-defined names.
         match bump!(self) {
-            Token::Ident { value, raw } => {
+            Token::Ident { value, raw, .. } => {
                 if !value.starts_with("--") {
                     return Err(Error::new(
                         span,

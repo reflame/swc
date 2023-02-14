@@ -5,16 +5,18 @@ use rayon::prelude::*;
 use swc_common::{pass::Repeated, util::take::Take, SyntaxContext, DUMMY_SP, GLOBALS};
 use swc_ecma_ast::*;
 use swc_ecma_transforms_optimization::debug_assert_valid;
+use swc_ecma_usage_analyzer::marks::Marks;
 use swc_ecma_utils::{undefined, ExprCtx};
 use swc_ecma_visit::{noop_visit_mut_type, VisitMut, VisitMutWith, VisitWith};
 #[cfg(feature = "debug")]
 use tracing::{debug, span, Level};
 
 use self::{ctx::Ctx, misc::DropOpts};
+use super::util::is_pure_undefined_or_null;
 #[cfg(feature = "debug")]
 use crate::debug::dump;
 use crate::{
-    analyzer::ProgramData, debug::AssertValid, marks::Marks, maybe_par, option::CompressOptions,
+    debug::AssertValid, maybe_par, option::CompressOptions, program_data::ProgramData,
     util::ModuleItemExt,
 };
 
@@ -550,6 +552,12 @@ impl VisitMut for Pure<'_> {
         if e.is_seq() {
             debug_assert_valid(e);
         }
+
+        self.optimize_opt_chain(e);
+
+        if e.is_seq() {
+            debug_assert_valid(e);
+        }
     }
 
     fn visit_mut_expr_stmt(&mut self, s: &mut ExprStmt) {
@@ -753,6 +761,16 @@ impl VisitMut for Pure<'_> {
 
     fn visit_mut_prop_or_spreads(&mut self, exprs: &mut Vec<PropOrSpread>) {
         self.visit_par(exprs);
+
+        exprs.retain(|e| {
+            if let PropOrSpread::Spread(spread) = e {
+                if is_pure_undefined_or_null(&self.expr_ctx, &spread.expr) {
+                    return false;
+                }
+            }
+
+            true
+        })
     }
 
     fn visit_mut_return_stmt(&mut self, s: &mut ReturnStmt) {

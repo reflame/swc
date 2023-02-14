@@ -1,5 +1,5 @@
 use std::{
-    env,
+    env, fs,
     fs::{create_dir_all, rename},
     path::{Component, Path, PathBuf},
     process::Command,
@@ -16,7 +16,7 @@ use swc_common::{errors::ColorConfig, SourceMap, GLOBALS};
 use swc_ecma_ast::EsVersion;
 use swc_ecma_parser::{EsConfig, Syntax, TsConfig};
 use swc_ecma_testing::{exec_node_js, JsExecOptions};
-use testing::{assert_eq, find_executable};
+use testing::{assert_eq, find_executable, unignore_fixture};
 use tracing::{span, Level};
 
 trait IterExt<T>: Sized + IntoIterator<Item = T>
@@ -55,6 +55,10 @@ fn init_helpers() -> Arc<PathBuf> {
             .to_path_buf();
 
         let helper_dir = project_root.join("packages").join("swc-helpers");
+
+        if env::var("SKIP_HELPERS").unwrap_or_default() == "1" {
+            return Arc::new(helper_dir);
+        }
 
         let yarn = find_executable("yarn").expect("failed to find yarn");
         let npm = find_executable("npm").expect("failed to find npm");
@@ -220,7 +224,7 @@ fn run_fixture_test(entry: PathBuf) {
 
     // Test was successful.
 
-    unignore(&entry);
+    unignore_fixture(&entry);
 }
 
 // #[testing::fixture("tests/babel-exec/**/exec.js")]
@@ -249,7 +253,7 @@ fn run_fixture_test(entry: PathBuf) {
 
 //     // Test was successful.
 
-//     unignore(&entry);
+//     unignore_fixture(&entry);
 // }
 
 fn get_expected_stdout(input: &Path) -> Result<String, Error> {
@@ -313,33 +317,6 @@ fn get_expected_stdout(input: &Path) -> Result<String, Error> {
             },
         )
     })
-}
-
-/// Rename `foo/.bar/exec.js` => `foo/bar/exec.js`
-fn unignore(path: &Path) {
-    if path.components().all(|c| {
-        !matches!(c, Component::Normal(..)) || !c.as_os_str().to_string_lossy().starts_with('.')
-    }) {
-        return;
-    }
-    //
-
-    let mut new_path = PathBuf::new();
-
-    for c in path.components() {
-        if let Component::Normal(s) = c {
-            if let Some(s) = s.to_string_lossy().strip_prefix('.') {
-                new_path.push(s);
-
-                continue;
-            }
-        }
-        new_path.push(c);
-    }
-
-    create_dir_all(new_path.parent().unwrap()).expect("failed to create parent dir");
-
-    rename(path, &new_path).expect("failed to rename");
 }
 
 fn test_file_with_opts(

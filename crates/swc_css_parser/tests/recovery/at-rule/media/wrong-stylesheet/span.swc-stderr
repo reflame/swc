@@ -98,16 +98,6 @@
  6 |     }
    `----
 
-  x Rule
-   ,-[$DIR/tests/recovery/at-rule/media/wrong-stylesheet/input.css:1:1]
- 1 |     @media print {
- 2 | ,->     color: teal;
- 3 | |       main {
- 4 | |           color: orange;
- 5 | `->     }
- 6 |     }
-   `----
-
   x QualifiedRule
    ,-[$DIR/tests/recovery/at-rule/media/wrong-stylesheet/input.css:1:1]
  1 |     @media print {
@@ -174,7 +164,7 @@
  3 |     main {
    `----
 
-  x Ident { value: Atom('teal' type=inline), raw: "teal" }
+  x Ident { value: Atom('teal' type=static), raw: "teal" }
    ,-[$DIR/tests/recovery/at-rule/media/wrong-stylesheet/input.css:1:1]
  1 | @media print {
  2 |     color: teal;
@@ -264,14 +254,6 @@
    `----
 
   x ComponentValue
-   ,-[$DIR/tests/recovery/at-rule/media/wrong-stylesheet/input.css:3:1]
- 3 |     main {
- 4 |         color: orange;
-   :         ^^^^^^^^^^^^^
- 5 |     }
-   `----
-
-  x StyleBlock
    ,-[$DIR/tests/recovery/at-rule/media/wrong-stylesheet/input.css:3:1]
  3 |     main {
  4 |         color: orange;

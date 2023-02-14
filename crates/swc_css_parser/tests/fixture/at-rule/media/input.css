@@ -149,3 +149,25 @@
 @media screen and func(100px) {}
 @media(min-width:calc(10px + 10px)) {}
 @media (width > calc(220px + 100px)) {}
+
+@m\65 dia {
+    .color {
+        color: red;
+    }
+}
+
+@media SCREEN AND (UPDATE: SLOW) AND (WIDTH > 1500px) {}
+
+@media (--modern) and (width > 1024px) {
+    .a { color: green; }
+}
+@media (--) and (width > 1024px) {
+    .a { color: green; }
+}
+
+@MEDIA ALL {}
+@MEDIA (PREFERS-reduced-motion: no-preference) {
+    :ROOT {
+        scroll-behavior: smooth;
+    }
+}

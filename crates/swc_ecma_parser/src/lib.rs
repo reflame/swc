@@ -369,9 +369,6 @@ pub struct Context {
 
     in_forced_jsx_context: bool,
 
-    /// If true, `:` should not be treated as a type annotation.
-    dont_parse_colon_as_type_ann: bool,
-
     // If true, allow super.x and super[x]
     allow_direct_super: bool,
 
@@ -441,7 +438,11 @@ macro_rules! expose {
     };
 }
 
-expose!(parse_file_as_expr, Box<Expr>, |p| { p.parse_expr() });
+expose!(parse_file_as_expr, Box<Expr>, |p| {
+    // This allow to parse `import.meta`
+    p.input().ctx.can_be_module = true;
+    p.parse_expr()
+});
 expose!(parse_file_as_module, Module, |p| { p.parse_module() });
 expose!(parse_file_as_script, Script, |p| { p.parse_script() });
 expose!(parse_file_as_program, Program, |p| { p.parse_program() });

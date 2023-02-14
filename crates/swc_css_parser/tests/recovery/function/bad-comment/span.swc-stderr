@@ -105,16 +105,6 @@
  6 |     }
    `----
 
-  x StyleBlock
-   ,-[$DIR/tests/recovery/function/bad-comment/input.css:1:1]
- 1 |     a {
- 2 | ,->     background: url(
- 3 | |           /* test */
- 4 | |           test.png
- 5 | `->     );
- 6 |     }
-   `----
-
   x Declaration
    ,-[$DIR/tests/recovery/function/bad-comment/input.css:1:1]
  1 |     a {
@@ -151,7 +141,7 @@
  6 |     }
    `----
 
-  x BadUrl { name: Atom('url' type=static), raw_name: "url", raw_value: "\n        /* test */\n        test.png\n    " }
+  x BadUrl { raw: "url(\n        /* test */\n        test.png\n    )" }
    ,-[$DIR/tests/recovery/function/bad-comment/input.css:1:1]
  1 |     a {
  2 | ,->     background: url(
