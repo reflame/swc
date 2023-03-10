@@ -845,9 +845,7 @@ export interface ReactConfig {
   /**
    * Reflame specific setup transform
    */
-  refreshSetup?: {
-    pathname: string;
-  };
+  refreshSetup?: boolean;
 
   /**
    * jsx runtime
