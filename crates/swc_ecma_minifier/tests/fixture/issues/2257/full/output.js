@@ -6018,7 +6018,7 @@
             $({
                 target: "Number",
                 proto: !0,
-                forced: nativeToFixed && !0 || !fails(function() {
+                forced: nativeToFixed && ("0.000" !== 0.00008.toFixed(3) || "1.25" !== 1.255.toFixed(2)) || !fails(function() {
                     nativeToFixed.call({});
                 })
             }, {
@@ -10310,7 +10310,7 @@
                 }
                 return !1 === options.sort ? ret : (!0 === options.sort ? Object.keys(ret).sort() : Object.keys(ret).sort(options.sort)).reduce((result, key)=>{
                     const value = ret[key];
-                    return Boolean(value) && "object" == typeof value && !Array.isArray(value) ? result[key] = function keysSorter(input) {
+                    return value && "object" == typeof value && !Array.isArray(value) ? result[key] = function keysSorter(input) {
                         return Array.isArray(input) ? input.sort() : "object" == typeof input ? keysSorter(Object.keys(input)).sort((a, b)=>Number(a) - Number(b)).map((key)=>input[key]) : input;
                     }(value) : result[key] = value, result;
                 }, Object.create(null));
