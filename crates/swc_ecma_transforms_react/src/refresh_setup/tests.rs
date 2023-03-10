@@ -7,12 +7,7 @@ test!(
         jsx: true,
         ..Default::default()
     }),
-    |_| refresh_setup(
-        true,
-        Some(RefreshSetupOptions {
-            pathname: Some("/test.js".to_string()),
-        }),
-    ),
+    |_| refresh_setup(true, Some(RefreshSetupOptions {}),),
     basic_sample,
     // Input codes
     r#"
@@ -24,10 +19,11 @@ export const blah = 1234
 "#,
     // Output codes after transformed with plugin
     r#"
+const $reflamePathname = new URL(import.meta.url).pathname
 const $reflamePreviousRefreshReg = self.$RefreshReg$
 const $reflamePreviousRefreshSig = self.$RefreshSig$
 self.$RefreshReg$ = (type, id) => {
-    const fullId = "/test.js" + ` ${id}`
+    const fullId = $reflamePathname + ` ${id}`
     self.$reflame.reactRefreshRuntime.register(type, fullId)
 }
 self.$RefreshSig$ = self.$reflame.reactRefreshRuntime.createSignatureFunctionForTransform
@@ -42,10 +38,10 @@ self.$RefreshReg$ = $reflamePreviousRefreshReg
 self.$RefreshSig$ = $reflamePreviousRefreshSig
 
 self.$reflame.registerAcceptCallback({ 
-  pathname: "/test.js",
-  callback: ({ pathname, resourceId }) => {
-    if (resourceId) {
-      console.debug("accepting", pathname, "to", resourceId)
+  pathname: $reflamePathname,
+  callback: ({ pathname, id }) => {
+    if (id) {
+      console.debug("accepting", pathname, "to", id)
     } else {
       console.debug("accepting", pathname)
     }
@@ -61,12 +57,7 @@ test!(
         jsx: true,
         ..Default::default()
     }),
-    |_| refresh_setup(
-        false,
-        Some(RefreshSetupOptions {
-            pathname: Some("/test.js".to_string()),
-        }),
-    ),
+    |_| refresh_setup(false, Some(RefreshSetupOptions {}),),
     disabled,
     // Input codes
     r#"

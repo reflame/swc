@@ -1,14 +1,11 @@
 use serde::{Deserialize, Deserializer, Serialize};
-use swc_common::DUMMY_SP;
 use swc_ecma_ast::*;
 use swc_ecma_quote_macros::internal_quote;
 use swc_ecma_visit::{as_folder, Fold, VisitMut, VisitMutWith};
 #[derive(Debug, Default, Clone, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
-pub struct RefreshSetupOptions {
-    pub pathname: Option<String>,
-}
+pub struct RefreshSetupOptions {}
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -35,14 +32,14 @@ mod tests;
 pub fn refresh_setup(dev: bool, options: Option<RefreshSetupOptions>) -> impl Fold + VisitMut {
     as_folder(RefreshSetup {
         enable: dev && options.is_some(),
-        options: options.unwrap_or_default(),
+        // options: options.unwrap_or_default(),
     })
 }
 
 #[derive(Clone)]
 struct RefreshSetup {
     enable: bool,
-    options: RefreshSetupOptions,
+    // options: RefreshSetupOptions,
 }
 
 impl VisitMut for RefreshSetup {
@@ -56,16 +53,13 @@ impl VisitMut for RefreshSetup {
 
         module_items.visit_mut_children_with(self);
 
-        let pathname = match &self.options.pathname {
-            Some(_) => self.options.pathname.as_ref().unwrap(),
-            None => {
-                panic!("wrong pathname")
-            }
-        };
-
         // Intuitively this feels like it should be faster than individual .inserts
         // TODO: benchmark if doing individual inserts makes a difference?
         let statements_before = [
+            ModuleItem::Stmt(internal_quote!(
+                r#"
+            const $reflamePathname = new URL(import.meta.url).pathname"# as Stmt
+            )),
             ModuleItem::Stmt(internal_quote!(
                 r#"
             const $reflamePreviousRefreshReg = self.$RefreshReg$"# as Stmt
@@ -77,11 +71,10 @@ impl VisitMut for RefreshSetup {
             ModuleItem::Stmt(internal_quote!(
                 r#"
             self.$RefreshReg$ = (type, id) => {
-              const fullId = $pathname + ` ${id}`;
+              const fullId = $reflamePathname + ` ${id}`;
               self.$reflame.reactRefreshRuntime.register(type, fullId)
             }
-            "# as Stmt,
-                pathname = Ident::new(format!("\"{pathname}\"",).into(), DUMMY_SP),
+            "# as Stmt
             )),
             ModuleItem::Stmt(internal_quote!(
                 r#"
@@ -103,18 +96,17 @@ impl VisitMut for RefreshSetup {
         module_items.push(ModuleItem::Stmt(internal_quote!(
             r#"
         self.$reflame.registerAcceptCallback({
-            pathname: $pathname,
-            callback: ({ pathname, resourceId }) => {
-                if (resourceId) {
-                console.debug("accepting", pathname, "to", resourceId)
+            pathname: $reflamePathname,
+            callback: ({ pathname, id }) => {
+                if (id) {
+                console.debug("accepting", pathname, "to", id)
                 } else {
                 console.debug("accepting", pathname)
                 }
 
                 self.$reflame.performReactRefresh()
             },
-        })"# as Stmt,
-            pathname = Ident::new(format!("\"{pathname}\"").into(), DUMMY_SP),
+        })"# as Stmt
         )));
     }
 }
