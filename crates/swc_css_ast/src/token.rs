@@ -4,6 +4,7 @@ use std::{
 };
 
 use is_macro::Is;
+#[cfg(feature = "serde-impl")]
 use serde::{Deserialize, Serialize};
 use swc_atoms::{Atom, JsWord};
 use swc_common::{ast_node, util::take::Take, EqIgnoreSpan, Span};
@@ -24,7 +25,15 @@ impl Take for TokenAndSpan {
     }
 }
 
-#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize, Is, EqIgnoreSpan)]
+#[derive(Debug, Clone, PartialEq, EqIgnoreSpan, Hash)]
+#[cfg_attr(feature = "serde-impl", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(
+    any(feature = "rkyv-impl"),
+    derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)
+)]
+pub struct UrlKeyValue(pub Atom, pub Atom);
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Is, EqIgnoreSpan)]
 #[cfg_attr(
     feature = "rkyv",
     derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)
@@ -37,29 +46,32 @@ impl Take for TokenAndSpan {
         deserialize = "__D: rkyv::de::SharedDeserializeRegistry"
     ))
 )]
+#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
 pub enum NumberType {
-    #[serde(rename = "integer")]
+    #[cfg_attr(feature = "serde-impl", serde(rename = "integer"))]
     Integer,
-    #[serde(rename = "number")]
+    #[cfg_attr(feature = "serde-impl", serde(rename = "number"))]
     Number,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, EqIgnoreSpan)]
+#[derive(Debug, Clone, PartialEq, EqIgnoreSpan)]
 #[cfg_attr(
     feature = "rkyv",
     derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)
 )]
+#[cfg_attr(feature = "serde-impl", derive(Serialize, Deserialize))]
 pub struct DimensionToken {
     pub value: f64,
     pub raw_value: Atom,
     #[cfg_attr(feature = "rkyv", with(swc_atoms::EncodeJsWord))]
     pub unit: JsWord,
-    #[serde(rename = "type")]
+
+    #[cfg_attr(feature = "serde-impl", serde(rename = "type"))]
     pub type_flag: NumberType,
     pub raw_unit: Atom,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, EqIgnoreSpan)]
+#[derive(Debug, Clone, PartialEq, EqIgnoreSpan)]
 #[cfg_attr(
     feature = "rkyv",
     derive(rkyv::Archive, rkyv::Serialize, rkyv::Deserialize)
@@ -72,6 +84,7 @@ pub struct DimensionToken {
         deserialize = "__D: rkyv::de::SharedDeserializeRegistry"
     ))
 )]
+#[cfg_attr(feature = "serde-impl", derive(serde::Serialize, serde::Deserialize))]
 pub enum Token {
     Ident {
         #[cfg_attr(feature = "rkyv", with(swc_atoms::EncodeJsWord))]
@@ -109,7 +122,7 @@ pub enum Token {
         #[cfg_attr(feature = "rkyv", with(swc_atoms::EncodeJsWord))]
         value: JsWord,
         /// Name and value
-        raw: Box<(Atom, Atom)>,
+        raw: Box<UrlKeyValue>,
     },
     BadUrl {
         raw: Atom,
@@ -120,7 +133,7 @@ pub enum Token {
     Number {
         value: f64,
         raw: Atom,
-        #[serde(rename = "type")]
+        #[cfg_attr(feature = "serde-impl", serde(rename = "type"))]
         type_flag: NumberType,
     },
     Percentage {
@@ -162,7 +175,7 @@ impl Take for Token {
     }
 }
 
-#[allow(clippy::derive_hash_xor_eq)]
+#[allow(clippy::derived_hash_with_manual_eq)]
 #[allow(clippy::transmute_float_to_int)]
 impl Hash for Token {
     fn hash<H: Hasher>(&self, state: &mut H) {

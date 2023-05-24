@@ -31,12 +31,11 @@ use swc_trace_macro::swc_trace;
 ///     y = _obj.y;
 ///
 /// let _arr = arr,
-///     _arr2 = _toArray(_arr),
+///     _arr2 = _to_array(_arr),
 ///     a = _arr2[0],
 ///     b = _arr2[1],
 ///     rest = _arr2.slice(2);
 /// ```
-#[tracing::instrument(level = "info", skip_all)]
 pub fn destructuring(c: Config) -> impl Fold + VisitMut {
     as_folder(Destructuring { c })
 }
@@ -55,7 +54,7 @@ macro_rules! impl_for_for_stmt {
     ($name:ident, $T:tt) => {
         fn $name(&mut self, for_stmt: &mut $T) {
             let (left, stmt) = match &mut for_stmt.left {
-                VarDeclOrPat::VarDecl(var_decl) => {
+                ForHead::VarDecl(var_decl) => {
                     let has_complex = var_decl.decls.iter().any(|d| match d.name {
                         Pat::Ident(_) => false,
                         _ => true,
@@ -100,13 +99,13 @@ macro_rules! impl_for_for_stmt {
                     .into();
                     (left, stmt)
                 }
-                VarDeclOrPat::Pat(pat) => match **pat {
+                ForHead::Pat(pat) => match **pat {
                     Pat::Ident(..) => {
                         return;
                     }
                     _ => {
                         let left_ident = make_ref_ident_for_for_stmt();
-                        let left = VarDeclOrPat::Pat(left_ident.clone().into());
+                        let left = ForHead::Pat(left_ident.clone().into());
                         // Unpack variables
                         let stmt = AssignExpr {
                             span: DUMMY_SP,
@@ -118,6 +117,10 @@ macro_rules! impl_for_for_stmt {
                         (left, stmt)
                     }
                 },
+
+                ForHead::UsingDecl(..) => {
+                    unreachable!("using declaration must be removed by previous pass")
+                }
             };
 
             for_stmt.left = left;
@@ -282,17 +285,16 @@ impl AssignFolder {
                 // to
                 //
                 //      var _ref = null;
-                //      _objectDestructuringEmpty(_ref);
+                //      _object_destructuring_empty(_ref);
                 //
 
-                let expr = helper_expr!(object_destructuring_empty, "objectDestructuringEmpty")
-                    .as_call(
-                        DUMMY_SP,
-                        vec![decl
-                            .init
-                            .expect("destructuring must be initialized")
-                            .as_arg()],
-                    );
+                let expr = helper_expr!(object_destructuring_empty).as_call(
+                    DUMMY_SP,
+                    vec![decl
+                        .init
+                        .expect("destructuring must be initialized")
+                        .as_arg()],
+                );
 
                 let var_decl = VarDeclarator {
                     span: DUMMY_SP,
@@ -681,13 +683,13 @@ impl VisitMut for AssignFolder {
                                 })),
                                 Expr::Array(..) => right.take(),
                                 _ => {
-                                    // if left has rest then need `_toArray`
-                                    // else `_slicedToArray`
+                                    // if left has rest then need `_to_array`
+                                    // else `_sliced_to_array`
                                     if elems.iter().any(|elem| matches!(elem, Some(Pat::Rest(..))))
                                     {
                                         Box::new(Expr::Call(CallExpr {
                                             span: DUMMY_SP,
-                                            callee: helper!(to_array, "toArray"),
+                                            callee: helper!(to_array),
                                             args: vec![right.take().as_arg()],
                                             type_args: Default::default(),
                                         }))
@@ -695,7 +697,7 @@ impl VisitMut for AssignFolder {
                                         Box::new(
                                             CallExpr {
                                                 span: DUMMY_SP,
-                                                callee: helper!(sliced_to_array, "slicedToArray"),
+                                                callee: helper!(sliced_to_array),
                                                 args: vec![
                                                     right.take().as_arg(),
                                                     elems.len().as_arg(),
@@ -785,7 +787,7 @@ impl VisitMut for AssignFolder {
                     let mut right = right.take();
                     right.visit_mut_with(self);
 
-                    *expr = helper_expr!(object_destructuring_empty, "objectDestructuringEmpty")
+                    *expr = helper_expr!(object_destructuring_empty)
                         .as_call(DUMMY_SP, vec![right.as_arg()]);
                 }
                 Pat::Object(ObjectPat { span, props, .. }) => {
@@ -1083,7 +1085,7 @@ fn make_ref_ident_for_array(
                         Some(std::usize::MAX) => Box::new(
                             CallExpr {
                                 span: DUMMY_SP,
-                                callee: helper!(to_array, "toArray"),
+                                callee: helper!(to_array),
                                 args: vec![v.as_arg()],
                                 type_args: Default::default(),
                             }
@@ -1092,7 +1094,7 @@ fn make_ref_ident_for_array(
                         Some(value) => Box::new(
                             CallExpr {
                                 span: DUMMY_SP,
-                                callee: helper!(sliced_to_array, "slicedToArray"),
+                                callee: helper!(sliced_to_array),
                                 args: vec![v.as_arg(), value.as_arg()],
                                 type_args: Default::default(),
                             }

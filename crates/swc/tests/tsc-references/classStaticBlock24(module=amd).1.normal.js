@@ -2,8 +2,8 @@
 define([
     "require",
     "exports",
-    "@swc/helpers/src/_class_call_check.mjs"
-], function(require, exports, _classCallCheck) {
+    "@swc/helpers/_/_class_call_check"
+], function(require, exports, _class_call_check) {
     "use strict";
     Object.defineProperty(exports, "__esModule", {
         value: true
@@ -14,15 +14,11 @@ define([
             return C;
         }
     });
-    _classCallCheck = _classCallCheck.default;
     var C = function C() {
         "use strict";
-        _classCallCheck(this, C);
+        _class_call_check._(this, C);
     };
-    var __ = {
-        writable: true,
-        value: function() {
-            C.x = 1;
-        }()
-    };
+    (function() {
+        C.x = 1;
+    })();
 });

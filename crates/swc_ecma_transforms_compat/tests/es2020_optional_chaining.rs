@@ -1,6 +1,6 @@
 use std::{fs::read_to_string, path::PathBuf};
 
-use swc_ecma_parser::{Syntax, TsConfig};
+use swc_ecma_parser::Syntax;
 use swc_ecma_transforms_compat::es2020::{opt_chaining::Config, optional_chaining};
 use swc_ecma_transforms_testing::{compare_stdout, test, test_exec};
 use swc_ecma_visit::Fold;
@@ -10,9 +10,7 @@ fn tr(c: Config) -> impl Fold {
 }
 
 fn syntax() -> Syntax {
-    Syntax::Typescript(TsConfig {
-        ..Default::default()
-    })
+    Syntax::Typescript(Default::default())
 }
 
 // general_memoize_loose
@@ -104,6 +102,47 @@ foo == null ? void 0 : foo(foo);
 foo == null ? void 0 : foo.bar();
 foo.bar == null ? void 0 : foo.bar(foo.bar, false);
 foo == null ? void 0 : foo.bar == null ? void 0 : foo.bar(foo.bar, true);
+"#
+);
+
+// parentheses
+test!(
+    syntax(),
+    |_| tr(Default::default()),
+    parentheses,
+    r#"
+  (o1)(o1 ?? 1);
+  (o2?.b)(o1 ?? 1);
+  (o3?.b())(o1 ?? 1);
+  (o4?.b().c)(o1 ?? 1);
+"#,
+    r#"
+    o1(o1 ?? 1);
+    (o2 === null || o2 === void 0 ? void 0 : o2.b)(o1 ?? 1);
+    (o3 === null || o3 === void 0 ? void 0 : o3.b())(o1 ?? 1);
+    (o4 === null || o4 === void 0 ? void 0 : o4.b().c)(o1 ?? 1);
+"#
+);
+
+// curried_function_call
+test!(
+    syntax(),
+    |_| tr(Default::default()),
+    curried_function_call,
+    r#"
+    a?.b()();
+    a?.b()()();
+    a?.b()().c;
+    a?.b()()?.c;
+    a?.b()()?.c()();
+"#,
+    r#"
+    var _a_b, _a_b1;
+    a === null || a === void 0 ? void 0 : a.b()();
+    a === null || a === void 0 ? void 0 : a.b()()();
+    a === null || a === void 0 ? void 0 : a.b()().c;
+    (_a_b = a === null || a === void 0 ? void 0 : a.b()()) === null || _a_b === void 0 ? void 0 : _a_b.c;
+    (_a_b1 = a === null || a === void 0 ? void 0 : a.b()()) === null || _a_b1 === void 0 ? void 0 : _a_b1.c()();
 "#
 );
 
@@ -1021,7 +1060,7 @@ class Foo {
 
 #[testing::fixture("tests/opt-chain/**/exec.js")]
 fn exec(input: PathBuf) {
-    let src = read_to_string(&input).unwrap();
+    let src = read_to_string(input).unwrap();
 
     compare_stdout(
         Default::default(),

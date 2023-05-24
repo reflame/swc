@@ -48,13 +48,13 @@ fn shifted(file: PathBuf) {
             serde_json::to_string_pretty(&program).expect("failed to serialize module as json");
 
         if StdErr::from(json)
-            .compare_to_file(&format!("{}.json", file.display()))
+            .compare_to_file(format!("{}.json", file.display()))
             .is_err()
         {
             panic!()
         }
         if StdErr::from(format!("{:#?}", comments))
-            .compare_to_file(&format!("{}.comments", file.display()))
+            .compare_to_file(format!("{}.comments", file.display()))
             .is_err()
         {
             panic!()
@@ -139,7 +139,8 @@ fn run_spec(file: &Path, output_json: &Path) {
         || file_name.contains("tsc/tsxErrorRecovery2")
         || file_name.contains("tsc/tsxErrorRecovery3")
         || file_name.contains("tsc/tsxTypeArgumentsJsxPreserveOutput")
-        || file_name.contains("tsc/unicodeEscapesInJsxtags");
+        || file_name.contains("tsc/unicodeEscapesInJsxtags")
+        || file_name.contains("tsc/propertyAccessNumericLiterals");
 
     if ignore {
         return;

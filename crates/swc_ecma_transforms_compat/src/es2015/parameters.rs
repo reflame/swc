@@ -15,7 +15,6 @@ use swc_ecma_visit::{as_folder, noop_visit_mut_type, Fold, VisitMut, VisitMutWit
 use swc_trace_macro::swc_trace;
 use tracing::trace;
 
-#[tracing::instrument(level = "info", skip_all)]
 pub fn parameters(c: Config, unresolved_mark: Mark) -> impl 'static + Fold {
     let unresolved_ctxt = SyntaxContext::empty().apply_mark(unresolved_mark);
     as_folder(Params {
@@ -436,6 +435,33 @@ impl VisitMut for Params {
         self.in_prop = !prop.is_static;
         prop.value.visit_mut_with(self);
         self.in_prop = old_in_prop;
+    }
+
+    fn visit_mut_class_method(&mut self, m: &mut ClassMethod) {
+        if let MethodKind::Setter = m.kind {
+            let f = &mut m.function;
+
+            if f.body.is_none() {
+                return;
+            }
+
+            let old_in_subclass = self.in_subclass;
+            let old_in_prop = self.in_prop;
+            self.in_subclass = false;
+            self.in_prop = false;
+
+            f.visit_mut_children_with(self);
+
+            let mut body = f.body.take().unwrap();
+            self.visit_mut_fn_like(&mut f.params, &mut body, true);
+
+            f.body = Some(body);
+
+            self.in_subclass = old_in_subclass;
+            self.in_prop = old_in_prop;
+        } else {
+            m.visit_mut_children_with(self);
+        }
     }
 
     // same for private prop

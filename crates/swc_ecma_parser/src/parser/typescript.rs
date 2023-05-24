@@ -231,7 +231,11 @@ impl<I: Tokens> Parser<I> {
         let type_name = self.parse_ts_entity_name(/* allow_reserved_words */ true)?;
         trace_cur!(self, parse_ts_type_ref__type_args);
         let type_params = if !self.input.had_line_break_before_cur() && is!(self, '<') {
-            Some(self.parse_ts_type_args()?)
+            let ctx = Context {
+                should_not_lex_lt_or_gt_as_type: false,
+                ..self.ctx()
+            };
+            Some(self.with_ctx(ctx).parse_ts_type_args()?)
         } else {
             None
         };
@@ -398,13 +402,12 @@ impl<I: Tokens> Parser<I> {
         )? {
             match modifer {
                 "const" => {
+                    is_const = true;
                     if !permit_const {
                         self.emit_err(
                             self.input.prev_span(),
                             SyntaxError::TS1277(js_word!("const")),
                         );
-                    } else {
-                        is_const = true;
                     }
                 }
                 "in" => {
@@ -417,18 +420,16 @@ impl<I: Tokens> Parser<I> {
                             self.input.prev_span(),
                             SyntaxError::TS1029(js_word!("in"), js_word!("out")),
                         );
-                    } else {
-                        is_in = true;
                     }
+                    is_in = true;
                 }
                 "out" => {
                     if !permit_in_out {
                         self.emit_err(self.input.prev_span(), SyntaxError::TS1274(js_word!("out")));
                     } else if is_out {
                         self.emit_err(self.input.prev_span(), SyntaxError::TS1030(js_word!("out")));
-                    } else {
-                        is_out = true;
                     }
+                    is_out = true;
                 }
                 other => self.emit_err(self.input.prev_span(), SyntaxError::TS1273(other.into())),
             };
@@ -571,7 +572,9 @@ impl<I: Tokens> Parser<I> {
         }
     }
 
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     pub(super) fn try_parse_ts_type_args(&mut self) -> Option<Box<TsTypeParamInstantiation>> {
+        trace_cur!(self, try_parse_ts_type_args);
         debug_assert!(self.input.syntax().typescript());
 
         self.try_parse_ts(|p| {
@@ -579,7 +582,7 @@ impl<I: Tokens> Parser<I> {
 
             if is_one_of!(
                 p, '<', // invalid syntax
-                '>', ">>", '+', '-', // becomes relational expression
+                '>', '=', ">>", ">=", '+', '-', // becomes relational expression
                 /* these should be type arguments in function call or template,
                  * not instantiation expression */
                 '(', '`'
@@ -2331,17 +2334,8 @@ impl<I: Tokens> Parser<I> {
         match &*expr.sym {
             "declare" => {
                 let decl = self.try_parse_ts_declare(start, decorators)?;
-                if let Some(mut decl) = decl {
-                    match &mut decl {
-                        Decl::Class(ClassDecl { declare, .. })
-                        | Decl::Fn(FnDecl { declare, .. }) => *declare = true,
-                        Decl::Var(v) => v.declare = true,
-                        Decl::TsInterface(v) => v.declare = true,
-                        Decl::TsTypeAlias(v) => v.declare = true,
-                        Decl::TsEnum(v) => v.declare = true,
-                        Decl::TsModule(v) => v.declare = true,
-                    }
-                    Ok(Some(decl))
+                if let Some(decl) = decl {
+                    Ok(Some(make_decl_declare(decl)))
                 } else {
                     Ok(None)
                 }
@@ -2568,7 +2562,7 @@ impl<I: Tokens> Parser<I> {
                 }
             }
 
-            js_word!("module") => {
+            js_word!("module") if !self.input.had_line_break_before_cur() => {
                 if next {
                     bump!(self);
                 }
@@ -2827,6 +2821,7 @@ fn make_decl_declare(mut decl: Decl) -> Decl {
         Decl::TsTypeAlias(ref mut a) => a.declare = true,
         Decl::TsEnum(ref mut e) => e.declare = true,
         Decl::TsModule(ref mut m) => m.declare = true,
+        Decl::Using(..) => unreachable!("Using is not a valid declaration for `declare` keyword"),
     }
 
     decl
@@ -2838,9 +2833,7 @@ mod tests {
     use swc_ecma_ast::*;
     use swc_ecma_visit::assert_eq_ignore_span;
 
-    use crate::{
-        lexer::Lexer, test_parser, token::*, Capturing, EsVersion, Parser, Syntax, TsConfig,
-    };
+    use crate::{lexer::Lexer, test_parser, token::*, Capturing, EsVersion, Parser, Syntax};
 
     #[test]
     fn issue_708_1() {
@@ -2921,9 +2914,7 @@ mod tests {
     string | number);",
             |handler, input| {
                 let lexer = Lexer::new(
-                    Syntax::Typescript(TsConfig {
-                        ..Default::default()
-                    }),
+                    Syntax::Typescript(Default::default()),
                     EsVersion::Es2019,
                     input,
                     None,
@@ -2947,9 +2938,7 @@ mod tests {
     fn issue_751() {
         crate::with_test_sess("t ? -(v >>> 1) : v >>> 1", |handler, input| {
             let lexer = Lexer::new(
-                Syntax::Typescript(TsConfig {
-                    ..Default::default()
-                }),
+                Syntax::Typescript(Default::default()),
                 EsVersion::Es2019,
                 input,
                 None,

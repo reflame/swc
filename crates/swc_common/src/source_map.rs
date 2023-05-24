@@ -488,8 +488,8 @@ impl SourceMap {
 
         if lo.file.start_pos != hi.file.start_pos {
             return Err(Box::new(SpanLinesError::DistinctSources(DistinctSources {
-                begin: (lo.file.name.clone(), lo.file.start_pos),
-                end: (hi.file.name.clone(), hi.file.start_pos),
+                begin: FilePos(lo.file.name.clone(), lo.file.start_pos),
+                end: FilePos(hi.file.name.clone(), hi.file.start_pos),
             })));
         }
         assert!(hi.line >= lo.line);
@@ -565,8 +565,8 @@ impl SourceMap {
         if local_begin.sf.start_pos != local_end.sf.start_pos {
             Err(Box::new(SpanSnippetError::DistinctSources(
                 DistinctSources {
-                    begin: (local_begin.sf.name.clone(), local_begin.sf.start_pos),
-                    end: (local_end.sf.name.clone(), local_end.sf.start_pos),
+                    begin: FilePos(local_begin.sf.name.clone(), local_begin.sf.start_pos),
+                    end: FilePos(local_end.sf.name.clone(), local_end.sf.start_pos),
                 },
             )))
         } else {
@@ -1224,7 +1224,7 @@ impl SourceMap {
         if let Some(orig) = orig {
             for src in orig.sources() {
                 let id = builder.add_source(src);
-                src_id = id as u32 + 1;
+                src_id = id + 1;
 
                 builder.set_source_contents(id, orig.get_source_contents(id));
             }
@@ -1411,7 +1411,7 @@ impl FilePathMapping {
         // NOTE: We are iterating over the mapping entries from last to first
         //       because entries specified later on the command line should
         //       take precedence.
-        for &(ref from, ref to) in self.mapping.iter().rev() {
+        for (from, to) in self.mapping.iter().rev() {
             if let Ok(rest) = path.strip_prefix(from) {
                 return (to.join(rest), true);
             }

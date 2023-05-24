@@ -28,9 +28,7 @@ fn parse_and_gen(entry: &Path) {
 
             {
                 let mut emitter = Emitter {
-                    cfg: swc_ecma_codegen::Config {
-                        ..Default::default()
-                    },
+                    cfg: Default::default(),
                     cm: cm.clone(),
                     comments: None,
                     wr: JsWriter::new(cm, "\n", &mut buf, None),
@@ -42,7 +40,7 @@ fn parse_and_gen(entry: &Path) {
             String::from_utf8_lossy(&buf).to_string()
         };
 
-        fs::write("output.js", &code).unwrap();
+        fs::write("output.js", code).unwrap();
 
         Ok(())
     })

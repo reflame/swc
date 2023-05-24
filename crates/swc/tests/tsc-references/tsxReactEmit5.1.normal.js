@@ -19,13 +19,14 @@ var React;
 Object.defineProperty(exports, "__esModule", {
     value: true
 });
-var _extends = require("@swc/helpers/lib/_extends.js").default;
+var _object_spread = require("@swc/helpers/_/_object_spread");
+var _object_spread_props = require("@swc/helpers/_/_object_spread_props");
 var _test = require("./test");
 // Should emit test_1.React.createElement
 //  and React.__spread
 var foo;
-var spread1 = /*#__PURE__*/ _test.React.createElement("div", _extends({
+var spread1 = /*#__PURE__*/ _test.React.createElement("div", _object_spread_props._(_object_spread._({
     x: ""
-}, foo, {
+}, foo), {
     y: ""
 }));

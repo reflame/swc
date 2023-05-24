@@ -1,5 +1,5 @@
 //// [modifierOnClassExpressionMemberInFunction.ts]
-import _class_call_check from "@swc/helpers/src/_class_call_check.mjs";
+import { _ as _class_call_check } from "@swc/helpers/_/_class_call_check";
 function g() {
     var _C;
     var x = (_C = /*#__PURE__*/ function() {
@@ -11,5 +11,7 @@ function g() {
         var _proto = C.prototype;
         _proto.foo = function foo() {};
         return C;
-    }(), _C.prop2 = 43, _C);
+    }(), function() {
+        _C.prop2 = 43;
+    }(), _C);
 }

@@ -1,8 +1,8 @@
 //// [newTarget.es5.ts]
-import _class_call_check from "@swc/helpers/src/_class_call_check.mjs";
-import _inherits from "@swc/helpers/src/_inherits.mjs";
-import _instanceof from "@swc/helpers/src/_instanceof.mjs";
-import _create_super from "@swc/helpers/src/_create_super.mjs";
+import { _ as _class_call_check } from "@swc/helpers/_/_class_call_check";
+import { _ as _inherits } from "@swc/helpers/_/_inherits";
+import { _ as _instanceof } from "@swc/helpers/_/_instanceof";
+import { _ as _create_super } from "@swc/helpers/_/_create_super";
 var A = function A() {
     "use strict";
     var _this = this;
@@ -15,9 +15,11 @@ var A = function A() {
         return _instanceof(_this, A) ? _this.constructor : void 0;
     };
 };
-A.c = function _target() {
-    return _instanceof(this, _target) ? this.constructor : void 0;
-};
+(function() {
+    A.c = function _target() {
+        return _instanceof(this, _target) ? this.constructor : void 0;
+    };
+})();
 var B = /*#__PURE__*/ function _target(A) {
     "use strict";
     _inherits(B, A);

@@ -1,7 +1,7 @@
 //// [privateNameComputedPropertyName1.ts]
-import _class_private_field_get from "@swc/helpers/src/_class_private_field_get.mjs";
-import _class_private_field_init from "@swc/helpers/src/_class_private_field_init.mjs";
-import _class_private_field_set from "@swc/helpers/src/_class_private_field_set.mjs";
+import { _ as _class_private_field_get } from "@swc/helpers/_/_class_private_field_get";
+import { _ as _class_private_field_init } from "@swc/helpers/_/_class_private_field_init";
+import { _ as _class_private_field_set } from "@swc/helpers/_/_class_private_field_set";
 var _a = new WeakMap(), _b = new WeakMap(), _c = new WeakMap(), _d = new WeakMap(), _e = new WeakMap();
 new class {
     test() {
@@ -19,19 +19,19 @@ new class {
     constructor(){
         _class_private_field_init(this, _a, {
             writable: !0,
-            value: 'a'
+            value: void 0
         }), _class_private_field_init(this, _b, {
             writable: !0,
             value: void 0
         }), _class_private_field_init(this, _c, {
             writable: !0,
-            value: 'c'
+            value: void 0
         }), _class_private_field_init(this, _d, {
             writable: !0,
             value: void 0
         }), _class_private_field_init(this, _e, {
             writable: !0,
-            value: ''
-        }), _class_private_field_set(this, _b, 'b'), _class_private_field_set(this, _d, 'd');
+            value: void 0
+        }), _class_private_field_set(this, _a, 'a'), _class_private_field_set(this, _c, 'c'), _class_private_field_set(this, _e, ''), _class_private_field_set(this, _b, 'b'), _class_private_field_set(this, _d, 'd');
     }
 }().test();

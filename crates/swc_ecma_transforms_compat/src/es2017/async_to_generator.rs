@@ -28,14 +28,13 @@ use swc_trace_macro::swc_trace;
 /// ## Out
 ///
 /// ```js
-/// var _asyncToGenerator = function (fn) {
+/// var _async_to_generator = function (fn) {
 ///   ...
 /// };
-/// var foo = _asyncToGenerator(function* () {
+/// var foo = _async_to_generator(function* () {
 ///   yield bar();
 /// });
 /// ```
-#[tracing::instrument(level = "info", skip_all)]
 pub fn async_to_generator<C: Comments + Clone>(
     c: Config,
     comments: Option<C>,
@@ -390,7 +389,7 @@ impl<C: Comments> Actual<C> {
 
 /// Creates
 ///
-/// `_asyncToGenerator(function*() {})` from `async function() {}`;
+/// `_async_to_generator(function*() {})` from `async function() {}`;
 #[tracing::instrument(level = "info", skip_all)]
 fn make_fn_ref(mut expr: FnExpr) -> Expr {
     {
@@ -411,9 +410,9 @@ fn make_fn_ref(mut expr: FnExpr) -> Expr {
     expr.function.is_async = false;
 
     let helper = if expr.function.is_generator {
-        helper!(wrap_async_generator, "wrapAsyncGenerator")
+        helper!(wrap_async_generator)
     } else {
-        helper!(async_to_generator, "asyncToGenerator")
+        helper!(async_to_generator)
     };
 
     expr.function.is_generator = true;
@@ -462,19 +461,19 @@ impl VisitMut for AsyncFnBodyHandler {
                 arg: Some(arg),
                 delegate: true,
             }) => {
-                let callee = helper!(async_generator_delegate, "asyncGeneratorDelegate");
+                let callee = helper!(async_generator_delegate);
                 let arg = Box::new(Expr::Call(CallExpr {
                     span: *span,
                     callee,
                     args: vec![
                         CallExpr {
                             span: DUMMY_SP,
-                            callee: helper!(async_iterator, "asyncIterator"),
+                            callee: helper!(async_iterator),
                             args: vec![arg.take().as_arg()],
                             type_args: Default::default(),
                         }
                         .as_arg(),
-                        helper_expr!(await_async_generator, "awaitAsyncGenerator").as_arg(),
+                        helper_expr!(await_async_generator).as_arg(),
                     ],
                     type_args: Default::default(),
                 }));
@@ -487,7 +486,7 @@ impl VisitMut for AsyncFnBodyHandler {
 
             Expr::Await(AwaitExpr { span, arg }) => {
                 if self.is_async_generator {
-                    let callee = helper!(await_async_generator, "awaitAsyncGenerator");
+                    let callee = helper!(await_async_generator);
                     let arg = Box::new(Expr::Call(CallExpr {
                         span: *span,
                         callee,
@@ -553,12 +552,7 @@ impl Check for ShouldWork {
 #[tracing::instrument(level = "info", skip_all)]
 fn handle_await_for(stmt: &mut Stmt, is_async_generator: bool) {
     let s = match stmt {
-        Stmt::ForOf(
-            s @ ForOfStmt {
-                await_token: Some(..),
-                ..
-            },
-        ) => s.take(),
+        Stmt::ForOf(s @ ForOfStmt { is_await: true, .. }) => s.take(),
         _ => return,
     };
 
@@ -598,7 +592,7 @@ fn handle_await_for(stmt: &mut Stmt, is_async_generator: bool) {
         }
 
         match s.left {
-            VarDeclOrPat::VarDecl(v) => {
+            ForHead::VarDecl(v) => {
                 let var = v.decls.into_iter().next().unwrap();
                 let var_decl = VarDeclarator {
                     span: DUMMY_SP,
@@ -616,7 +610,7 @@ fn handle_await_for(stmt: &mut Stmt, is_async_generator: bool) {
                     .into(),
                 );
             }
-            VarDeclOrPat::Pat(p) => {
+            ForHead::Pat(p) => {
                 for_loop_body.push(Stmt::Expr(ExprStmt {
                     span: DUMMY_SP,
                     expr: Box::new(Expr::Assign(AssignExpr {
@@ -626,6 +620,10 @@ fn handle_await_for(stmt: &mut Stmt, is_async_generator: bool) {
                         right: Box::new(Expr::Ident(value)),
                     })),
                 }));
+            }
+
+            ForHead::UsingDecl(..) => {
+                unreachable!("using declaration must be removed by previous pass")
             }
         }
 
@@ -637,12 +635,12 @@ fn handle_await_for(stmt: &mut Stmt, is_async_generator: bool) {
         };
 
         let mut init_var_decls = vec![];
-        // _iterator = _asyncIterator(lol())
+        // _iterator = _async_iterator(lol())
         init_var_decls.push(VarDeclarator {
             span: DUMMY_SP,
             name: iterator.clone().into(),
             init: {
-                let callee = helper!(async_iterator, "asyncIterator");
+                let callee = helper!(async_iterator);
 
                 Some(Box::new(Expr::Call(CallExpr {
                     span: DUMMY_SP,
@@ -662,7 +660,7 @@ fn handle_await_for(stmt: &mut Stmt, is_async_generator: bool) {
 
         let for_stmt = Stmt::For(ForStmt {
             span: s.span,
-            // var _iterator = _asyncIterator(lol()), _step;
+            // var _iterator = _async_iterator(lol()), _step;
             init: Some(
                 VarDecl {
                     span: DUMMY_SP,
@@ -685,7 +683,7 @@ fn handle_await_for(stmt: &mut Stmt, is_async_generator: bool) {
                 let yield_arg = if is_async_generator {
                     Box::new(Expr::Call(CallExpr {
                         span: DUMMY_SP,
-                        callee: helper!(await_async_generator, "awaitAsyncGenerator"),
+                        callee: helper!(await_async_generator),
                         args: vec![iter_next.as_arg()],
                         type_args: Default::default(),
                     }))

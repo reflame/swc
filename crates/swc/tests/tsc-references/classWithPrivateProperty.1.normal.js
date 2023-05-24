@@ -1,6 +1,6 @@
 //// [classWithPrivateProperty.ts]
 // accessing any private outside the class is an error
-import _class_call_check from "@swc/helpers/src/_class_call_check.mjs";
+import { _ as _class_call_check } from "@swc/helpers/_/_class_call_check";
 var C = /*#__PURE__*/ function() {
     "use strict";
     function C() {
@@ -20,9 +20,11 @@ var C = /*#__PURE__*/ function() {
     };
     return C;
 }();
-C.g = function() {
-    return "";
-};
+(function() {
+    C.g = function() {
+        return "";
+    };
+})();
 var c = new C();
 var r1 = c.x;
 var r2 = c.a;

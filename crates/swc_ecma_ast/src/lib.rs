@@ -9,8 +9,7 @@
 #![allow(clippy::clone_on_copy)]
 #![recursion_limit = "1024"]
 
-// #![deny(variant_size_differences)]
-
+#[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
 use swc_common::{ast_node, EqIgnoreSpan, Span};
 
@@ -19,7 +18,7 @@ pub use self::{
         AutoAccessor, Class, ClassMember, ClassMethod, ClassProp, Constructor, Decorator, Key,
         MethodKind, PrivateMethod, PrivateProp, StaticBlock,
     },
-    decl::{ClassDecl, Decl, FnDecl, VarDecl, VarDeclKind, VarDeclarator},
+    decl::{ClassDecl, Decl, FnDecl, UsingDecl, VarDecl, VarDeclKind, VarDeclarator},
     expr::{
         ArrayLit, ArrowExpr, AssignExpr, AwaitExpr, BinExpr, BlockStmtOrExpr, CallExpr, Callee,
         ClassExpr, CondExpr, Expr, ExprOrSpread, FnExpr, Import, MemberExpr, MemberProp,
@@ -55,8 +54,8 @@ pub use self::{
     source_map::{SourceMapperExt, SpanExt},
     stmt::{
         BlockStmt, BreakStmt, CatchClause, ContinueStmt, DebuggerStmt, DoWhileStmt, EmptyStmt,
-        ExprStmt, ForInStmt, ForOfStmt, ForStmt, IfStmt, LabeledStmt, ReturnStmt, Stmt, SwitchCase,
-        SwitchStmt, ThrowStmt, TryStmt, VarDeclOrExpr, VarDeclOrPat, WhileStmt, WithStmt,
+        ExprStmt, ForHead, ForInStmt, ForOfStmt, ForStmt, IfStmt, LabeledStmt, ReturnStmt, Stmt,
+        SwitchCase, SwitchStmt, ThrowStmt, TryStmt, VarDeclOrExpr, WhileStmt, WithStmt,
     },
     typescript::{
         Accessibility, TruePlusMinus, TsArrayType, TsAsExpr, TsCallSignatureDecl,
@@ -104,29 +103,32 @@ pub struct Invalid {
     pub span: Span,
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialOrd, Ord, PartialEq, Eq, Hash)]
+/// Note: This type implements `Serailize` and `Deserialize` if `serde` is
+/// enabled, instead of requiring `serde-impl` feature.
+#[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
 pub enum EsVersion {
-    #[serde(rename = "es3")]
+    #[cfg_attr(feature = "serde", serde(rename = "es3"))]
     Es3,
-    #[serde(rename = "es5")]
+    #[cfg_attr(feature = "serde", serde(rename = "es5"))]
     Es5,
-    #[serde(rename = "es2015")]
+    #[cfg_attr(feature = "serde", serde(rename = "es2015"))]
     Es2015,
-    #[serde(rename = "es2016")]
+    #[cfg_attr(feature = "serde", serde(rename = "es2016"))]
     Es2016,
-    #[serde(rename = "es2017")]
+    #[cfg_attr(feature = "serde", serde(rename = "es2017"))]
     Es2017,
-    #[serde(rename = "es2018")]
+    #[cfg_attr(feature = "serde", serde(rename = "es2018"))]
     Es2018,
-    #[serde(rename = "es2019")]
+    #[cfg_attr(feature = "serde", serde(rename = "es2019"))]
     Es2019,
-    #[serde(rename = "es2020")]
+    #[cfg_attr(feature = "serde", serde(rename = "es2020"))]
     Es2020,
-    #[serde(rename = "es2021")]
+    #[cfg_attr(feature = "serde", serde(rename = "es2021"))]
     Es2021,
-    #[serde(rename = "es2022")]
+    #[cfg_attr(feature = "serde", serde(rename = "es2022"))]
     Es2022,
-    #[serde(rename = "esnext")]
+    #[cfg_attr(feature = "serde", serde(rename = "esnext"))]
     EsNext,
 }
 

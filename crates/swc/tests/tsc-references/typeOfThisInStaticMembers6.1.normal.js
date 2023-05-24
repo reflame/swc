@@ -1,12 +1,14 @@
 //// [typeOfThisInStaticMembers6.ts]
-import _class_call_check from "@swc/helpers/src/_class_call_check.mjs";
-import _inherits from "@swc/helpers/src/_inherits.mjs";
-import _create_super from "@swc/helpers/src/_create_super.mjs";
+import { _ as _class_call_check } from "@swc/helpers/_/_class_call_check";
+import { _ as _inherits } from "@swc/helpers/_/_inherits";
+import { _ as _create_super } from "@swc/helpers/_/_create_super";
 var C = function C() {
     "use strict";
     _class_call_check(this, C);
 };
-C.f = 1;
+(function() {
+    C.f = 1;
+})();
 var D = /*#__PURE__*/ function(C) {
     "use strict";
     _inherits(D, C);
@@ -17,4 +19,6 @@ var D = /*#__PURE__*/ function(C) {
     }
     return D;
 }(C);
-D.c = super();
+(function() {
+    D.c = super();
+})();

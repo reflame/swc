@@ -38,7 +38,7 @@ fn document_test(input: PathBuf, config: ParserConfig) {
                     .map(NormalizedOutput::from)
                     .expect("failed to serialize document");
 
-                actual_json.compare_to_file(&json_path).unwrap();
+                actual_json.compare_to_file(json_path).unwrap();
 
                 Ok(())
             }
@@ -86,7 +86,7 @@ fn document_recovery_test(input: PathBuf, config: ParserConfig) {
                     .map(NormalizedOutput::from)
                     .expect("failed to serialize document");
 
-                actual_json.compare_to_file(&json_path).unwrap();
+                actual_json.compare_to_file(json_path).unwrap();
 
                 Err(())
             }
@@ -110,7 +110,7 @@ fn document_recovery_test(input: PathBuf, config: ParserConfig) {
         );
     }
 
-    stderr.compare_to_file(&stderr_path).unwrap();
+    stderr.compare_to_file(stderr_path).unwrap();
 }
 
 fn document_span_visualizer(input: PathBuf, config: ParserConfig) {
@@ -146,9 +146,7 @@ fn document_span_visualizer(input: PathBuf, config: ParserConfig) {
     })
     .unwrap_err();
 
-    output
-        .compare_to_file(&dir.join("span.swc-stderr"))
-        .unwrap();
+    output.compare_to_file(dir.join("span.swc-stderr")).unwrap();
 }
 
 fn document_dom_visualizer(input: PathBuf, config: ParserConfig) {
@@ -176,7 +174,7 @@ fn document_dom_visualizer(input: PathBuf, config: ParserConfig) {
                 });
 
                 NormalizedOutput::from(dom_buf)
-                    .compare_to_file(&dir.join("dom.txt"))
+                    .compare_to_file(dir.join("dom.txt"))
                     .unwrap();
 
                 Ok(())
@@ -384,44 +382,24 @@ impl VisitMut for DomVisualizer<'_> {
 
 #[testing::fixture("tests/fixture/**/*.xml")]
 fn pass(input: PathBuf) {
-    document_test(
-        input,
-        ParserConfig {
-            ..Default::default()
-        },
-    )
+    document_test(input, Default::default())
 }
 
 #[testing::fixture("tests/recovery/**/*.xml")]
 fn recovery(input: PathBuf) {
-    document_recovery_test(
-        input,
-        ParserConfig {
-            ..Default::default()
-        },
-    )
+    document_recovery_test(input, Default::default())
 }
 
 #[testing::fixture("tests/fixture/**/*.xml")]
 #[testing::fixture("tests/recovery/**/*.xml")]
 fn span_visualizer(input: PathBuf) {
-    document_span_visualizer(
-        input,
-        ParserConfig {
-            ..Default::default()
-        },
-    )
+    document_span_visualizer(input, Default::default())
 }
 
 #[testing::fixture("tests/fixture/**/*.xml")]
 #[testing::fixture("tests/recovery/**/*.xml")]
 fn dom_visualizer(input: PathBuf) {
-    document_dom_visualizer(
-        input,
-        ParserConfig {
-            ..Default::default()
-        },
-    )
+    document_dom_visualizer(input, Default::default())
 }
 
 // TODO tests from xml5lib-tests

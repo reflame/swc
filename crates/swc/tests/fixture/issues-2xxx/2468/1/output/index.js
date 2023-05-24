@@ -1,4 +1,4 @@
-import _tagged_template_literal from "@swc/helpers/src/_tagged_template_literal.mjs";
+import { _ as _tagged_template_literal } from "@swc/helpers/_/_tagged_template_literal";
 function _templateObject() {
     var data = _tagged_template_literal([
         "1"
@@ -12,7 +12,7 @@ function _templateObject1() {
     var data = _tagged_template_literal([
         "2"
     ]);
-    _templateObject1 = function _templateObject1() {
+    _templateObject1 = function _templateObject() {
         return data;
     };
     return data;

@@ -24,7 +24,6 @@ use swc_trace_macro::swc_trace;
 // `ignoreFunctionLength` on
 
 /// `@babel/plugin-proposal-object-rest-spread`
-#[tracing::instrument(level = "info", skip_all)]
 pub fn object_rest_spread(config: Config) -> impl Fold + VisitMut {
     chain!(
         as_folder(ObjectRest {
@@ -67,7 +66,7 @@ macro_rules! impl_for_for_stmt {
             let mut stmt = None;
 
             let left = match &mut for_stmt.left {
-                VarDeclOrPat::VarDecl(var_decl) => {
+                ForHead::VarDecl(var_decl) => {
                     let ref_ident = private_ident!("_ref");
 
                     // Unpack variables
@@ -106,7 +105,7 @@ macro_rules! impl_for_for_stmt {
                     }
                     .into()
                 }
-                VarDeclOrPat::Pat(pat) => {
+                ForHead::Pat(pat) => {
                     let var_ident = private_ident!("_ref");
                     let index = self.vars.len();
                     let pat = pat.take();
@@ -130,9 +129,9 @@ macro_rules! impl_for_for_stmt {
                         }
                         _ => {
                             // insert at index to create
-                            // `var { a } = _ref, b = _objectWithoutProperties(_ref, ['a']);`
+                            // `var { a } = _ref, b = _object_without_properties(_ref, ['a']);`
                             // instead of
-                            // var b = _objectWithoutProperties(_ref, ['a']), { a } = _ref;
+                            // var b = _object_without_properties(_ref, ['a']), { a } = _ref;
 
                             // println!("Var(0): folded pat = var_ident",);
                             self.vars.insert(
@@ -160,6 +159,10 @@ macro_rules! impl_for_for_stmt {
                         declare: false,
                     }
                     .into()
+                }
+
+                ForHead::UsingDecl(..) => {
+                    unreachable!("using declaration must be removed by previous pass")
                 }
             };
             for_stmt.left = left;
@@ -385,19 +388,16 @@ impl VisitMut for ObjectRest {
                             name: *prop.arg,
                             init: Some(Box::new(Expr::Call(CallExpr {
                                 span: DUMMY_SP,
-                                callee: helper!(extends, "extends"),
+                                callee: helper!(extends),
                                 args: vec![
                                     ObjectLit {
                                         span: DUMMY_SP,
                                         props: vec![],
                                     }
                                     .as_arg(),
-                                    helper_expr!(
-                                        object_destructuring_empty,
-                                        "objectDestructuringEmpty"
-                                    )
-                                    .as_call(DUMMY_SP, vec![init.as_arg()])
-                                    .as_arg(),
+                                    helper_expr!(object_destructuring_empty)
+                                        .as_call(DUMMY_SP, vec![init.as_arg()])
+                                        .as_arg(),
                                 ],
                                 type_args: Default::default(),
                             }))),
@@ -437,9 +437,9 @@ impl VisitMut for ObjectRest {
 
                 _ => {
                     // insert at index to create
-                    // `var { a } = _ref, b = _objectWithoutProperties(_ref, ['a']);`
+                    // `var { a } = _ref, b = _object_without_properties(_ref, ['a']);`
                     // instead of
-                    // `var b = _objectWithoutProperties(_ref, ['a']), { a } = _ref;`
+                    // `var b = _object_without_properties(_ref, ['a']), { a } = _ref;`
                     // println!("var: simplified pat = var_ident({:?})", var_ident);
 
                     pat.visit_mut_with(&mut PatSimplifier);
@@ -949,14 +949,14 @@ fn object_without_properties(
     if excluded_props.is_empty() {
         return Expr::Call(CallExpr {
             span: DUMMY_SP,
-            callee: helper!(extends, "extends"),
+            callee: helper!(extends),
             args: vec![
                 ObjectLit {
                     span: DUMMY_SP,
                     props: vec![],
                 }
                 .as_arg(),
-                helper_expr!(object_destructuring_empty, "objectDestructuringEmpty")
+                helper_expr!(object_destructuring_empty)
                     .as_call(DUMMY_SP, vec![obj.as_arg()])
                     .as_arg(),
             ],
@@ -984,12 +984,9 @@ fn object_without_properties(
     Expr::Call(CallExpr {
         span: DUMMY_SP,
         callee: if no_symbol {
-            helper!(
-                object_without_properties_loose,
-                "objectWithoutPropertiesLoose"
-            )
+            helper!(object_without_properties_loose)
         } else {
-            helper!(object_without_properties, "objectWithoutProperties")
+            helper!(object_without_properties)
         },
         args: vec![
             obj.as_arg(),
@@ -1008,7 +1005,7 @@ fn object_without_properties(
                     }
                     .make_member(Ident::new("map".into(), DUMMY_SP))
                     .as_callee(),
-                    args: vec![helper_expr!(to_property_key, "toPropertyKey").as_arg()],
+                    args: vec![helper_expr!(to_property_key).as_arg()],
                     type_args: Default::default(),
                 }
                 .as_arg()
@@ -1115,9 +1112,9 @@ impl VisitMut for ObjectSpread {
             }
 
             let mut callee = if self.config.set_property {
-                helper!(extends, "extends")
+                helper!(extends)
             } else {
-                helper!(object_spread, "objectSpread")
+                helper!(object_spread)
             };
 
             // { foo, ...x } => ({ foo }, x)
@@ -1150,7 +1147,7 @@ impl VisitMut for ObjectSpread {
                                 if !first && !self.config.pure_getters {
                                     buf = vec![Expr::Call(CallExpr {
                                         span: DUMMY_SP,
-                                        callee: helper!(object_spread_props, "objectSpreadProps"),
+                                        callee: helper!(object_spread_props),
                                         args: buf.take(),
                                         type_args: Default::default(),
                                     })
@@ -1166,7 +1163,7 @@ impl VisitMut for ObjectSpread {
 
                 if !obj.props.is_empty() {
                     if !self.config.pure_getters {
-                        callee = helper!(object_spread_props, "objectSpreadProps");
+                        callee = helper!(object_spread_props);
                     }
                     buf.push(obj.as_arg());
                 }

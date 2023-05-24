@@ -4,9 +4,6 @@ var __ = {
     writable: true,
     value: 42
 };
-var __1 = {
-    writable: true,
-    value: (()=>{
-        Foo.foo = _classStaticPrivateFieldSpecGet(Foo, Foo, __);
-    })()
-};
+(()=>{
+    Foo.foo = _class_static_private_field_spec_get(Foo, Foo, __);
+})();

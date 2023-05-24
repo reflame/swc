@@ -178,6 +178,7 @@ macro_rules! op {
 macro_rules! test_de {
     ($name:ident, $T:path, $s:literal) => {
         #[test]
+        #[cfg(feature = "serde-impl")]
         fn $name() {
             let _var: $T = ::serde_json::from_str(&$s).expect("failed to parse json");
         }
@@ -232,14 +233,5 @@ macro_rules! bridge_decl_from {
         bridge_from!(crate::Decl, $bridge, $src);
         bridge_from!(crate::Stmt, crate::Decl, $src);
         bridge_from!(crate::ModuleItem, crate::Stmt, $src);
-    };
-}
-
-/// Copied from static_assertions
-macro_rules! assert_eq_size {
-    ($x:ty, $($xs:ty),+ $(,)?) => {
-        const _: fn() = || {
-            $(let _ = std::mem::transmute::<$x, $xs>;)+
-        };
     };
 }

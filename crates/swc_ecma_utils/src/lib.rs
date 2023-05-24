@@ -27,7 +27,6 @@ use swc_ecma_visit::{
     Visit, VisitMut, VisitMutWith, VisitWith,
 };
 use tracing::trace;
-use unicode_id::UnicodeID;
 
 #[allow(deprecated)]
 pub use self::{
@@ -1347,6 +1346,9 @@ pub trait ExprExt {
                 .iter()
                 .filter_map(|e| e.as_ref())
                 .any(|e| e.spread.is_some() || e.expr.may_have_side_effects(ctx)),
+            Expr::Unary(UnaryExpr {
+                op: op!("delete"), ..
+            }) => true,
             Expr::Unary(UnaryExpr { ref arg, .. }) => arg.may_have_side_effects(ctx),
             Expr::Bin(BinExpr {
                 ref left,
@@ -1948,6 +1950,25 @@ impl Visit for LiteralVisitor {
     }
 }
 
+pub fn is_simple_pure_expr(expr: &Expr, pure_getters: bool) -> bool {
+    match expr {
+        Expr::Ident(..) | Expr::This(..) | Expr::Lit(..) => true,
+        Expr::Member(m) if pure_getters => is_simple_pure_member_expr(m, pure_getters),
+        _ => false,
+    }
+}
+
+pub fn is_simple_pure_member_expr(m: &MemberExpr, pure_getters: bool) -> bool {
+    match &m.prop {
+        MemberProp::Ident(..) | MemberProp::PrivateName(..) => {
+            is_simple_pure_expr(&m.obj, pure_getters)
+        }
+        MemberProp::Computed(c) => {
+            is_simple_pure_expr(&c.expr, pure_getters) && is_simple_pure_expr(&m.obj, pure_getters)
+        }
+    }
+}
+
 /// Used to determine super_class_ident
 pub fn alias_ident_for(expr: &Expr, default: &str) -> Ident {
     fn sym(expr: &Expr) -> Option<String> {
@@ -2063,6 +2084,25 @@ pub fn prop_name_to_expr_value(p: PropName) -> Expr {
         PropName::Num(n) => Expr::Lit(Lit::Num(n)),
         PropName::BigInt(b) => Expr::Lit(Lit::BigInt(b)),
         PropName::Computed(c) => *c.expr,
+    }
+}
+
+pub fn prop_name_to_member_prop(prop_name: PropName) -> MemberProp {
+    match prop_name {
+        PropName::Ident(i) => MemberProp::Ident(i),
+        PropName::Str(s) => MemberProp::Computed(ComputedPropName {
+            span: DUMMY_SP,
+            expr: s.into(),
+        }),
+        PropName::Num(n) => MemberProp::Computed(ComputedPropName {
+            span: DUMMY_SP,
+            expr: n.into(),
+        }),
+        PropName::Computed(c) => MemberProp::Computed(c),
+        PropName::BigInt(b) => MemberProp::Computed(ComputedPropName {
+            span: DUMMY_SP,
+            expr: b.into(),
+        }),
     }
 }
 
@@ -2229,7 +2269,7 @@ pub trait IsDirective {
     fn as_ref(&self) -> Option<&Stmt>;
     fn is_use_strict(&self) -> bool {
         match self.as_ref() {
-            Some(&Stmt::Expr(ref expr)) => match *expr.expr {
+            Some(Stmt::Expr(expr)) => match *expr.expr {
                 Expr::Lit(Lit::Str(Str { ref raw, .. })) => {
                     matches!(raw, Some(value) if value == "\"use strict\"" || value == "'use strict'")
                 }
@@ -2303,7 +2343,7 @@ pub fn is_valid_ident(s: &JsWord) -> bool {
 }
 
 pub fn is_valid_prop_ident(s: &str) -> bool {
-    s.starts_with(|c: char| c.is_id_start()) && s.chars().all(|c: char| c.is_id_continue())
+    s.starts_with(Ident::is_valid_start) && s.chars().all(Ident::is_valid_continue)
 }
 
 pub fn drop_span<T>(mut t: T) -> T
@@ -2820,7 +2860,7 @@ impl Visit for TopLevelAwait {
     }
 
     fn visit_for_of_stmt(&mut self, for_of_stmt: &ForOfStmt) {
-        if for_of_stmt.await_token.is_some() {
+        if for_of_stmt.is_await {
             self.found = true;
             return;
         }
@@ -2862,6 +2902,109 @@ impl VisitMut for Remapper<'_> {
     fn visit_mut_ident(&mut self, i: &mut Ident) {
         if let Some(new_ctxt) = self.vars.get(&i.to_id()).copied() {
             i.span.ctxt = new_ctxt;
+        }
+    }
+}
+
+/// Replacer for [Id] => ]Id]
+pub struct IdentRenamer<'a> {
+    map: &'a FxHashMap<Id, Id>,
+}
+
+impl<'a> IdentRenamer<'a> {
+    pub fn new(map: &'a FxHashMap<Id, Id>) -> Self {
+        Self { map }
+    }
+}
+
+impl VisitMut for IdentRenamer<'_> {
+    noop_visit_mut_type!();
+
+    visit_mut_obj_and_computed!();
+
+    fn visit_mut_export_named_specifier(&mut self, node: &mut ExportNamedSpecifier) {
+        if node.exported.is_some() {
+            node.orig.visit_mut_children_with(self);
+            return;
+        }
+
+        match &mut node.orig {
+            ModuleExportName::Ident(orig) => {
+                if let Some(new) = self.map.get(&orig.to_id()) {
+                    node.exported = Some(ModuleExportName::Ident(orig.clone()));
+
+                    orig.sym = new.0.clone();
+                    orig.span.ctxt = new.1;
+                }
+            }
+            ModuleExportName::Str(_) => {}
+        }
+    }
+
+    fn visit_mut_ident(&mut self, node: &mut Ident) {
+        if let Some(new) = self.map.get(&node.to_id()) {
+            node.sym = new.0.clone();
+            node.span.ctxt = new.1;
+        }
+    }
+
+    fn visit_mut_object_pat_prop(&mut self, i: &mut ObjectPatProp) {
+        match i {
+            ObjectPatProp::Assign(p) => {
+                p.value.visit_mut_with(self);
+
+                let orig = p.key.clone();
+                p.key.visit_mut_with(self);
+
+                if orig.to_id() == p.key.to_id() {
+                    return;
+                }
+
+                match p.value.take() {
+                    Some(default) => {
+                        *i = ObjectPatProp::KeyValue(KeyValuePatProp {
+                            key: PropName::Ident(orig),
+                            value: Box::new(Pat::Assign(AssignPat {
+                                span: DUMMY_SP,
+                                left: Box::new(Pat::Ident(p.key.clone().into())),
+                                right: default,
+                                type_ann: Default::default(),
+                            })),
+                        });
+                    }
+                    None => {
+                        *i = ObjectPatProp::KeyValue(KeyValuePatProp {
+                            key: PropName::Ident(orig),
+                            value: Box::new(Pat::Ident(p.key.clone().into())),
+                        });
+                    }
+                }
+            }
+
+            _ => {
+                i.visit_mut_children_with(self);
+            }
+        }
+    }
+
+    fn visit_mut_prop(&mut self, node: &mut Prop) {
+        match node {
+            Prop::Shorthand(i) => {
+                let cloned = i.clone();
+                i.visit_mut_with(self);
+                if i.sym != cloned.sym || i.span.ctxt != cloned.span.ctxt {
+                    *node = Prop::KeyValue(KeyValueProp {
+                        key: PropName::Ident(Ident::new(
+                            cloned.sym,
+                            cloned.span.with_ctxt(SyntaxContext::empty()),
+                        )),
+                        value: Box::new(Expr::Ident(i.clone())),
+                    });
+                }
+            }
+            _ => {
+                node.visit_mut_children_with(self);
+            }
         }
     }
 }

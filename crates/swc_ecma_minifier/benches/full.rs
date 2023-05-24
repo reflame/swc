@@ -9,7 +9,7 @@ use swc_common::{errors::HANDLER, sync::Lrc, FileName, Mark, SourceMap};
 use swc_ecma_codegen::text_writer::JsWriter;
 use swc_ecma_minifier::{
     optimize,
-    option::{CompressOptions, ExtraOptions, MangleOptions, MinifyOptions},
+    option::{ExtraOptions, MangleOptions, MinifyOptions},
 };
 use swc_ecma_parser::parse_file_as_module;
 use swc_ecma_transforms_base::{fixer::fixer, resolver};
@@ -20,7 +20,7 @@ pub fn bench_files(c: &mut Criterion) {
     group.sample_size(10);
 
     let mut bench_file = |name: &str| {
-        let src = read_to_string(&format!("benches/full/{}.js", name)).unwrap();
+        let src = read_to_string(format!("benches/full/{}.js", name)).unwrap();
 
         group.bench_function(name, |b| {
             b.iter(|| {
@@ -75,9 +75,7 @@ fn run(src: &str) {
                 None,
                 &MinifyOptions {
                     rename: false,
-                    compress: Some(CompressOptions {
-                        ..Default::default()
-                    }),
+                    compress: Some(Default::default()),
                     mangle: Some(MangleOptions {
                         props: None,
                         top_level: Some(true),

@@ -1,4 +1,7 @@
-use rustc_hash::FxHashMap;
+use std::{hash::BuildHasherDefault, ops::RangeFull};
+
+use indexmap::IndexMap;
+use rustc_hash::FxHasher;
 use swc_atoms::js_word;
 use swc_common::{comments::Comments, util::take::Take, Span, Spanned};
 use swc_ecma_ast::*;
@@ -37,7 +40,7 @@ struct Fixer<'a> {
     ///
     /// Key is span of inner expression, and value is span of the paren
     /// expression.
-    span_map: FxHashMap<Span, Span>,
+    span_map: IndexMap<Span, Span, BuildHasherDefault<FxHasher>>,
 
     in_for_stmt_head: bool,
 
@@ -90,9 +93,7 @@ impl Fixer<'_> {
         let old = self.ctx;
         self.ctx = Context::ForcedExpr;
         args.visit_mut_with(self);
-        self.ctx = old;
 
-        let old = self.ctx;
         self.ctx = Context::Callee { is_new: false };
         callee.visit_mut_with(self);
 
@@ -493,9 +494,9 @@ impl VisitMut for Fixer<'_> {
     fn visit_mut_for_of_stmt(&mut self, s: &mut ForOfStmt) {
         s.visit_mut_children_with(self);
 
-        if s.await_token.is_none() {
+        if !s.is_await {
             match &s.left {
-                VarDeclOrPat::Pat(p)
+                ForHead::Pat(p)
                     if matches!(
                         &**p,
                         Pat::Ident(BindingIdent {
@@ -508,12 +509,12 @@ impl VisitMut for Fixer<'_> {
                     ) =>
                 {
                     let expr = Expr::Ident(p.clone().expect_ident().id);
-                    s.left = VarDeclOrPat::Pat(Pat::Expr(Box::new(expr)).into());
+                    s.left = ForHead::Pat(Pat::Expr(Box::new(expr)).into());
                 }
                 _ => (),
             }
 
-            if let VarDeclOrPat::Pat(e) = &mut s.left {
+            if let ForHead::Pat(e) = &mut s.left {
                 if let Pat::Expr(expr) = &mut **e {
                     if let Expr::Ident(Ident {
                         sym: js_word!("async"),
@@ -615,7 +616,7 @@ impl VisitMut for Fixer<'_> {
 
         n.visit_mut_children_with(self);
         if let Some(c) = self.comments {
-            for (to, from) in self.span_map.drain() {
+            for (to, from) in self.span_map.drain(RangeFull).rev() {
                 c.move_leading(from.lo, to.lo);
                 c.move_trailing(from.hi, to.hi);
             }
@@ -628,7 +629,6 @@ impl VisitMut for Fixer<'_> {
         node.args.visit_mut_with(self);
         self.ctx = old;
 
-        let old = self.ctx;
         self.ctx = Context::Callee { is_new: true };
         node.callee.visit_mut_with(self);
         match *node.callee {
@@ -676,7 +676,7 @@ impl VisitMut for Fixer<'_> {
 
         n.visit_mut_children_with(self);
         if let Some(c) = self.comments {
-            for (to, from) in self.span_map.drain() {
+            for (to, from) in self.span_map.drain(RangeFull).rev() {
                 c.move_leading(from.lo, to.lo);
                 c.move_trailing(from.hi, to.hi);
             }
@@ -907,35 +907,44 @@ impl Fixer<'_> {
             Expr::Call(CallExpr {
                 callee: Callee::Expr(callee),
                 ..
-            })
-            | Expr::OptChain(OptChainExpr {
-                base: box OptChainBase::Call(OptCall { callee, .. }),
-                ..
-            }) if callee.is_seq() => {
+            }) if callee.is_seq()
+                || callee.is_arrow()
+                || callee.is_await_expr()
+                || callee.is_assign() =>
+            {
                 *callee = Box::new(Expr::Paren(ParenExpr {
                     span: callee.span(),
                     expr: callee.take(),
                 }))
             }
+            Expr::OptChain(OptChainExpr { base, .. }) => match &mut **base {
+                OptChainBase::Call(OptCall { callee, .. })
+                    if callee.is_seq()
+                        || callee.is_arrow()
+                        || callee.is_await_expr()
+                        || callee.is_assign() =>
+                {
+                    *callee = Box::new(Expr::Paren(ParenExpr {
+                        span: callee.span(),
+                        expr: callee.take(),
+                    }))
+                }
 
-            Expr::Call(CallExpr {
-                callee: Callee::Expr(callee),
-                ..
-            })
-            | Expr::OptChain(OptChainExpr {
-                base: box OptChainBase::Call(OptCall { callee, .. }),
-                ..
-            }) if callee.is_arrow() || callee.is_await_expr() || callee.is_assign() => {
-                self.wrap(callee);
-            }
+                OptChainBase::Call(OptCall { callee, .. }) if callee.is_fn_expr() => match self.ctx
+                {
+                    Context::ForcedExpr | Context::FreeExpr => {}
+
+                    Context::Callee { is_new: true } => self.wrap(e),
+
+                    _ => self.wrap(callee),
+                },
+
+                _ => {}
+            },
 
             // Function expression cannot start with `function`
             Expr::Call(CallExpr {
                 callee: Callee::Expr(callee),
-                ..
-            })
-            | Expr::OptChain(OptChainExpr {
-                base: box OptChainBase::Call(OptCall { callee, .. }),
                 ..
             }) if callee.is_fn_expr() => match self.ctx {
                 Context::ForcedExpr | Context::FreeExpr => {}
@@ -991,6 +1000,11 @@ impl Fixer<'_> {
                     return;
                 }
 
+                // `(a?.b.c)() !== a?.b.c()`
+                if Self::contain_opt_chain(expr) {
+                    return;
+                }
+
                 let expr_span = expr.span();
                 let paren_span = *paren_span;
                 self.unwrap_expr(expr);
@@ -999,6 +1013,17 @@ impl Fixer<'_> {
                 self.span_map.insert(expr_span, paren_span);
             }
             _ => {}
+        }
+    }
+
+    fn contain_opt_chain(e: &Expr) -> bool {
+        match e {
+            Expr::Member(member) => Self::contain_opt_chain(&member.obj),
+            Expr::OptChain(_) => true,
+            Expr::Call(CallExpr { callee, .. }) if callee.is_expr() => {
+                Self::contain_opt_chain(callee.as_expr().unwrap())
+            }
+            _ => false,
         }
     }
 
@@ -1156,13 +1181,13 @@ mod tests {
 
     identical!(
         regression_01,
-        "_set(_getPrototypeOf(Obj.prototype), _ref = proper.prop, (_superRef = \
-         +_get(_getPrototypeOf(Obj.prototype), _ref, this)) + 1, this, true), _superRef;"
+        "_set(_get_prototype_of(Obj.prototype), _ref = proper.prop, (_superRef = \
+         +_get(_get_prototype_of(Obj.prototype), _ref, this)) + 1, this, true), _superRef;"
     );
 
     identical!(
         regression_02,
-        "var obj = (_obj = {}, _defineProperty(_obj, 'first', 'first'), _defineProperty(_obj, \
+        "var obj = (_obj = {}, _define_property(_obj, 'first', 'first'), _define_property(_obj, \
          'second', 'second'), _obj);"
     );
 
@@ -1217,8 +1242,8 @@ const _ref = {}, { c =( _tmp = {}, d = _extends({}, _tmp), _tmp)  } = _ref;"
     identical!(
         issue_201_01,
         "outer = {
-    inner: (_obj = {}, _defineProperty(_obj, ns.EXPORT1, true), _defineProperty(_obj, ns.EXPORT2, \
-         true), _obj)
+    inner: (_obj = {}, _define_property(_obj, ns.EXPORT1, true), _define_property(_obj, \
+         ns.EXPORT2, true), _obj)
 };"
     );
 
@@ -1668,19 +1693,19 @@ var store = global[SHARED] || (global[SHARED] = {});
 
             var _temp, _this, _ret;
 
-            _classCallCheck(this, ItemsList);
+            _class_call_check(this, ItemsList);
 
             for (var _len = arguments.length, args = Array(_len), _key = 0; _key < _len; _key++) {
               args[_key] = arguments[_key];
             }
 
-            return _ret = (_temp = (_this = _possibleConstructorReturn(this, (_ref = \
+            return _ret = (_temp = (_this = _possible_constructor_return(this, (_ref = \
          ItemsList.__proto__ || Object.getPrototypeOf(ItemsList)).call.apply(_ref, \
          [this].concat(args))), _this), _this.storeHighlightedItemReference = function \
          (highlightedItem) {
               _this.props.onHighlightedItemChange(highlightedItem === null ? null : \
          highlightedItem.item);
-            }, _temp), _possibleConstructorReturn(_this, _ret);
+            }, _temp), _possible_constructor_return(_this, _ret);
           }
         "
     );
@@ -1691,8 +1716,8 @@ var store = global[SHARED] || (global[SHARED] = {});
         function ItemsList() {
             for(var _ref, _temp, _this, _len = arguments.length, args = Array(_len), _key = 0; \
          _key < _len; _key++)args[_key] = arguments[_key];
-            return _possibleConstructorReturn(_this, (_temp = (_this = \
-         _possibleConstructorReturn(this, (_ref = ItemsList.__proto__ || \
+            return _possible_constructor_return(_this, (_temp = (_this = \
+         _possible_constructor_return(this, (_ref = ItemsList.__proto__ || \
          Object.getPrototypeOf(ItemsList)).call.apply(_ref, [
                 this
             ].concat(args))), _this), _this.storeHighlightedItemReference = \

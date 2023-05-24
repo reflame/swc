@@ -1,13 +1,13 @@
 use std::path::PathBuf;
 
 use serde::Deserialize;
-use swc_common::chain;
+use swc_common::{chain, Mark};
 use swc_ecma_transforms_base::pass::noop;
 use swc_ecma_transforms_compat::{
     es2015::classes,
     es2022::{class_properties, private_in_object},
 };
-use swc_ecma_transforms_testing::{parse_options, test_fixture, FixtureTestConfig};
+use swc_ecma_transforms_testing::{parse_options, test_fixture};
 use swc_ecma_visit::Fold;
 
 #[derive(Debug, Clone, Deserialize)]
@@ -59,7 +59,8 @@ fn fixture(input: PathBuf) {
                                         set_public_fields: loose,
                                         constant_super: loose,
                                         no_document_all: loose,
-                                        private_as_properties: loose
+                                        private_as_properties: loose,
+                                        static_blocks_mark: Mark::new(),
                                     }
                                 )
                             ));
@@ -77,7 +78,8 @@ fn fixture(input: PathBuf) {
                                         set_public_fields: loose,
                                         constant_super: loose,
                                         no_document_all: loose,
-                                        private_as_properties: loose
+                                        private_as_properties: loose,
+                                        static_blocks_mark: Mark::new(),
                                     }
                                 )
                             ));
@@ -103,8 +105,6 @@ fn fixture(input: PathBuf) {
         },
         &input,
         &output,
-        FixtureTestConfig {
-            ..Default::default()
-        },
+        Default::default(),
     )
 }

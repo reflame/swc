@@ -871,6 +871,7 @@ XPathResult
 XSLTProcessor
 __proto__
 _defineProperty
+_define_property
 _extends
 _toConsumableArray
 a
@@ -2373,6 +2374,7 @@ url
 use
 usemap
 user-select
+using
 values
 var
 vb

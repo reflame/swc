@@ -1,6 +1,6 @@
 //// [witness.ts]
 // Initializers
-import _class_call_check from "@swc/helpers/src/_class_call_check.mjs";
+import { _ as _class_call_check } from "@swc/helpers/_/_class_call_check";
 var varInit = varInit; // any
 var pInit;
 function fn() {
@@ -129,6 +129,8 @@ var C3 = function C3() {
     "use strict";
     _class_call_check(this, C3);
 };
-C3.q = C3.q;
+(function() {
+    C3.q = C3.q;
+})();
 var qq = C3.q;
 var qq; // Parentheses - tested a bunch above

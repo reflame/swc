@@ -21,6 +21,12 @@ where
     B: Fold,
 {
     #[inline(always)]
+    fn fold_program(&mut self, n: Program) -> Program {
+        let n = self.first.fold_program(n);
+        self.second.fold_program(n)
+    }
+
+    #[inline(always)]
     fn fold_module(&mut self, n: Module) -> Module {
         let n = self.first.fold_module(n);
         self.second.fold_module(n)
@@ -38,6 +44,11 @@ where
     A: VisitMut,
     B: VisitMut,
 {
+    fn visit_mut_program(&mut self, n: &mut Program) {
+        self.first.visit_mut_program(n);
+        self.second.visit_mut_program(n);
+    }
+
     fn visit_mut_module(&mut self, n: &mut Module) {
         self.first.visit_mut_module(n);
         self.second.visit_mut_module(n)
@@ -54,6 +65,11 @@ where
     A: Visit,
     B: Visit,
 {
+    fn visit_program(&mut self, n: &Program) {
+        self.first.visit_program(n);
+        self.second.visit_program(n);
+    }
+
     fn visit_module(&mut self, n: &Module) {
         self.first.visit_module(n);
         self.second.visit_module(n);
@@ -69,6 +85,19 @@ impl<V> Fold for Repeat<V>
 where
     V: Fold + Repeated,
 {
+    fn fold_program(&mut self, mut node: Program) -> Program {
+        loop {
+            self.pass.reset();
+            node = node.fold_with(&mut self.pass);
+
+            if !self.pass.changed() {
+                break;
+            }
+        }
+
+        node
+    }
+
     fn fold_module(&mut self, mut node: Module) -> Module {
         loop {
             self.pass.reset();
@@ -100,6 +129,17 @@ impl<V> VisitMut for Repeat<V>
 where
     V: VisitMut + Repeated,
 {
+    fn visit_mut_program(&mut self, node: &mut Program) {
+        loop {
+            self.pass.reset();
+            node.visit_mut_with(&mut self.pass);
+
+            if !self.pass.changed() {
+                break;
+            }
+        }
+    }
+
     fn visit_mut_module(&mut self, node: &mut Module) {
         loop {
             self.pass.reset();
@@ -595,6 +635,7 @@ define!({
         Class(ClassDecl),
         Fn(FnDecl),
         Var(Box<VarDecl>),
+        Using(Box<UsingDecl>),
         TsInterface(Box<TsInterfaceDecl>),
         TsTypeAlias(Box<TsTypeAliasDecl>),
         TsEnum(Box<TsEnumDecl>),
@@ -1365,14 +1406,14 @@ define!({
     }
     pub struct ForInStmt {
         pub span: Span,
-        pub left: VarDeclOrPat,
+        pub left: ForHead,
         pub right: Box<Expr>,
         pub body: Box<Stmt>,
     }
     pub struct ForOfStmt {
         pub span: Span,
-        pub await_token: Option<Span>,
-        pub left: VarDeclOrPat,
+        pub is_await: bool,
+        pub left: ForHead,
         pub right: Box<Expr>,
         pub body: Box<Stmt>,
     }
@@ -1386,8 +1427,9 @@ define!({
         pub param: Option<Pat>,
         pub body: BlockStmt,
     }
-    pub enum VarDeclOrPat {
+    pub enum ForHead {
         VarDecl(Box<VarDecl>),
+        UsingDecl(Box<UsingDecl>),
         Pat(Box<Pat>),
     }
     pub enum VarDeclOrExpr {
@@ -1843,6 +1885,12 @@ define!({
     pub enum Key {
         Private(PrivateName),
         Public(PropName),
+    }
+
+    pub struct UsingDecl {
+        pub span: Span,
+
+        pub decls: Vec<VarDeclarator>,
     }
 });
 

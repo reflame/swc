@@ -2,9 +2,10 @@
 define([
     "require",
     "exports",
-    "@swc/helpers/src/_extends.mjs",
+    "@swc/helpers/_/_object_spread",
+    "@swc/helpers/_/_object_spread_props",
     "react"
-], function(require, exports, _extends, _react) {
+], function(require, exports, _object_spread, _object_spread_props, _react) {
     "use strict";
     Object.defineProperty(exports, "__esModule", {
         value: !0
@@ -20,28 +21,15 @@ define([
     function MainButton(props) {
         return props.to ? this._buildMainLink(props) : this._buildMainButton(props);
     }
-    (_extends = _extends.default)({
+    _object_spread._({
         onClick: function(e) {}
-    }, obj0), _extends({}, {
+    }, obj0), _object_spread._({
         to: "10000"
     }, {
         onClick: function() {}
-    }), _extends({}, {
-        to: "10000"
-    }, {
-        onClick: function(k) {}
-    }), _extends({}, obj3, {
+    }), _object_spread_props._(_object_spread._({}, obj3), {
         to: !0
-    }), _extends({}, {
+    }), _object_spread._({
         onClick: function(e) {}
-    }, obj0), _extends({}, {
-        onClick: function(e) {}
-    }, {
-        children: 10
-    }), _extends({}, {
-        onClick: function(e) {}
-    }, {
-        children: "hello",
-        className: !0
-    });
+    }, obj0);
 });

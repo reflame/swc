@@ -1,18 +1,20 @@
 //// [index1.js]
 // merge type alias and alias (should error, see #32367)
-import _class_call_check from "@swc/helpers/src/_class_call_check.mjs";
+import { _ as _class_call_check } from "@swc/helpers/_/_class_call_check";
 var Cls = function Cls() {
     "use strict";
     _class_call_check(this, Cls);
     this.x = 12;
 };
-Cls.y = "ok";
+(function() {
+    Cls.y = "ok";
+})();
 export default Cls; /**
  * @typedef {string | number} default
  */ 
 //// [index2.js]
 // merge type alias and class (error message improvement needed, see #32368)
-import _class_call_check from "@swc/helpers/src/_class_call_check.mjs";
+import { _ as _class_call_check } from "@swc/helpers/_/_class_call_check";
 var C = function C() {
     "use strict";
     _class_call_check(this, C);

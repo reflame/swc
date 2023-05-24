@@ -43,7 +43,8 @@ fn get_passes(t: &Tester, plugins: &[PluginConfig]) -> Box<dyn Fold> {
                             constant_super: loose,
                             set_public_fields: loose,
                             private_as_properties: loose,
-                            no_document_all: loose
+                            no_document_all: loose,
+                            static_blocks_mark: Mark::new(),
                         }
                     )
                 ));
@@ -125,15 +126,15 @@ test!(
     var SomeError = function _target(Error) {
         "use strict";
         _inherits(SomeError, Error);
-        var _super = _createSuper(SomeError);
+        var _super = _create_super(SomeError);
         function SomeError(issues) {
-            _classCallCheck(this, SomeError);
+            _class_call_check(this, SomeError);
             var _this = _super.call(this);
             const actualProto = (this instanceof SomeError ? this.constructor : void 0).prototype;
             return _this;
         }
         return SomeError;
-    }(_wrapNativeSuper(Error));
+    }(_wrap_native_super(Error));
 })();
 "#
 );

@@ -1,6 +1,6 @@
 //// [inferringClassMembersFromAssignments.ts]
 //// [a.js]
-import _class_call_check from "@swc/helpers/src/_class_call_check.mjs";
+import { _ as _class_call_check } from "@swc/helpers/_/_class_call_check";
 var C = /*#__PURE__*/ function() {
     "use strict";
     function C() {
@@ -87,13 +87,15 @@ var C = /*#__PURE__*/ function() {
     };
     return C;
 }();
-C.prop = function() {
-    if (Math.random()) {
-        C.inStaticPropertyDeclaration = 0;
-    } else {
-        C.inStaticPropertyDeclaration = "string";
-    }
-};
+(function() {
+    C.prop = function() {
+        if (Math.random()) {
+            C.inStaticPropertyDeclaration = 0;
+        } else {
+            C.inStaticPropertyDeclaration = "string";
+        }
+    };
+})();
 //// [b.ts]
 var c = new C();
 var stringOrNumber;

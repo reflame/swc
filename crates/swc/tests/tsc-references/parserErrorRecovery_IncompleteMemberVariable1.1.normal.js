@@ -1,6 +1,6 @@
 //// [parserErrorRecovery_IncompleteMemberVariable1.ts]
 // Interface
-import _class_call_check from "@swc/helpers/src/_class_call_check.mjs";
+import { _ as _class_call_check } from "@swc/helpers/_/_class_call_check";
 // Module
 var Shapes;
 (function(Shapes) {
@@ -18,8 +18,10 @@ var Shapes;
         };
         return Point;
     }();
-    // Static member
-    Point.origin = new Point(0, 0);
+    (function() {
+        // Static member
+        Point.origin = new Point(0, 0);
+    })();
     Shapes.Point = Point;
 })(Shapes || (Shapes = {}));
 // Local variables

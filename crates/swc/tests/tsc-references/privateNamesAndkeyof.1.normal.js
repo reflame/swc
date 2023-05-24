@@ -1,6 +1,7 @@
 //// [privateNamesAndkeyof.ts]
-import _class_private_field_init from "@swc/helpers/src/_class_private_field_init.mjs";
-import _class_private_method_init from "@swc/helpers/src/_class_private_method_init.mjs";
+import { _ as _class_private_field_init } from "@swc/helpers/_/_class_private_field_init";
+import { _ as _class_private_field_set } from "@swc/helpers/_/_class_private_field_set";
+import { _ as _class_private_method_init } from "@swc/helpers/_/_class_private_method_init";
 var _fooField = /*#__PURE__*/ new WeakMap(), _fooMethod = /*#__PURE__*/ new WeakSet(), _fooProp = /*#__PURE__*/ new WeakMap();
 class A {
     constructor(){
@@ -11,8 +12,9 @@ class A {
         });
         _class_private_field_init(this, _fooField, {
             writable: true,
-            value: 3
+            value: void 0
         });
+        _class_private_field_set(this, _fooField, 3);
         this.bar = 3;
         this.baz = 3;
     }

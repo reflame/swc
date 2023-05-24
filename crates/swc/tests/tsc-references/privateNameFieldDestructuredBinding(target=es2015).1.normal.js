@@ -1,6 +1,7 @@
 //// [privateNameFieldDestructuredBinding.ts]
-import _class_private_field_init from "@swc/helpers/src/_class_private_field_init.mjs";
-import _class_private_field_destructure from "@swc/helpers/src/_class_private_field_destructure.mjs";
+import { _ as _class_private_field_init } from "@swc/helpers/_/_class_private_field_init";
+import { _ as _class_private_field_set } from "@swc/helpers/_/_class_private_field_set";
+import { _ as _class_private_field_destructure } from "@swc/helpers/_/_class_private_field_destructure";
 var _field = /*#__PURE__*/ new WeakMap();
 class A {
     testObject() {
@@ -23,8 +24,9 @@ class A {
     constructor(){
         _class_private_field_init(this, _field, {
             writable: true,
-            value: 1
+            value: void 0
         });
+        _class_private_field_set(this, _field, 1);
         this.otherObject = new A();
         let y;
         ({ x: _class_private_field_destructure(this, _field).value , y  } = this.testObject());

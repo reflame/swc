@@ -11,7 +11,6 @@ pub mod class_properties;
 pub mod private_in_object;
 pub mod static_blocks;
 
-#[tracing::instrument(level = "info", skip_all)]
 pub fn es2022<C: Comments>(cm: Option<C>, config: Config) -> impl Fold {
     chain!(
         regexp(regexp::Config {
@@ -23,7 +22,7 @@ pub fn es2022<C: Comments>(cm: Option<C>, config: Config) -> impl Fold {
             unicode_property_regex: true,
             unicode_regex: false,
         }),
-        static_blocks(),
+        static_blocks(config.class_properties.static_blocks_mark),
         class_properties(cm, config.class_properties),
         private_in_object(),
     )

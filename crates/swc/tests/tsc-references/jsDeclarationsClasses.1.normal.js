@@ -1,9 +1,9 @@
 //// [index.js]
-import _class_call_check from "@swc/helpers/src/_class_call_check.mjs";
-import _create_class from "@swc/helpers/src/_create_class.mjs";
-import _inherits from "@swc/helpers/src/_inherits.mjs";
-import _possible_constructor_return from "@swc/helpers/src/_possible_constructor_return.mjs";
-import _create_super from "@swc/helpers/src/_create_super.mjs";
+import { _ as _class_call_check } from "@swc/helpers/_/_class_call_check";
+import { _ as _create_class } from "@swc/helpers/_/_create_class";
+import { _ as _inherits } from "@swc/helpers/_/_inherits";
+import { _ as _possible_constructor_return } from "@swc/helpers/_/_possible_constructor_return";
+import { _ as _create_super } from "@swc/helpers/_/_create_super";
 export var A = function A() {
     "use strict";
     _class_call_check(this, A);
@@ -12,15 +12,19 @@ export var B = function B() {
     "use strict";
     _class_call_check(this, B);
 };
-B.cat = "cat";
+(function() {
+    B.cat = "cat";
+})();
 export var C = function C() {
     "use strict";
     _class_call_check(this, C);
 };
-C.Cls = function _class() {
-    "use strict";
-    _class_call_check(this, _class);
-};
+(function() {
+    C.Cls = function _class() {
+        "use strict";
+        _class_call_check(this, _class);
+    };
+})();
 export var D = function D(a, b) {
     "use strict";
     _class_call_check(this, D);
@@ -88,7 +92,9 @@ export var D = function D(a, b) {
     ]);
     return E;
 }();
-E.staticInitializedField = 12;
+(function() {
+    E.staticInitializedField = 12;
+})();
 /**
  * @template T,U
  */ export var F = /*#__PURE__*/ function() {

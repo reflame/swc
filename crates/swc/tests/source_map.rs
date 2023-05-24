@@ -75,6 +75,11 @@ fn case_inline() {
 }
 
 #[test]
+fn case_inline_extra_content() {
+    inline("tests/srcmap/case-inline-extra-content/index.js");
+}
+
+#[test]
 fn issue_622() {
     file("tests/srcmap/issue-622/index.js", Default::default()).unwrap();
 }
@@ -130,7 +135,7 @@ fn issue_706() {
 
 #[testing::fixture("tests/fixture/**/*.map")]
 fn validate_map(map_file: PathBuf) {
-    let content = fs::read_to_string(&map_file).unwrap();
+    let content = fs::read_to_string(map_file).unwrap();
     if content.is_empty() {
         return;
     }

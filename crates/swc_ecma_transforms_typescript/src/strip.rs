@@ -65,9 +65,10 @@ pub struct Config {
     /// When running `tsc` with configuration `"target": "<ES6-ES2020>",
     /// "useDefineForClassFields": true`, TS class fields are transformed to
     /// `Object.defineProperty()` statements. You must additionally apply the
-    /// [swc_ecma_transforms_compat::es2022::class_properties()] pass to
+    /// [swc_ecma_transforms_compat::class_fields_use_set::class_fields_use_set()] pass to
     /// get this backward-compatible output.
     #[serde(default)]
+    #[deprecated(note = "[[Define]] and [[Set]] are managed within swc_ecma_transforms_compat.")]
     pub use_define_for_class_fields: bool,
 
     /// Don't create `export {}`.
@@ -399,6 +400,15 @@ where
                 }
             }
 
+            Decl::Using(ref var) => {
+                let mut names: Vec<Id> = vec![];
+                var.decls.visit_with(&mut VarCollector { to: &mut names });
+
+                for name in names {
+                    self.store(name.0.clone(), name.1, true);
+                }
+            }
+
             Decl::TsEnum(e) => {
                 // Currently swc cannot remove constant enums
                 self.store(e.id.sym.clone(), e.id.span.ctxt, true);
@@ -534,14 +544,16 @@ where
                                 op!("/") => l / r,
 
                                 // TODO
-                                op!("&") => ((l.round() as i64) & (r.round() as i64)) as _,
-                                op!("|") => ((l.round() as i64) | (r.round() as i64)) as _,
-                                op!("^") => ((l.round() as i64) ^ (r.round() as i64)) as _,
-
-                                op!("<<") => ((l.round() as i64) << (r.round() as i64)) as _,
-                                op!(">>") => ((l.round() as i64) >> (r.round() as i64)) as _,
+                                op!("&") => ((l.trunc() as i32) & (r.trunc() as i32)) as _,
+                                op!("|") => ((l.trunc() as i32) | (r.trunc() as i32)) as _,
+                                op!("^") => ((l.trunc() as i32) ^ (r.trunc() as i32)) as _,
+                                op!("<<") => (l.trunc() as i32).wrapping_shl(r.trunc() as u32) as _,
+                                op!(">>") => (l.trunc() as i32).wrapping_shr(r.trunc() as u32) as _,
                                 // TODO: Verify this
-                                op!(">>>") => ((l.round() as u64) >> (r.round() as u64)) as _,
+                                op!(">>>") => {
+                                    (l.trunc() as u32).wrapping_shr(r.trunc() as u32) as _
+                                }
+
                                 _ => return Err(()),
                             },
                             raw: None,
@@ -1252,9 +1264,7 @@ where
                         continue;
                     }
 
-                    stmts.push(ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(
-                        NamedExport { ..export },
-                    )))
+                    stmts.push(ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(export)))
                 }
 
                 // handle TS namespace child exports
@@ -1540,6 +1550,9 @@ where
                 self.decl_names.insert(class.ident.to_id());
                 class.class.visit_with(self);
             }
+            Decl::Using(d) => {
+                d.decls.visit_with(self);
+            }
             Decl::Fn(f) => {
                 self.decl_names.insert(f.ident.to_id());
                 f.function.visit_with(self)
@@ -1676,6 +1689,13 @@ where
         self.is_type_only_export = old;
     }
 
+    fn visit_export_named_specifier(&mut self, export: &ExportNamedSpecifier) {
+        let old = self.is_type_only_export;
+        self.is_type_only_export |= export.is_type_only;
+        export.visit_children_with(self);
+        self.is_type_only_export = old;
+    }
+
     fn visit_prop_name(&mut self, n: &PropName) {
         if let PropName::Computed(e) = n {
             e.visit_with(self)
@@ -1737,7 +1757,7 @@ fn is_decl_concrete(d: &Decl) -> bool {
     match d {
         Decl::TsEnum(..) => true,
         Decl::TsTypeAlias(..) | Decl::TsInterface(..) => false,
-        Decl::Class(_) | Decl::Fn(_) | Decl::Var(_) => true,
+        Decl::Class(_) | Decl::Fn(_) | Decl::Var(_) | Decl::Using(..) => true,
         Decl::TsModule(b) => ts_module_has_concrete(b),
     }
 }
@@ -1873,9 +1893,9 @@ where
                             }
                             _ => unreachable!("destructuring pattern inside TsParameterProperty"),
                         };
-                        if self.config.use_define_for_class_fields {
-                            extra_props.push(ident.id.clone());
-                        }
+
+                        extra_props.push(ident.id.clone());
+
                         let assign_expr = Box::new(Expr::Assign(AssignExpr {
                             span: ident.span.with_ctxt(SyntaxContext::empty()),
                             left: PatOrExpr::Expr(Box::new(
@@ -1962,23 +1982,26 @@ where
             inject_after_super(c, assign_exprs);
 
             if !extra_props.is_empty() {
-                class.body.extend(extra_props.into_iter().map(|prop| {
-                    ClassMember::ClassProp(ClassProp {
-                        key: PropName::Ident(prop),
-                        value: None,
-                        decorators: Vec::new(),
-                        is_static: false,
-                        type_ann: None,
-                        span: DUMMY_SP,
-                        accessibility: None,
-                        is_abstract: false,
-                        is_optional: false,
-                        is_override: false,
-                        readonly: false,
-                        declare: false,
-                        definite: false,
-                    })
-                }))
+                class.body.splice(
+                    0..0,
+                    extra_props.into_iter().map(|prop| {
+                        ClassMember::ClassProp(ClassProp {
+                            key: PropName::Ident(prop),
+                            value: None,
+                            decorators: Vec::new(),
+                            is_static: false,
+                            type_ann: None,
+                            span: DUMMY_SP,
+                            accessibility: None,
+                            is_abstract: false,
+                            is_optional: false,
+                            is_override: false,
+                            readonly: false,
+                            declare: false,
+                            definite: false,
+                        })
+                    }),
+                );
             }
         }
 
@@ -2011,11 +2034,6 @@ where
                     is_abstract: true, ..
                 },
             ) => false,
-            ClassMember::ClassProp(ClassProp {
-                value: None,
-                ref decorators,
-                ..
-            }) if decorators.is_empty() && !self.config.use_define_for_class_fields => false,
 
             _ => true,
         });
@@ -2414,9 +2432,7 @@ where
                         continue;
                     }
 
-                    stmts.push(ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(
-                        NamedExport { ..export },
-                    )))
+                    stmts.push(ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(export)))
                 }
 
                 _ => {

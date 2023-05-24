@@ -23,6 +23,7 @@ use unicode_width;
 
 use self::Destination::*;
 use super::{
+    diagnostic::Message,
     snippet::{Annotation, AnnotationType, Line, MultilineAnnotation, Style, StyledString},
     styled_buffer::StyledBuffer,
     CodeSuggestion, DiagnosticBuilder, DiagnosticId, Level, SourceMapperDyn, SubDiagnostic,
@@ -294,7 +295,7 @@ impl EmitterWriter {
         }
 
         // Find overlapping multiline annotations, put them at different depths
-        multiline_annotations.sort_by_key(|&(_, ref ml)| (ml.line_start, ml.line_end));
+        multiline_annotations.sort_by_key(|(_, ml)| (ml.line_start, ml.line_end));
         for item in multiline_annotations.clone() {
             let ann = item.1;
             for item in multiline_annotations.iter_mut() {
@@ -842,7 +843,7 @@ impl EmitterWriter {
         if spans_updated {
             children.push(SubDiagnostic {
                 level: Level::Note,
-                message: vec![(
+                message: vec![Message(
                     "this error originates in a macro outside of the current crate (in Nightly \
                      builds, run with -Z external-macro-backtrace for more info)"
                         .to_string(),
@@ -859,7 +860,7 @@ impl EmitterWriter {
     fn msg_to_buffer(
         &self,
         buffer: &mut StyledBuffer,
-        msg: &[(String, Style)],
+        msg: &[Message],
         padding: usize,
         label: &str,
         override_style: Option<Style>,
@@ -912,7 +913,7 @@ impl EmitterWriter {
         //                see how it *looks* with
         //                very *weird* formats
         //                see?
-        for &(ref text, ref style) in msg.iter() {
+        for Message(text, ref style) in msg.iter() {
             let lines = text.split('\n').collect::<Vec<_>>();
             if lines.len() > 1 {
                 for (i, line) in lines.iter().enumerate() {
@@ -932,7 +933,7 @@ impl EmitterWriter {
     fn emit_message_default(
         &mut self,
         msp: &MultiSpan,
-        msg: &[(String, Style)],
+        msg: &[Message],
         code: &Option<DiagnosticId>,
         level: Level,
         max_line_num_len: usize,
@@ -975,7 +976,7 @@ impl EmitterWriter {
             if !level_str.is_empty() {
                 buffer.append(0, ": ", header_style);
             }
-            for &(ref text, _) in msg.iter() {
+            for Message(text, _) in msg.iter() {
                 buffer.append(0, text, header_style);
             }
         }
@@ -1212,7 +1213,7 @@ impl EmitterWriter {
             }
             self.msg_to_buffer(
                 &mut buffer,
-                &[(suggestion.msg.to_owned(), Style::NoStyle)],
+                &[Message(suggestion.msg.to_owned(), Style::NoStyle)],
                 max_line_num_len,
                 "suggestion",
                 Some(Style::HeaderMsg),
@@ -1222,7 +1223,7 @@ impl EmitterWriter {
             let suggestions = suggestion.splice_lines(&**sm);
 
             let mut row_num = 2;
-            for &(ref complete, ref parts) in suggestions.iter().take(MAX_SUGGESTIONS) {
+            for (complete, parts) in suggestions.iter().take(MAX_SUGGESTIONS) {
                 // Only show underline if the suggestion spans a single line and doesn't cover
                 // the entirety of the code output. If you have multiple
                 // replacements in the same line of code, show the underline.
@@ -1332,7 +1333,7 @@ impl EmitterWriter {
     fn emit_messages_default(
         &mut self,
         level: Level,
-        message: &[(String, Style)],
+        message: &[Message],
         code: &Option<DiagnosticId>,
         span: &MultiSpan,
         children: &[SubDiagnostic],

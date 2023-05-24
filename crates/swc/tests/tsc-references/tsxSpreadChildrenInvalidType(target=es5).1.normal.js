@@ -1,6 +1,5 @@
 //// [tsxSpreadChildrenInvalidType.tsx]
-import _extends from "@swc/helpers/src/_extends.mjs";
-import _to_consumable_array from "@swc/helpers/src/_to_consumable_array.mjs";
+import { _ as _to_consumable_array } from "@swc/helpers/_/_to_consumable_array";
 function Todo(prop) {
     return /*#__PURE__*/ React.createElement("div", null, prop.key.toString() + prop.todo);
 }
@@ -26,4 +25,4 @@ function TodoListNoError(param) {
     }))));
 }
 var x;
-/*#__PURE__*/ React.createElement(TodoList, _extends({}, x));
+/*#__PURE__*/ React.createElement(TodoList, x);

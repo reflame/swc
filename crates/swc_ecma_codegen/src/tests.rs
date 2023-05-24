@@ -19,7 +19,7 @@ struct Builder {
 }
 
 impl Builder {
-    pub fn with<'a, F, Ret>(self, src: &str, s: &'a mut Vec<u8>, op: F) -> Ret
+    pub fn with<'a, F, Ret>(self, _: &str, s: &'a mut Vec<u8>, op: F) -> Ret
     where
         F: for<'aa> FnOnce(&mut Emitter<'aa, Box<(dyn WriteJs + 'aa)>, SourceMap>) -> Ret,
         Ret: 'static,
@@ -93,9 +93,7 @@ pub(crate) fn assert_min(from: &str, to: &str) {
             omit_last_semi: true,
             ..Default::default()
         },
-        Syntax::Es(EsConfig {
-            ..Default::default()
-        }),
+        Syntax::Es(Default::default()),
     );
 
     assert_eq!(DebugUsingDisplay(out.trim()), DebugUsingDisplay(to),);
@@ -308,9 +306,7 @@ fn export_namespace_from() {
         "export * as Foo from 'foo';",
         "export * as Foo from 'foo';",
         Default::default(),
-        Syntax::Es(EsConfig {
-            ..EsConfig::default()
-        }),
+        Syntax::Es(EsConfig::default()),
     );
 }
 
@@ -323,9 +319,7 @@ fn export_namespace_from_min() {
             minify: true,
             ..Default::default()
         },
-        Syntax::Es(EsConfig {
-            ..EsConfig::default()
-        }),
+        Syntax::Es(EsConfig::default()),
     );
 }
 
@@ -868,6 +862,27 @@ fn ascii_only_tpl_lit() {
         "`😊❤️`",
         r"`\u{1F60A}\u{2764}\u{FE0F}`;",
         r"`\u{1F60A}\u{2764}\u{FE0F}`",
+        Config {
+            ascii_only: true,
+            ..Default::default()
+        },
+    );
+}
+
+#[test]
+fn ascii_only_issue_7240() {
+    test_all(
+        r"
+        export default {
+            \u3131: '\u11B0',
+        }
+        ",
+        r"
+export default {
+    \u3131: '\u11B0'
+};
+        ",
+        r##"export default{\u3131:"\u11B0"}"##,
         Config {
             ascii_only: true,
             ..Default::default()

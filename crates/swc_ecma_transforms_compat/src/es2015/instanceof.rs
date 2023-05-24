@@ -30,7 +30,6 @@ use swc_trace_macro::swc_trace;
 ///
 /// _instanceof(foo, Bar);
 /// ```
-#[tracing::instrument(level = "info", skip_all)]
 pub fn instance_of() -> impl Fold + VisitMut {
     as_folder(InstanceOf)
 }
@@ -66,7 +65,7 @@ impl VisitMut for InstanceOf {
 
             *expr = Expr::Call(CallExpr {
                 span: *span,
-                callee: helper!(instanceof_span, instanceof, "instanceof"),
+                callee: helper!(instanceof_span, instanceof),
                 args: vec![left.take().as_arg(), right.take().as_arg()],
                 type_args: Default::default(),
             });

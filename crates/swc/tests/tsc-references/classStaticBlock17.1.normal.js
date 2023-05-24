@@ -1,7 +1,7 @@
 //// [classStaticBlock17.ts]
-import _class_private_field_get from "@swc/helpers/src/_class_private_field_get.mjs";
-import _class_private_field_init from "@swc/helpers/src/_class_private_field_init.mjs";
-import _class_private_field_set from "@swc/helpers/src/_class_private_field_set.mjs";
+import { _ as _class_private_field_get } from "@swc/helpers/_/_class_private_field_get";
+import { _ as _class_private_field_init } from "@swc/helpers/_/_class_private_field_init";
+import { _ as _class_private_field_set } from "@swc/helpers/_/_class_private_field_set";
 let friendA;
 var _x = /*#__PURE__*/ new WeakMap();
 class A {
@@ -16,19 +16,16 @@ class A {
         _class_private_field_set(this, _x, v);
     }
 }
-var __ = {
-    writable: true,
-    value: (()=>{
-        friendA = {
-            getX (obj) {
-                return _class_private_field_get(obj, _x);
-            },
-            setX (obj, value) {
-                _class_private_field_set(obj, _x, value);
-            }
-        };
-    })()
-};
+(()=>{
+    friendA = {
+        getX (obj) {
+            return _class_private_field_get(obj, _x);
+        },
+        setX (obj, value) {
+            _class_private_field_set(obj, _x, value);
+        }
+    };
+})();
 class B {
     constructor(a){
         const x = friendA.getX(a); // ok

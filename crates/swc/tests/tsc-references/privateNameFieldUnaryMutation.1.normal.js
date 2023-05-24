@@ -1,8 +1,8 @@
 //// [privateNameFieldUnaryMutation.ts]
-import _class_private_field_get from "@swc/helpers/src/_class_private_field_get.mjs";
-import _class_private_field_init from "@swc/helpers/src/_class_private_field_init.mjs";
-import _class_private_field_set from "@swc/helpers/src/_class_private_field_set.mjs";
-import _class_private_field_update from "@swc/helpers/src/_class_private_field_update.mjs";
+import { _ as _class_private_field_get } from "@swc/helpers/_/_class_private_field_get";
+import { _ as _class_private_field_init } from "@swc/helpers/_/_class_private_field_init";
+import { _ as _class_private_field_set } from "@swc/helpers/_/_class_private_field_set";
+import { _ as _class_private_field_update } from "@swc/helpers/_/_class_private_field_update";
 var _test = /*#__PURE__*/ new WeakMap();
 class C {
     test() {
@@ -34,8 +34,9 @@ class C {
     constructor(){
         _class_private_field_init(this, _test, {
             writable: true,
-            value: 24
+            value: void 0
         });
+        _class_private_field_set(this, _test, 24);
         _class_private_field_update(this, _test).value++;
         _class_private_field_update(this, _test).value--;
         ++_class_private_field_update(this, _test).value;

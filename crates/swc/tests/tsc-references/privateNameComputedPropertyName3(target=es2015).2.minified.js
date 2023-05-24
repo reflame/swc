@@ -1,7 +1,7 @@
 //// [privateNameComputedPropertyName3.ts]
-import _class_private_field_get from "@swc/helpers/src/_class_private_field_get.mjs";
-import _class_private_field_init from "@swc/helpers/src/_class_private_field_init.mjs";
-import _class_private_field_set from "@swc/helpers/src/_class_private_field_set.mjs";
+import { _ as _class_private_field_get } from "@swc/helpers/_/_class_private_field_get";
+import { _ as _class_private_field_init } from "@swc/helpers/_/_class_private_field_init";
+import { _ as _class_private_field_set } from "@swc/helpers/_/_class_private_field_set";
 var _name = new WeakMap();
 console.log(new class {
     getValue(x) {
@@ -14,8 +14,8 @@ console.log(new class {
             constructor(){
                 _class_private_field_init(this, _y, {
                     writable: !0,
-                    value: 100
-                });
+                    value: void 0
+                }), _class_private_field_set(this, _y, 100);
             }
         }()[_class_private_field_get(this, _name)]();
     }

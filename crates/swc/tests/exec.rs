@@ -9,12 +9,15 @@ use std::{
 use anyhow::{Context, Error};
 use once_cell::sync::Lazy;
 use swc::{
-    config::{Config, JsMinifyOptions, JscConfig, ModuleConfig, Options, SourceMapsConfig},
+    config::{
+        Config, JsMinifyOptions, JscConfig, ModuleConfig, Options, SourceMapsConfig,
+        TransformConfig,
+    },
     try_with_handler, BoolOrDataConfig, Compiler, HandlerOpts,
 };
 use swc_common::{errors::ColorConfig, SourceMap, GLOBALS};
 use swc_ecma_ast::EsVersion;
-use swc_ecma_parser::{EsConfig, Syntax, TsConfig};
+use swc_ecma_parser::{Syntax, TsConfig};
 use swc_ecma_testing::{exec_node_js, JsExecOptions};
 use testing::{assert_eq, find_executable, unignore_fixture};
 use tracing::{span, Level};
@@ -114,10 +117,7 @@ fn init_helpers() -> Arc<PathBuf> {
 }
 
 fn create_matrix(entry: &Path) -> Vec<Options> {
-    // use_define_for_class_fields: false
-    // force to use [[Set]] instead of [[Define]]
-    // EsVersion should be lower than EsVersion::Es2022
-    let force_set_class_field = entry
+    let use_define_for_class_fields = entry
         .parent()
         .map(|parent| parent.join(".swcrc"))
         .and_then(|path| fs::read_to_string(path).ok())
@@ -134,8 +134,8 @@ fn create_matrix(entry: &Path) -> Vec<Options> {
         })
         .and_then(|content| serde_json::from_value::<Config>(content).ok())
         .and_then(|config| config.jsc.transform.into_inner())
-        .map(|c| c.use_define_for_class_fields == false.into())
-        .unwrap_or(false);
+        .map(|c| c.use_define_for_class_fields)
+        .unwrap_or_default();
 
     [
         EsVersion::Es2022,
@@ -149,11 +149,8 @@ fn create_matrix(entry: &Path) -> Vec<Options> {
         EsVersion::Es5,
     ]
     .into_iter()
-    .filter(|e| !force_set_class_field || e < &EsVersion::Es2022)
     .matrix(|| {
-        let default_es = Syntax::Es(EsConfig {
-            ..Default::default()
-        });
+        let default_es = Syntax::Es(Default::default());
 
         if let Some(ext) = entry.extension() {
             if ext == "ts" {
@@ -178,7 +175,11 @@ fn create_matrix(entry: &Path) -> Vec<Options> {
                 config: Config {
                     jsc: JscConfig {
                         syntax: Some(syntax),
-                        transform: None.into(),
+                        transform: Some(TransformConfig {
+                            use_define_for_class_fields,
+                            ..Default::default()
+                        })
+                        .into(),
                         // true, false
                         external_helpers: (!external_helpers).into(),
                         target: Some(target),
@@ -308,11 +309,19 @@ fn get_expected_stdout(input: &Path) -> Result<String, Error> {
                         &Options {
                             config: Config {
                                 jsc: JscConfig {
-                                    target: Some(EsVersion::Es2021),
+                                    target: Some(EsVersion::Es2022),
                                     syntax: Some(Syntax::Typescript(TsConfig {
                                         decorators: true,
                                         ..Default::default()
                                     })),
+                                    transform: Some(TransformConfig {
+                                        use_define_for_class_fields: (!input
+                                            .to_string_lossy()
+                                            .contains("set_public_class_fields"))
+                                        .into(),
+                                        ..Default::default()
+                                    })
+                                    .into(),
                                     ..Default::default()
                                 },
                                 module: match input.extension() {

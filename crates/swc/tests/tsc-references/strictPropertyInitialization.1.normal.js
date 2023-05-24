@@ -1,8 +1,8 @@
 //// [strictPropertyInitialization.ts]
 // Properties with non-undefined types require initialization
-import _class_private_field_get from "@swc/helpers/src/_class_private_field_get.mjs";
-import _class_private_field_init from "@swc/helpers/src/_class_private_field_init.mjs";
-import _class_private_field_set from "@swc/helpers/src/_class_private_field_set.mjs";
+import { _ as _class_private_field_get } from "@swc/helpers/_/_class_private_field_get";
+import { _ as _class_private_field_init } from "@swc/helpers/_/_class_private_field_init";
+import { _ as _class_private_field_set } from "@swc/helpers/_/_class_private_field_set";
 var _f = /*#__PURE__*/ new WeakMap(), _g = /*#__PURE__*/ new WeakMap(), _h = /*#__PURE__*/ new WeakMap(), _i = /*#__PURE__*/ new WeakMap();
 class C1 {
     constructor(){
@@ -31,21 +31,24 @@ var _d = /*#__PURE__*/ new WeakMap(), _e = /*#__PURE__*/ new WeakMap(), _f1 = /*
 // Initializer satisfies strict initialization check
 class C4 {
     constructor(){
-        this.a = 0;
-        this.b = 0;
-        this.c = "abc";
         _class_private_field_init(this, _d, {
             writable: true,
-            value: 0
+            value: void 0
         });
         _class_private_field_init(this, _e, {
             writable: true,
-            value: 0
+            value: void 0
         });
         _class_private_field_init(this, _f1, {
             writable: true,
-            value: "abc"
+            value: void 0
         });
+        this.a = 0;
+        this.b = 0;
+        this.c = "abc";
+        _class_private_field_set(this, _d, 0);
+        _class_private_field_set(this, _e, 0);
+        _class_private_field_set(this, _f1, "abc");
     }
 }
 var _b = /*#__PURE__*/ new WeakMap();
@@ -140,8 +143,12 @@ var E;
     E["A"] = "A";
     E["B"] = "B";
 })(E || (E = {}));
+let prop;
 class C13 {
     constructor(){
         this[E.A] = 1;
     }
 }
+(()=>{
+    prop = E.A;
+})();

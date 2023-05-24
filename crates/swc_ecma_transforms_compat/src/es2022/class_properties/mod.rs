@@ -43,7 +43,6 @@ mod used_name;
 /// # Impl note
 ///
 /// We use custom helper to handle export default class
-#[tracing::instrument(level = "info", skip_all)]
 pub fn class_properties<C: Comments>(cm: Option<C>, config: Config) -> impl Fold + VisitMut {
     as_folder(ClassProperties {
         c: config,
@@ -53,12 +52,25 @@ pub fn class_properties<C: Comments>(cm: Option<C>, config: Config) -> impl Fold
     })
 }
 
-#[derive(Debug, Clone, Copy, Default)]
+#[derive(Debug, Clone, Copy)]
 pub struct Config {
     pub private_as_properties: bool,
     pub set_public_fields: bool,
     pub constant_super: bool,
     pub no_document_all: bool,
+    pub static_blocks_mark: Mark,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            private_as_properties: false,
+            set_public_fields: false,
+            constant_super: false,
+            no_document_all: false,
+            static_blocks_mark: Mark::new(),
+        }
+    }
 }
 
 struct ClassProperties<C: Comments> {
@@ -708,6 +720,12 @@ impl<C: Comments> ClassProperties<C> {
 
                     let value = prop.value.unwrap_or_else(|| undefined(prop_span));
 
+                    if prop.is_static && prop.span.has_mark(self.c.static_blocks_mark) {
+                        let init = MemberInit::StaticBlock(value);
+                        extra_inits.push(init);
+                        continue;
+                    }
+
                     let init = MemberInit::PrivProp(PrivProp {
                         span: prop_span,
                         name: ident.clone(),
@@ -727,10 +745,7 @@ impl<C: Comments> ClassProperties<C> {
                             name: ident.clone().into(),
                             init: Some(Box::new(Expr::from(CallExpr {
                                 span,
-                                callee: helper!(
-                                    class_private_field_loose_key,
-                                    "classPrivateFieldLooseKey"
-                                ),
+                                callee: helper!(class_private_field_loose_key),
                                 args: vec![ident.sym.as_arg()],
                                 type_args: Default::default(),
                             }))),
@@ -874,10 +889,7 @@ impl<C: Comments> ClassProperties<C> {
                             init: Some(Box::new(if self.c.private_as_properties {
                                 Expr::from(CallExpr {
                                     span,
-                                    callee: helper!(
-                                        class_private_field_loose_key,
-                                        "classPrivateFieldLooseKey"
-                                    ),
+                                    callee: helper!(class_private_field_loose_key),
                                     args: vec![weak_coll_var.sym.as_arg()],
                                     type_args: Default::default(),
                                 })

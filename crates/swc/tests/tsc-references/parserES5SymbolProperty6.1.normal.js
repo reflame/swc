@@ -1,8 +1,11 @@
 //// [parserES5SymbolProperty6.ts]
-import _class_call_check from "@swc/helpers/src/_class_call_check.mjs";
-var _Symbol_toStringTag = Symbol.toStringTag;
+import { _ as _class_call_check } from "@swc/helpers/_/_class_call_check";
+var prop;
 var C = function C() {
     "use strict";
     _class_call_check(this, C);
-    this[_Symbol_toStringTag] = "";
+    this[prop] = "";
 };
+(function() {
+    prop = Symbol.toStringTag;
+})();

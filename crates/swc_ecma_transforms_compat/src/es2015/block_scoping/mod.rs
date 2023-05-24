@@ -35,7 +35,6 @@ mod vars;
 ///    });
 /// }
 /// ```
-#[tracing::instrument(level = "info", skip_all)]
 pub fn block_scoping(unresolved_mark: Mark) -> impl VisitMut + Fold {
     as_folder(chain!(
         self::vars::block_scoped_vars(),
@@ -271,7 +270,7 @@ impl BlockScoping {
                 ];
 
                 if flow_helper.has_return {
-                    // if (_typeof(_ret) === "object") return _ret.v;
+                    // if (_type_of(_ret) === "object") return _ret.v;
                     stmts.push(
                         IfStmt {
                             span: DUMMY_SP,
@@ -279,8 +278,8 @@ impl BlockScoping {
                                 span: DUMMY_SP,
                                 op: op!("==="),
                                 left: {
-                                    // _typeof(_ret)
-                                    let callee = helper!(type_of, "typeof");
+                                    // _type_of(_ret)
+                                    let callee = helper!(type_of);
 
                                     Expr::Call(CallExpr {
                                         span: Default::default(),
@@ -439,7 +438,7 @@ impl VisitMut for BlockScoping {
 
     fn visit_mut_for_in_stmt(&mut self, node: &mut ForInStmt) {
         let blockifyed = self.blockify_for_stmt_body(&mut node.body);
-        let lexical_var = if let VarDeclOrPat::VarDecl(decl) = &node.left {
+        let lexical_var = if let ForHead::VarDecl(decl) = &node.left {
             find_lexical_vars(decl)
         } else {
             Vec::new()
@@ -464,7 +463,7 @@ impl VisitMut for BlockScoping {
 
     fn visit_mut_for_of_stmt(&mut self, node: &mut ForOfStmt) {
         let blockifyed = self.blockify_for_stmt_body(&mut node.body);
-        let vars = if let VarDeclOrPat::VarDecl(decl) = &node.left {
+        let vars = if let ForHead::VarDecl(decl) = &node.left {
             find_lexical_vars(decl)
         } else {
             Vec::new()

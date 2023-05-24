@@ -1,12 +1,13 @@
-import _async_to_generator from "@swc/helpers/src/_async_to_generator.mjs";
-import _class_call_check from "@swc/helpers/src/_class_call_check.mjs";
-import _ts_generator from "@swc/helpers/src/_ts_generator.mjs";
+import { _ as _async_to_generator } from "@swc/helpers/_/_async_to_generator";
+import { _ as _class_call_check } from "@swc/helpers/_/_class_call_check";
+import { _ as _define_property } from "@swc/helpers/_/_define_property";
+import { _ as _ts_generator } from "@swc/helpers/_/_ts_generator";
 export var CompanyBgStore = function CompanyBgStore() {
     "use strict";
     _class_call_check(this, CompanyBgStore);
-    this.corpName = 123;
+    _define_property(this, "corpName", 123);
     var _this = this;
-    this.getBusinessInfo = _async_to_generator(function() {
+    _define_property(this, "getBusinessInfo", _async_to_generator(function() {
         var corpName;
         var _arguments = arguments;
         return _ts_generator(this, function(_state) {
@@ -16,5 +17,5 @@ export var CompanyBgStore = function CompanyBgStore() {
                 2
             ];
         });
-    });
+    }));
 };

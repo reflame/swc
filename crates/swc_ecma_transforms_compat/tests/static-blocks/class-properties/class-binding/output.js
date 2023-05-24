@@ -1,8 +1,6 @@
-class Foo {}
-_defineProperty(Foo, "bar", 42);
-var __ = {
-    writable: true,
-    value: (() => {
-        Foo.foo = Foo.bar;
-    })(),
-};
+class Foo {
+}
+_define_property(Foo, "bar", 42);
+(()=>{
+    Foo.foo = Foo.bar;
+})();

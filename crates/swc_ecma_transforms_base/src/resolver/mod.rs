@@ -2,7 +2,7 @@ use rustc_hash::FxHashSet;
 use swc_atoms::{js_word, JsWord};
 use swc_common::{
     collections::{AHashMap, AHashSet},
-    Mark, SyntaxContext,
+    Mark, Span, SyntaxContext,
 };
 use swc_ecma_ast::*;
 use swc_ecma_utils::{find_pat_ids, IsDirective};
@@ -141,6 +141,9 @@ pub fn resolver(
         "Marker provided to resolver should not be the root mark"
     );
 
+    let _ = SyntaxContext::empty().apply_mark(unresolved_mark);
+    let _ = SyntaxContext::empty().apply_mark(top_level_mark);
+
     as_folder(Resolver {
         current: Scope::new(ScopeKind::Fn, top_level_mark, None),
         ident_type: IdentType::Ref,
@@ -251,18 +254,13 @@ impl<'a> Resolver<'a> {
     }
 
     fn visit_mut_stmt_within_child_scope(&mut self, s: &mut Stmt) {
-        self.with_child(ScopeKind::Block, |child| {
-            child.visit_mut_stmt_within_same_scope(s)
-        });
-    }
-
-    fn visit_mut_stmt_within_same_scope(&mut self, s: &mut Stmt) {
-        match s {
+        self.with_child(ScopeKind::Block, |child| match s {
             Stmt::Block(s) => {
-                s.visit_mut_children_with(self);
+                child.mark_block(&mut s.span);
+                s.visit_mut_children_with(child);
             }
-            _ => s.visit_mut_with(self),
-        }
+            _ => s.visit_mut_with(child),
+        });
     }
 
     /// Returns a [Mark] for an identifier reference.
@@ -372,6 +370,18 @@ impl<'a> Resolver<'a> {
             }
             span
         };
+    }
+
+    fn mark_block(&mut self, span: &mut Span) {
+        if span.ctxt() != SyntaxContext::empty() {
+            return;
+        }
+
+        let mark = self.current.mark;
+
+        if mark != Mark::root() {
+            *span = span.apply_mark(mark)
+        }
     }
 
     fn try_resolving_as_type(&mut self, i: &mut Ident) {
@@ -539,23 +549,36 @@ impl<'a> VisitMut for Resolver<'a> {
 
             let old = child.ident_type;
             child.ident_type = IdentType::Binding;
+            {
+                let params = e
+                    .params
+                    .iter()
+                    .filter(|p| !p.is_rest())
+                    .flat_map(find_pat_ids)
+                    .collect::<Vec<Id>>();
+
+                for id in params {
+                    child.current.declared_symbols.insert(id.0, DeclKind::Param);
+                }
+            }
             e.params.visit_mut_with(child);
             child.ident_type = old;
 
-            {
-                match &mut *e.body {
-                    BlockStmtOrExpr::BlockStmt(s) => {
-                        let old_strict_mode = child.strict_mode;
-                        child.strict_mode = s
-                            .stmts
-                            .first()
-                            .map(|stmt| stmt.is_use_strict())
-                            .unwrap_or(false);
-                        s.stmts.visit_mut_with(child);
-                        child.strict_mode = old_strict_mode;
-                    }
-                    BlockStmtOrExpr::Expr(e) => e.visit_mut_with(child),
+            match &mut *e.body {
+                BlockStmtOrExpr::BlockStmt(s) => {
+                    child.mark_block(&mut s.span);
+
+                    let old_strict_mode = child.strict_mode;
+                    child.strict_mode = s
+                        .stmts
+                        .first()
+                        .map(|stmt| stmt.is_use_strict())
+                        .unwrap_or(false);
+                    // Prevent creating new scope.
+                    s.stmts.visit_mut_with(child);
+                    child.strict_mode = old_strict_mode;
                 }
+                BlockStmtOrExpr::Expr(e) => e.visit_mut_with(child),
             }
 
             e.return_type.visit_mut_with(child);
@@ -586,16 +609,9 @@ impl<'a> VisitMut for Resolver<'a> {
 
     fn visit_mut_block_stmt(&mut self, block: &mut BlockStmt) {
         self.with_child(ScopeKind::Block, |child| {
+            child.mark_block(&mut block.span);
             block.visit_mut_children_with(child);
         })
-    }
-
-    /// Handle body of the arrow functions
-    fn visit_mut_block_stmt_or_expr(&mut self, node: &mut BlockStmtOrExpr) {
-        match node {
-            BlockStmtOrExpr::BlockStmt(block) => block.visit_mut_children_with(self),
-            BlockStmtOrExpr::Expr(e) => e.visit_mut_with(self),
-        }
     }
 
     fn visit_mut_break_stmt(&mut self, s: &mut BreakStmt) {
@@ -613,6 +629,7 @@ impl<'a> VisitMut for Resolver<'a> {
             c.param.visit_mut_with(child);
             child.ident_type = IdentType::Ref;
 
+            child.mark_block(&mut c.body.span);
             c.body.visit_mut_children_with(child);
         });
     }
@@ -711,11 +728,27 @@ impl<'a> VisitMut for Resolver<'a> {
         self.with_child(ScopeKind::Fn, |child| {
             let old = child.ident_type;
             child.ident_type = IdentType::Binding;
+            {
+                let params = c
+                    .params
+                    .iter()
+                    .filter(|p| match p {
+                        ParamOrTsParamProp::TsParamProp(_) => false,
+                        ParamOrTsParamProp::Param(p) => !p.pat.is_rest(),
+                    })
+                    .flat_map(find_pat_ids)
+                    .collect::<Vec<Id>>();
+
+                for id in params {
+                    child.current.declared_symbols.insert(id.0, DeclKind::Param);
+                }
+            }
             c.params.visit_mut_with(child);
             child.ident_type = old;
 
             match &mut c.body {
                 Some(body) => {
+                    child.mark_block(&mut body.span);
                     body.visit_mut_children_with(child);
                 }
                 None => {}
@@ -728,10 +761,6 @@ impl<'a> VisitMut for Resolver<'a> {
         self.ident_type = IdentType::Label;
         s.label.visit_mut_with(self);
         self.ident_type = old;
-    }
-
-    fn visit_mut_decl(&mut self, decl: &mut Decl) {
-        decl.visit_mut_children_with(self)
     }
 
     fn visit_mut_export_default_decl(&mut self, e: &mut ExportDefaultDecl) {
@@ -799,8 +828,7 @@ impl<'a> VisitMut for Resolver<'a> {
     }
 
     fn visit_mut_fn_decl(&mut self, node: &mut FnDecl) {
-        // We don't fold this as Hoister handles this.
-
+        // We don't fold ident as Hoister handles this.
         node.function.decorators.visit_mut_with(self);
 
         self.with_child(ScopeKind::Fn, |child| node.function.visit_mut_with(child));
@@ -855,6 +883,7 @@ impl<'a> VisitMut for Resolver<'a> {
     }
 
     fn visit_mut_function(&mut self, f: &mut Function) {
+        self.mark_block(&mut f.span);
         f.type_params.visit_mut_with(self);
 
         self.ident_type = IdentType::Ref;
@@ -880,6 +909,7 @@ impl<'a> VisitMut for Resolver<'a> {
         self.ident_type = IdentType::Ref;
         match &mut f.body {
             Some(body) => {
+                self.mark_block(&mut body.span);
                 let old_strict_mode = self.strict_mode;
                 self.strict_mode = body
                     .stmts
@@ -1825,9 +1855,9 @@ impl VisitMut for Hoister<'_, '_> {
         }
     }
 
-    fn visit_mut_var_decl_or_pat(&mut self, n: &mut VarDeclOrPat) {
+    fn visit_mut_for_head(&mut self, n: &mut ForHead) {
         match n {
-            VarDeclOrPat::VarDecl(v)
+            ForHead::VarDecl(v)
                 if matches!(
                     &**v,
                     VarDecl {
@@ -1844,7 +1874,7 @@ impl VisitMut for Hoister<'_, '_> {
             //     console.log(a);
             //   }
             // }
-            VarDeclOrPat::Pat(..) => {}
+            ForHead::Pat(..) => {}
             _ => {
                 n.visit_mut_children_with(self);
             }

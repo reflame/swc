@@ -1,4 +1,6 @@
-import _object_without_properties from "@swc/helpers/src/_object_without_properties.mjs";
+import { _ as _object_spread } from "@swc/helpers/_/_object_spread";
+import { _ as _object_spread_props } from "@swc/helpers/_/_object_spread_props";
+import { _ as _object_without_properties } from "@swc/helpers/_/_object_without_properties";
 import Head from "next/head";
 import Image from "next/image";
 import styles from "../styles/Home.module.css";
@@ -50,9 +52,9 @@ export default function Home() {
         var href = _param.href, linkProps = _object_without_properties(_param, [
             "href"
         ]);
-        return React.createElement("link", Object.assign({
+        return React.createElement("link", _object_spread_props(_object_spread({
             href: href
-        }, linkProps, {
+        }, linkProps), {
             rel: "icon",
             key: href,
             __source: {

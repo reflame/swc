@@ -47,6 +47,10 @@ pub struct ParserConfig {
     /// Defaults to `false`.
     #[serde(default)]
     pub legacy_nesting: bool,
+
+    /// If this is `true`, the legacy syntax for IE will be parsed.
+    #[serde(default)]
+    pub legacy_ie: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -76,6 +80,8 @@ struct Ctx {
     in_page_at_rule: bool,
     in_container_at_rule: bool,
     in_font_feature_values_at_rule: bool,
+
+    in_global_or_local_selector: bool,
 }
 
 impl Default for Ctx {
@@ -92,6 +98,7 @@ impl Default for Ctx {
             in_page_at_rule: false,
             in_container_at_rule: false,
             in_font_feature_values_at_rule: false,
+            in_global_or_local_selector: false,
         }
     }
 }

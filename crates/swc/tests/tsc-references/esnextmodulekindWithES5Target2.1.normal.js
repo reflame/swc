@@ -1,5 +1,5 @@
 //// [esnextmodulekindWithES5Target2.ts]
-import _class_call_check from "@swc/helpers/src/_class_call_check.mjs";
+import { _ as _class_call_check } from "@swc/helpers/_/_class_call_check";
 var C = /*#__PURE__*/ function() {
     "use strict";
     function C() {
@@ -10,5 +10,7 @@ var C = /*#__PURE__*/ function() {
     _proto.method = function method() {};
     return C;
 }();
-C.s = 0;
+(function() {
+    C.s = 0;
+})();
 export { C as default };

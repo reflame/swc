@@ -6,14 +6,14 @@ describe("transform", () => {
 
         expect(output).toMatchInlineSnapshot(`
             Object {
-              "code": "function _classCallCheck(instance, Constructor) {
+              "code": "function _class_call_check(instance, Constructor) {
                 if (!(instance instanceof Constructor)) {
                     throw new TypeError(\\"Cannot call a class as a function\\");
                 }
             }
             var Foo = function Foo() {
                 \\"use strict\\";
-                _classCallCheck(this, Foo);
+                _class_call_check(this, Foo);
             };
             ",
             }
@@ -25,14 +25,14 @@ describe("transform", () => {
 
         expect(output).toMatchInlineSnapshot(`
             Object {
-              "code": "function _classCallCheck(instance, Constructor) {
+              "code": "function _class_call_check(instance, Constructor) {
                 if (!(instance instanceof Constructor)) {
                     throw new TypeError(\\"Cannot call a class as a function\\");
                 }
             }
             var Foo = function Foo() {
                 \\"use strict\\";
-                _classCallCheck(this, Foo);
+                _class_call_check(this, Foo);
             };
             ",
             }
@@ -48,14 +48,14 @@ describe("transform", () => {
         const output = await swc.transform(input, {});
         expect(output).toMatchInlineSnapshot(`
             Object {
-              "code": "function _classCallCheck(instance, Constructor) {
+              "code": "function _class_call_check(instance, Constructor) {
                 if (!(instance instanceof Constructor)) {
                     throw new TypeError(\\"Cannot call a class as a function\\");
                 }
             }
             var Foo = function Foo() {
                 \\"use strict\\";
-                _classCallCheck(this, Foo);
+                _class_call_check(this, Foo);
             };
             ",
             }
@@ -108,7 +108,7 @@ describe("parse", () => {
                   "identifier": Object {
                     "optional": false,
                     "span": Object {
-                      "ctxt": 1,
+                      "ctxt": 2,
                       "end": 394,
                       "start": 391,
                     },
@@ -155,7 +155,7 @@ describe("parse", () => {
                   "identifier": Object {
                     "optional": false,
                     "span": Object {
-                      "ctxt": 1,
+                      "ctxt": 2,
                       "end": 407,
                       "start": 404,
                     },

@@ -1,5 +1,5 @@
 //// [inferringClassMembersFromAssignments7.js]
-import _class_call_check from "@swc/helpers/src/_class_call_check.mjs";
+import { _ as _class_call_check } from "@swc/helpers/_/_class_call_check";
 var c = new (function() {
     "use strict";
     function C() {
@@ -10,8 +10,7 @@ var c = new (function() {
         };
     }
     return C.prototype.mreal = function() {
-        var self = this;
-        self.y = 2;
+        this.y = 2;
     }, C;
 }())();
 c.x, c.y, c.m();

@@ -1,5 +1,5 @@
 //// [thisTypeErrors.ts]
-import _class_call_check from "@swc/helpers/src/_class_call_check.mjs";
+import { _ as _class_call_check } from "@swc/helpers/_/_class_call_check";
 var x1;
 var x2;
 var x3;
@@ -21,7 +21,9 @@ var C2 = /*#__PURE__*/ function() {
     };
     return C2;
 }();
-C2.y = undefined;
+(function() {
+    C2.y = undefined;
+})();
 var N1;
 (function(N1) {
     var x;

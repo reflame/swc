@@ -13,6 +13,7 @@ pub(super) enum MemberInit {
     PrivProp(PrivProp),
     PrivMethod(PrivMethod),
     PrivAccessor(PrivAccessor),
+    StaticBlock(Box<Expr>),
 }
 
 pub(super) struct PubProp {
@@ -102,7 +103,7 @@ impl MemberInitRecord {
                         )
                     } else {
                         (
-                            helper!(class_private_method_init, "classPrivateMethodInit"),
+                            helper!(class_private_method_init),
                             vec![ThisExpr { span: DUMMY_SP }.as_arg(), name.as_arg()],
                         )
                     };
@@ -122,7 +123,7 @@ impl MemberInitRecord {
                         callee: if self.c.private_as_properties {
                             obj_def_prop()
                         } else {
-                            helper!(class_private_field_init, "classPrivateFieldInit")
+                            helper!(class_private_field_init)
                         },
                         args: vec![
                             ThisExpr { span: DUMMY_SP }.as_arg(),
@@ -144,7 +145,7 @@ impl MemberInitRecord {
                         callee: if self.c.private_as_properties {
                             obj_def_prop()
                         } else {
-                            helper!(class_private_field_init, "classPrivateFieldInit")
+                            helper!(class_private_field_init)
                         },
                         args: vec![
                             ThisExpr { span: DUMMY_SP }.as_arg(),
@@ -170,7 +171,7 @@ impl MemberInitRecord {
                     } else {
                         Expr::Call(CallExpr {
                             span,
-                            callee: helper!(define_property, "defineProperty"),
+                            callee: helper!(define_property),
                             args: vec![
                                 ThisExpr { span: DUMMY_SP }.as_arg(),
                                 prop_name_to_expr_value(name).as_arg(),
@@ -181,6 +182,7 @@ impl MemberInitRecord {
                     }
                     .into(),
                 ),
+                MemberInit::StaticBlock(..) => unreachable!(),
             }
         }
 
@@ -212,7 +214,7 @@ impl MemberInitRecord {
                         } else {
                             Expr::Call(CallExpr {
                                 span,
-                                callee: helper!(define_property, "defineProperty"),
+                                callee: helper!(define_property),
                                 args: vec![
                                     class_ident.clone().as_arg(),
                                     prop_name_to_expr_value(name).as_arg(),
@@ -311,6 +313,7 @@ impl MemberInitRecord {
                         unreachable!()
                     }
                 }
+                MemberInit::StaticBlock(expr) => value_init.push(expr.into_stmt()),
             }
         }
 

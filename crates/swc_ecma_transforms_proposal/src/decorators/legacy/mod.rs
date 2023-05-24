@@ -82,7 +82,6 @@ impl TscDecorator {
             new.extend(
                 self.prepended_exprs
                     .drain(..)
-                    .into_iter()
                     .map(|expr| {
                         Stmt::Expr(ExprStmt {
                             span: DUMMY_SP,
@@ -97,7 +96,6 @@ impl TscDecorator {
             new.extend(
                 self.appended_exprs
                     .drain(..)
-                    .into_iter()
                     .map(|expr| {
                         Stmt::Expr(ExprStmt {
                             span: DUMMY_SP,
@@ -173,7 +171,7 @@ impl TscDecorator {
 
         self.appended_exprs.push(Box::new(Expr::Call(CallExpr {
             span: DUMMY_SP,
-            callee: helper!(ts, ts_decorate, "__decorate"),
+            callee: helper!(ts, ts_decorate),
             args: vec![decorators, target, key, desc],
             type_args: Default::default(),
         })));
@@ -270,7 +268,7 @@ impl VisitMut for TscDecorator {
 
                 let decorated = Box::new(Expr::Call(CallExpr {
                     span: DUMMY_SP,
-                    callee: helper!(ts, ts_decorate, "__decorate"),
+                    callee: helper!(ts, ts_decorate),
                     args: vec![decorators, class_name.clone().as_arg()],
                     type_args: Default::default(),
                 }));

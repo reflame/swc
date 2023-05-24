@@ -16,7 +16,7 @@ use swc_bundler::{Bundle, Bundler, Load, ModuleData, ModuleRecord};
 use swc_common::{
     errors::{ColorConfig, Handler},
     sync::Lrc,
-    FileName, Globals, Mark, SourceMap, Span, GLOBALS,
+    FileName, Mark, SourceMap, Span, GLOBALS,
 };
 use swc_ecma_ast::*;
 use swc_ecma_codegen::{
@@ -30,7 +30,7 @@ use swc_ecma_loader::{
 use swc_ecma_minifier::option::{
     CompressOptions, ExtraOptions, MangleOptions, MinifyOptions, TopLevelOptions,
 };
-use swc_ecma_parser::{parse_file_as_module, EsConfig, Syntax};
+use swc_ecma_parser::{parse_file_as_module, Syntax};
 use swc_ecma_transforms_base::fixer::fixer;
 use swc_ecma_visit::VisitMutWith;
 
@@ -73,7 +73,7 @@ fn do_test(_entry: &Path, entries: HashMap<String, FileName>, inline: bool, mini
     testing::run_test2(false, |cm, _| {
         let start = Instant::now();
 
-        let globals = Box::leak(Box::new(Globals::default()));
+        let globals = Box::leak(Box::default());
         let mut bundler = Bundler::new(
             globals,
             cm.clone(),
@@ -233,9 +233,7 @@ impl Load for Loader {
 
         let module = parse_file_as_module(
             &fm,
-            Syntax::Es(EsConfig {
-                ..Default::default()
-            }),
+            Syntax::Es(Default::default()),
             EsVersion::Es2020,
             None,
             &mut vec![],
