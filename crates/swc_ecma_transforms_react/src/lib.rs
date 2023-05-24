@@ -61,7 +61,6 @@ where
             top_level_mark
         ),
         refresh_setup(development, refresh_setup_options),
-        jsx(cm, comments.clone(), options, top_level_mark),
         jsx(
             cm,
             comments.clone(),
