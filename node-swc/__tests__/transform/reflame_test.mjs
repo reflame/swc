@@ -6,19 +6,18 @@ const __dirname =path.dirname(fileURLToPath(import.meta.url));
 
 it("should support rewriteRelativeImports", async () => {
   const { code } = await swc.transform(
-      `
-      import './blah.ts'
+      `import '../blah.ts'
 
-      export const test = () => {
-        import("./blah2.ts")
-      }
-      `,
+export const test = () => {
+  import("./blah2.ts")
+}
+`,
       {
           // isModule: true,
           module: {
             type: 'es6'
           },
-          filename: '~r/index.ts',
+          filename: '~r/test/index.ts',
           jsc: {
             parser: {
               syntax: "typescript",
@@ -34,13 +33,8 @@ it("should support rewriteRelativeImports", async () => {
           }
       }
   );
-  expect(code).toMatchInlineSnapshot(`
-      "
-      import '~r/blah.ts'
-
-      export const test = () => {
-        import("~r/blah2.ts")
-      }
-      "
-  `);
+  expect(code).toEqual(`import "~r/blah.ts";
+export const test = ()=>{
+    import("~r/test/blah2.ts");
+};\n`);
 });
