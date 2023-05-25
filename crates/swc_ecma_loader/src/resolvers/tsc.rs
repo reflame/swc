@@ -36,7 +36,22 @@ where
 {
     fn wrap(&self, path: Option<PathBuf>) -> Result<FileName, Error> {
         if let Some(path) = path {
-            return Ok(FileName::Custom(path.to_str().unwrap().to_string()));
+            if cfg!(debug_assertions) {
+                // info!(
+                //     base_url = tracing::field::display(base_url.display()),
+                //     "jsc.paths"
+                // );
+                info!(
+                    // base_dir,
+                    // module_specifier,
+                    path_to_string = path.to_str().unwrap().to_string(),
+                    filename = FileName::Real(path.to_str().unwrap().into()).to_string(),
+                    // base_dir.join(module_specifier).display(),
+                    "tsc wrap",
+                );
+            }
+
+            return Ok(FileName::Real(path.to_str().unwrap().into()));
         }
         bail!("index not found")
     }
@@ -177,10 +192,7 @@ where
                 _ => bail!("tsc-resolver supports only files"),
             };
 
-            let base_dir = {
-                let cwd = &Path::new(".");
-                Path::new("/").join(base.parent().unwrap())
-            };
+            let base_dir = base.parent().unwrap();
 
             if cfg!(debug_assertions) {
                 // info!(

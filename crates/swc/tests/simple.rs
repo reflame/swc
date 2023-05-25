@@ -177,7 +177,7 @@ fn compile(src: &str, options: Options) -> String {
 #[test]
 fn reflame() {
     let source = "import './blah.ts'";
-    let expected = "import '~r/blah.ts'";
+    let expected = "import \"~r/blah.ts\";\n";
 
     let compiled = compile(
         source,

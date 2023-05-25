@@ -14,7 +14,7 @@ use swc_common::{FileName, Mark, Span, DUMMY_SP};
 use swc_ecma_ast::*;
 use swc_ecma_loader::resolve::Resolve;
 use swc_ecma_utils::{quote_ident, ExprFactory};
-use tracing::{debug, trace, warn, Level};
+use tracing::{debug, info, trace, warn, Level};
 
 pub(crate) enum Resolver {
     Real {
@@ -170,6 +170,14 @@ where
             }
         };
 
+        if cfg!(debug_assertions) {
+            info!(target = target.to_string(), "target initial");
+        }
+
+        if true {
+            return Ok(target.to_string().into());
+        }
+
         let mut target = match target {
             FileName::Real(v) => v,
             FileName::Custom(s) => return Ok(to_specifier(&s, orig_ext)),
@@ -180,6 +188,10 @@ where
                 )
             }
         };
+
+        if cfg!(debug_assertions) {
+            info!(target = target.to_str(), "target next");
+        }
         let mut base = match base {
             FileName::Real(v) => Cow::Borrowed(v),
             FileName::Anon => {
@@ -202,6 +214,10 @@ where
             target = absolute_path(&target)?;
         }
 
+        if cfg!(debug_assertions) {
+            info!(target = target.to_str(), "target absolute");
+        }
+
         let rel_path = diff_paths(
             &target,
             match base.parent() {
@@ -210,10 +226,21 @@ where
             },
         );
 
+        if cfg!(debug_assertions) {
+            info!(
+                rel_path = rel_path.clone().unwrap().to_str(),
+                "rel_path initial"
+            );
+        }
+
         let rel_path = match rel_path {
             Some(v) => v,
             None => return Ok(to_specifier(&target.display().to_string(), orig_ext)),
         };
+
+        if cfg!(debug_assertions) {
+            info!(rel_path = rel_path.clone().to_str(), "rel_path next");
+        }
 
         {
             // Check for `node_modules`.
