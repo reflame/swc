@@ -1,6 +1,7 @@
-use std::path::{Component, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{bail, Context, Error};
+use path_clean::PathClean;
 use swc_common::FileName;
 use tracing::{debug, info, trace, Level};
 
@@ -33,6 +34,13 @@ impl<R> TsConfigResolver<R>
 where
     R: Resolve,
 {
+    fn wrap(&self, path: Option<PathBuf>) -> Result<FileName, Error> {
+        if let Some(path) = path {
+            return Ok(FileName::Custom(path.to_str().unwrap().to_string()));
+        }
+        bail!("index not found")
+    }
+
     ///
     /// # Parameters
     ///
@@ -101,11 +109,43 @@ where
     }
 }
 
+// https://github.com/rust-lang/cargo/blob/2b3356c91b60d185c5f8ef2dad0971bf80e0ea8b/crates/cargo-util/src/paths.rs#LL82C1-L107C2
+fn normalize_path(path: PathBuf) -> PathBuf {
+    let mut components = path.components().peekable();
+    let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
+        components.next();
+        PathBuf::from(c.as_os_str())
+    } else {
+        PathBuf::new()
+    };
+
+    for component in components {
+        match component {
+            Component::Prefix(..) => unreachable!(),
+            Component::RootDir => {
+                ret.push(component.as_os_str());
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                ret.pop();
+            }
+            Component::Normal(c) => {
+                ret.push(c);
+            }
+        }
+    }
+    ret
+}
+
 impl<R> Resolve for TsConfigResolver<R>
 where
     R: Resolve,
 {
     fn resolve(&self, base: &FileName, module_specifier: &str) -> Result<FileName, Error> {
+        if cfg!(debug_assertions) {
+            debug!("invoking tsc resolve");
+        }
+
         let _tracing = if cfg!(debug_assertions) {
             Some(
                 tracing::span!(
@@ -126,111 +166,151 @@ where
                 || module_specifier.starts_with("./")
                 || module_specifier.starts_with("../"))
         {
-            return self
-                .inner
-                .resolve(base, module_specifier)
-                .context("not processed by tsc resolver because it's relative import");
-        }
+            if cfg!(debug_assertions) {
+                debug!("tsc resolve relative");
+            }
 
-        if cfg!(debug_assertions) {
-            debug!("non-relative import");
-        }
+            // bail!("tsc-resolver relative")
 
-        if let FileName::Real(v) = base {
-            if v.components().any(|c| match c {
-                Component::Normal(v) => v == "node_modules",
-                _ => false,
-            }) {
-                return self.inner.resolve(base, module_specifier).context(
-                    "not processed by tsc resolver because base module is in node_modules",
+            let base = match base {
+                FileName::Real(v) => v,
+                _ => bail!("tsc-resolver supports only files"),
+            };
+
+            let base_dir = {
+                let cwd = &Path::new(".");
+                Path::new("/").join(base.parent().unwrap())
+            };
+
+            if cfg!(debug_assertions) {
+                // info!(
+                //     base_url = tracing::field::display(base_url.display()),
+                //     "jsc.paths"
+                // );
+                info!(
+                    // base_dir,
+                    // module_specifier,
+                    base = tracing::field::display(base.display()),
+                    base_dir = tracing::field::display(base_dir.display()),
+                    base_is_file = tracing::field::display(base.is_file()),
+                    base_parent = tracing::field::display(base.parent().unwrap().display()),
+                    base_dir_joint = tracing::field::display(
+                        normalize_path(base_dir.join(module_specifier)).display()
+                    ),
+                    // base_dir.join(module_specifier).display(),
+                    "tsc resolve relative",
                 );
             }
+
+            return self.wrap(Some(normalize_path(base_dir.join(module_specifier))));
+
+            // return self.inner.resolve(base, module_specifier).context(
+            //     "not processed by tsc resolver because it's relative
+            // import",
+            // );
         }
 
-        // https://www.typescriptlang.org/docs/handbook/module-resolution.html#path-mapping
-        for (from, to) in &self.paths {
-            match from {
-                Pattern::Wildcard { prefix } => {
-                    let extra = module_specifier.strip_prefix(prefix);
-                    let extra = match extra {
-                        Some(v) => v,
-                        None => {
-                            if cfg!(debug_assertions) {
-                                trace!("skip because src doesn't start with prefix");
-                            }
-                            continue;
-                        }
-                    };
+        bail!("tsc-resolver past relative");
 
-                    if cfg!(debug_assertions) {
-                        trace!("extra = {}", extra);
-                    }
+        // if cfg!(debug_assertions) {
+        //     debug!("non-relative import");
+        // }
 
-                    let mut errors = vec![];
-                    for target in to {
-                        let mut replaced = target.replace('*', extra);
-                        let rel = format!("./{}", replaced);
+        // if let FileName::Real(v) = base {
+        //     if v.components().any(|c| match c {
+        //         Component::Normal(v) => v == "node_modules",
+        //         _ => false,
+        //     }) {
+        //         return self.inner.resolve(base, module_specifier).context(
+        //             "not processed by tsc resolver because base module is in
+        // node_modules",         );
+        //     }
+        // }
 
-                        let res = self.inner.resolve(base, &rel).with_context(|| {
-                            format!(
-                                "failed to resolve `{}`, which is expanded from `{}`",
-                                replaced, module_specifier
-                            )
-                        });
+        // // https://www.typescriptlang.org/docs/handbook/module-resolution.html#path-mapping
+        // for (from, to) in &self.paths {
+        //     match from {
+        //         Pattern::Wildcard { prefix } => {
+        //             let extra = module_specifier.strip_prefix(prefix);
+        //             let extra = match extra {
+        //                 Some(v) => v,
+        //                 None => {
+        //                     if cfg!(debug_assertions) {
+        //                         trace!("skip because src doesn't start with
+        // prefix");                     }
+        //                     continue;
+        //                 }
+        //             };
 
-                        errors.push(match res {
-                            Ok(v) => return Ok(v),
-                            Err(err) => err,
-                        });
+        //             if cfg!(debug_assertions) {
+        //                 trace!("extra = {}", extra);
+        //             }
 
-                        if cfg!(target_os = "windows") {
-                            if replaced.starts_with("./") {
-                                replaced = replaced[2..].to_string();
-                            }
-                            replaced = replaced.replace('/', "\\");
-                        }
+        //             let mut errors = vec![];
+        //             for target in to {
+        //                 let mut replaced = target.replace('*', extra);
+        //                 let rel = format!("./{}", replaced);
 
-                        if to.len() == 1 {
-                            return Ok(FileName::Real(self.base_url.join(replaced)));
-                        }
-                    }
+        //                 let res = self.inner.resolve(base,
+        // &rel).with_context(|| {                     format!(
+        //                         "failed to resolve `{}`, which is expanded
+        // from `{}`",                         replaced,
+        // module_specifier                     )
+        //                 });
 
-                    bail!(
-                        "`{}` matched `{}` (from tsconfig.paths) but failed to resolve:\n{:?}",
-                        module_specifier,
-                        prefix,
-                        errors
-                    )
-                }
-                Pattern::Exact(from) => {
-                    // Should be exactly matched
-                    if module_specifier == from {
-                        let replaced = self.base_url.join(&to[0]);
-                        if replaced.exists() {
-                            return Ok(FileName::Real(replaced));
-                        }
+        //                 errors.push(match res {
+        //                     Ok(v) => return Ok(v),
+        //                     Err(err) => err,
+        //                 });
 
-                        return self
-                            .inner
-                            .resolve(base, &format!("./{}", &to[0]))
-                            .with_context(|| {
-                                format!(
-                                    "tried to resolve `{}` because `{}` was exactly matched",
-                                    to[0], from
-                                )
-                            });
-                    }
-                }
-            }
-        }
+        //                 if cfg!(target_os = "windows") {
+        //                     if replaced.starts_with("./") {
+        //                         replaced = replaced[2..].to_string();
+        //                     }
+        //                     replaced = replaced.replace('/', "\\");
+        //                 }
 
-        if let Ok(v) = self
-            .inner
-            .resolve(&self.base_url_filename, module_specifier)
-        {
-            return Ok(v);
-        }
+        //                 if to.len() == 1 {
+        //                     return
+        // Ok(FileName::Real(self.base_url.join(replaced)));
+        // }             }
 
-        self.inner.resolve(base, module_specifier)
+        //             bail!(
+        //                 "`{}` matched `{}` (from tsconfig.paths) but failed
+        // to resolve:\n{:?}",                 module_specifier,
+        //                 prefix,
+        //                 errors
+        //             )
+        //         }
+        //         Pattern::Exact(from) => {
+        //             // Should be exactly matched
+        //             if module_specifier == from {
+        //                 let replaced = self.base_url.join(&to[0]);
+        //                 if replaced.exists() {
+        //                     return Ok(FileName::Real(replaced));
+        //                 }
+
+        //                 return self
+        //                     .inner
+        //                     .resolve(base, &format!("./{}", &to[0]))
+        //                     .with_context(|| {
+        //                         format!(
+        //                             "tried to resolve `{}` because `{}` was
+        // exactly matched",                             to[0], from
+        //                         )
+        //                     });
+        //             }
+        //         }
+        //     }
+        // }
+
+        // if let Ok(v) = self
+        //     .inner
+        //     .resolve(&self.base_url_filename, module_specifier)
+        // {
+        //     return Ok(v);
+        // }
+
+        // self.inner.resolve(base, module_specifier)
     }
 }

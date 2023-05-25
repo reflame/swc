@@ -157,6 +157,11 @@ where
         });
 
         let target = self.resolver.resolve(base, module_specifier);
+
+        if cfg!(debug_assertions) {
+            debug!("invoked resolver");
+        }
+
         let target = match target {
             Ok(v) => v,
             Err(err) => {
