@@ -175,7 +175,7 @@ fn compile(src: &str, options: Options) -> String {
 // }
 
 #[test]
-fn reflame() {
+fn rewrite_relative_imports() {
     let source = "import './blah.ts'";
     let expected = "import \"~r/blah.ts\";\n";
 
@@ -189,7 +189,7 @@ fn reflame() {
                 module: Some(swc::config::ModuleConfig::Es6),
 
                 jsc: JscConfig {
-                    // syntax: Some(Syntax::Es(Default::default())),
+                    rewrite_relative_imports: true.into(),
                     ..Default::default()
                 },
                 ..Default::default()

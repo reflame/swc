@@ -86,14 +86,18 @@ where
     R: Resolve,
 {
     resolver: R,
+    rewrite_relative_imports: bool,
 }
 
 impl<R> NodeImportResolver<R>
 where
     R: Resolve,
 {
-    pub fn new(resolver: R) -> Self {
-        Self { resolver }
+    pub fn new(resolver: R, rewrite_relative_imports: bool) -> Self {
+        Self {
+            resolver,
+            rewrite_relative_imports,
+        }
     }
 }
 
@@ -174,7 +178,7 @@ where
             info!(target = target.to_string(), "target initial");
         }
 
-        if true {
+        if self.rewrite_relative_imports {
             return Ok(target.to_string().into());
         }
 

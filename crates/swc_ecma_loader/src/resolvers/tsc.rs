@@ -28,6 +28,7 @@ where
     base_url: PathBuf,
     base_url_filename: FileName,
     paths: Vec<(Pattern, Vec<String>)>,
+    rewrite_relative_imports: bool,
 }
 
 impl<R> TsConfigResolver<R>
@@ -73,7 +74,12 @@ where
     /// See https://www.typescriptlang.org/tsconfig#paths
     ///
     /// Note that this is not a hashmap because value is not used as a hash map.
-    pub fn new(inner: R, base_url: PathBuf, paths: Vec<(String, Vec<String>)>) -> Self {
+    pub fn new(
+        inner: R,
+        base_url: PathBuf,
+        paths: Vec<(String, Vec<String>)>,
+        rewrite_relative_imports: bool,
+    ) -> Self {
         if cfg!(debug_assertions) {
             info!(
                 base_url = tracing::field::display(base_url.display()),
@@ -120,6 +126,7 @@ where
             base_url_filename: FileName::Real(base_url.clone()),
             base_url,
             paths,
+            rewrite_relative_imports,
         }
     }
 }
@@ -181,148 +188,155 @@ where
                 || module_specifier.starts_with("./")
                 || module_specifier.starts_with("../"))
         {
-            if cfg!(debug_assertions) {
-                debug!("tsc resolve relative");
+            if self.rewrite_relative_imports {
+                if cfg!(debug_assertions) {
+                    debug!("tsc resolve relative");
+                }
+
+                // bail!("tsc-resolver relative")
+
+                let base = match base {
+                    FileName::Real(v) => v,
+                    _ => bail!("tsc-resolver supports only files"),
+                };
+
+                let base_dir = base.parent().unwrap();
+
+                if cfg!(debug_assertions) {
+                    // info!(
+                    //     base_url = tracing::field::display(base_url.display()),
+                    //     "jsc.paths"
+                    // );
+                    info!(
+                        // base_dir,
+                        // module_specifier,
+                        base = tracing::field::display(base.display()),
+                        base_dir = tracing::field::display(base_dir.display()),
+                        base_is_file = tracing::field::display(base.is_file()),
+                        base_parent = tracing::field::display(base.parent().unwrap().display()),
+                        base_dir_joint = tracing::field::display(
+                            normalize_path(base_dir.join(module_specifier)).display()
+                        ),
+                        // base_dir.join(module_specifier).display(),
+                        "tsc resolve relative",
+                    );
+                }
+
+                return self.wrap(Some(normalize_path(base_dir.join(module_specifier))));
             }
 
-            // bail!("tsc-resolver relative")
-
-            let base = match base {
-                FileName::Real(v) => v,
-                _ => bail!("tsc-resolver supports only files"),
-            };
-
-            let base_dir = base.parent().unwrap();
-
-            if cfg!(debug_assertions) {
-                // info!(
-                //     base_url = tracing::field::display(base_url.display()),
-                //     "jsc.paths"
-                // );
-                info!(
-                    // base_dir,
-                    // module_specifier,
-                    base = tracing::field::display(base.display()),
-                    base_dir = tracing::field::display(base_dir.display()),
-                    base_is_file = tracing::field::display(base.is_file()),
-                    base_parent = tracing::field::display(base.parent().unwrap().display()),
-                    base_dir_joint = tracing::field::display(
-                        normalize_path(base_dir.join(module_specifier)).display()
-                    ),
-                    // base_dir.join(module_specifier).display(),
-                    "tsc resolve relative",
-                );
-            }
-
-            return self.wrap(Some(normalize_path(base_dir.join(module_specifier))));
-
-            // return self.inner.resolve(base, module_specifier).context(
-            //     "not processed by tsc resolver because it's relative
-            // import",
-            // );
+            return self.inner.resolve(base, module_specifier).context(
+                "not processed by tsc resolver because it's relative
+            import",
+            );
         }
 
-        bail!("tsc-resolver past relative");
+        if cfg!(debug_assertions) {
+            debug!("non-relative import");
+        }
 
-        // if cfg!(debug_assertions) {
-        //     debug!("non-relative import");
-        // }
+        if let FileName::Real(v) = base {
+            if v.components().any(|c| match c {
+                Component::Normal(v) => v == "node_modules",
+                _ => false,
+            }) {
+                return self.inner.resolve(base, module_specifier).context(
+                    "not processed by tsc resolver because base module is in
+        node_modules",
+                );
+            }
+        }
 
-        // if let FileName::Real(v) = base {
-        //     if v.components().any(|c| match c {
-        //         Component::Normal(v) => v == "node_modules",
-        //         _ => false,
-        //     }) {
-        //         return self.inner.resolve(base, module_specifier).context(
-        //             "not processed by tsc resolver because base module is in
-        // node_modules",         );
-        //     }
-        // }
+        // https://www.typescriptlang.org/docs/handbook/module-resolution.html#path-mapping
+        for (from, to) in &self.paths {
+            match from {
+                Pattern::Wildcard { prefix } => {
+                    let extra = module_specifier.strip_prefix(prefix);
+                    let extra = match extra {
+                        Some(v) => v,
+                        None => {
+                            if cfg!(debug_assertions) {
+                                trace!(
+                                    "skip because src doesn't start with
+        prefix"
+                                );
+                            }
+                            continue;
+                        }
+                    };
 
-        // // https://www.typescriptlang.org/docs/handbook/module-resolution.html#path-mapping
-        // for (from, to) in &self.paths {
-        //     match from {
-        //         Pattern::Wildcard { prefix } => {
-        //             let extra = module_specifier.strip_prefix(prefix);
-        //             let extra = match extra {
-        //                 Some(v) => v,
-        //                 None => {
-        //                     if cfg!(debug_assertions) {
-        //                         trace!("skip because src doesn't start with
-        // prefix");                     }
-        //                     continue;
-        //                 }
-        //             };
+                    if cfg!(debug_assertions) {
+                        trace!("extra = {}", extra);
+                    }
 
-        //             if cfg!(debug_assertions) {
-        //                 trace!("extra = {}", extra);
-        //             }
+                    let mut errors = vec![];
+                    for target in to {
+                        let mut replaced = target.replace('*', extra);
+                        let rel = format!("./{}", replaced);
 
-        //             let mut errors = vec![];
-        //             for target in to {
-        //                 let mut replaced = target.replace('*', extra);
-        //                 let rel = format!("./{}", replaced);
+                        let res = self.inner.resolve(base, &rel).with_context(|| {
+                            format!(
+                                "failed to resolve `{}`, which is expanded
+        from `{}`",
+                                replaced, module_specifier
+                            )
+                        });
 
-        //                 let res = self.inner.resolve(base,
-        // &rel).with_context(|| {                     format!(
-        //                         "failed to resolve `{}`, which is expanded
-        // from `{}`",                         replaced,
-        // module_specifier                     )
-        //                 });
+                        errors.push(match res {
+                            Ok(v) => return Ok(v),
+                            Err(err) => err,
+                        });
 
-        //                 errors.push(match res {
-        //                     Ok(v) => return Ok(v),
-        //                     Err(err) => err,
-        //                 });
+                        if cfg!(target_os = "windows") {
+                            if replaced.starts_with("./") {
+                                replaced = replaced[2..].to_string();
+                            }
+                            replaced = replaced.replace('/', "\\");
+                        }
 
-        //                 if cfg!(target_os = "windows") {
-        //                     if replaced.starts_with("./") {
-        //                         replaced = replaced[2..].to_string();
-        //                     }
-        //                     replaced = replaced.replace('/', "\\");
-        //                 }
+                        if to.len() == 1 {
+                            return Ok(FileName::Real(self.base_url.join(replaced)));
+                        }
+                    }
 
-        //                 if to.len() == 1 {
-        //                     return
-        // Ok(FileName::Real(self.base_url.join(replaced)));
-        // }             }
+                    bail!(
+                        "`{}` matched `{}` (from tsconfig.paths) but failed
+        to resolve:\n{:?}",
+                        module_specifier,
+                        prefix,
+                        errors
+                    )
+                }
+                Pattern::Exact(from) => {
+                    // Should be exactly matched
+                    if module_specifier == from {
+                        let replaced = self.base_url.join(&to[0]);
+                        if replaced.exists() {
+                            return Ok(FileName::Real(replaced));
+                        }
 
-        //             bail!(
-        //                 "`{}` matched `{}` (from tsconfig.paths) but failed
-        // to resolve:\n{:?}",                 module_specifier,
-        //                 prefix,
-        //                 errors
-        //             )
-        //         }
-        //         Pattern::Exact(from) => {
-        //             // Should be exactly matched
-        //             if module_specifier == from {
-        //                 let replaced = self.base_url.join(&to[0]);
-        //                 if replaced.exists() {
-        //                     return Ok(FileName::Real(replaced));
-        //                 }
+                        return self
+                            .inner
+                            .resolve(base, &format!("./{}", &to[0]))
+                            .with_context(|| {
+                                format!(
+                                    "tried to resolve `{}` because `{}` was
+        exactly matched",
+                                    to[0], from
+                                )
+                            });
+                    }
+                }
+            }
+        }
 
-        //                 return self
-        //                     .inner
-        //                     .resolve(base, &format!("./{}", &to[0]))
-        //                     .with_context(|| {
-        //                         format!(
-        //                             "tried to resolve `{}` because `{}` was
-        // exactly matched",                             to[0], from
-        //                         )
-        //                     });
-        //             }
-        //         }
-        //     }
-        // }
+        if let Ok(v) = self
+            .inner
+            .resolve(&self.base_url_filename, module_specifier)
+        {
+            return Ok(v);
+        }
 
-        // if let Ok(v) = self
-        //     .inner
-        //     .resolve(&self.base_url_filename, module_specifier)
-        // {
-        //     return Ok(v);
-        // }
-
-        // self.inner.resolve(base, module_specifier)
+        self.inner.resolve(base, module_specifier)
     }
 }
