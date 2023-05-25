@@ -355,10 +355,12 @@ impl Options {
             experimental,
             lints,
             preserve_all_comments,
+            rewrite_relative_imports,
             ..
         } = cfg.jsc;
         let loose = loose.into_bool();
         let preserve_all_comments = preserve_all_comments.into_bool();
+        let rewrite_relative_imports = rewrite_relative_imports.into_bool();
         let keep_class_names = keep_class_names.into_bool();
         let external_helpers = external_helpers.into_bool();
 
@@ -642,6 +644,7 @@ impl Options {
             syntax,
             cfg.module,
             comments,
+            rewrite_relative_imports,
         );
 
         let keep_import_assertions = experimental.keep_import_assertions.into_bool();
@@ -1367,6 +1370,9 @@ pub struct JscConfig {
     pub preserve_all_comments: BoolConfig<false>,
 
     #[serde(default)]
+    pub rewrite_relative_imports: BoolConfig<false>,
+
+    #[serde(default)]
     pub output: JscOutputConfig,
 }
 
@@ -1483,6 +1489,7 @@ impl ModuleConfig {
         unresolved_mark: Mark,
         config: Option<ModuleConfig>,
         available_features: FeatureFlag,
+        rewrite_relative_imports: bool,
     ) -> Box<dyn swc_ecma_visit::Fold + 'cmt> {
         let base = match base {
             FileName::Real(v) if !paths.is_empty() => {
@@ -1490,14 +1497,15 @@ impl ModuleConfig {
             }
             _ => base.clone(),
         };
-        let skip_resolver = base_url.as_os_str().is_empty() && paths.is_empty();
+        let skip_resolver =
+            base_url.as_os_str().is_empty() && paths.is_empty() && !rewrite_relative_imports;
 
         match config {
             None | Some(ModuleConfig::Es6) | Some(ModuleConfig::NodeNext) => {
                 if skip_resolver {
                     Box::new(noop())
                 } else {
-                    let resolver = build_resolver(base_url, paths);
+                    let resolver = build_resolver(base_url, paths, rewrite_relative_imports);
 
                     Box::new(import_rewriter(base, resolver))
                 }
@@ -1511,7 +1519,7 @@ impl ModuleConfig {
                         comments,
                     ))
                 } else {
-                    let resolver = build_resolver(base_url, paths);
+                    let resolver = build_resolver(base_url, paths, rewrite_relative_imports);
                     Box::new(modules::common_js::common_js_with_resolver(
                         resolver,
                         base,
@@ -1532,7 +1540,7 @@ impl ModuleConfig {
                         comments,
                     ))
                 } else {
-                    let resolver = build_resolver(base_url, paths);
+                    let resolver = build_resolver(base_url, paths, rewrite_relative_imports);
 
                     Box::new(modules::umd::umd_with_resolver(
                         cm,
@@ -1554,7 +1562,7 @@ impl ModuleConfig {
                         comments,
                     ))
                 } else {
-                    let resolver = build_resolver(base_url, paths);
+                    let resolver = build_resolver(base_url, paths, rewrite_relative_imports);
 
                     Box::new(modules::amd::amd_with_resolver(
                         resolver,
@@ -1570,7 +1578,7 @@ impl ModuleConfig {
                 if skip_resolver {
                     Box::new(modules::system_js::system_js(unresolved_mark, config))
                 } else {
-                    let resolver = build_resolver(base_url, paths);
+                    let resolver = build_resolver(base_url, paths, rewrite_relative_imports);
 
                     Box::new(modules::system_js::system_js_with_resolver(
                         resolver,
@@ -1897,7 +1905,11 @@ fn default_env_name() -> String {
     }
 }
 
-fn build_resolver(base_url: PathBuf, paths: CompiledPaths) -> Box<SwcImportResolver> {
+fn build_resolver(
+    base_url: PathBuf,
+    paths: CompiledPaths,
+    rewrite_relative_imports: bool,
+) -> Box<SwcImportResolver> {
     static CACHE: Lazy<DashMap<(PathBuf, CompiledPaths), SwcImportResolver, ahash::RandomState>> =
         Lazy::new(Default::default);
 
@@ -1910,10 +1922,11 @@ fn build_resolver(base_url: PathBuf, paths: CompiledPaths) -> Box<SwcImportResol
             NodeModulesResolver::new(Default::default(), Default::default(), true),
             base_url.clone(),
             paths.clone(),
+            rewrite_relative_imports,
         );
         let r = CachingResolver::new(40, r);
 
-        let r = NodeImportResolver::new(r);
+        let r = NodeImportResolver::new(r, rewrite_relative_imports);
         Arc::new(r)
     };
 

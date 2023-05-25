@@ -178,6 +178,7 @@ impl<'a, 'b, P: swc_ecma_visit::Fold> PassBuilder<'a, 'b, P> {
         syntax: Syntax,
         module: Option<ModuleConfig>,
         comments: Option<&'cmt SingleThreadedComments>,
+        rewrite_relative_imports: bool,
     ) -> impl 'cmt + swc_ecma_visit::Fold
     where
         P: 'cmt,
@@ -353,7 +354,8 @@ impl<'a, 'b, P: swc_ecma_visit::Fold> PassBuilder<'a, 'b, P> {
                 base,
                 self.unresolved_mark,
                 module,
-                feature_flag
+                feature_flag,
+                rewrite_relative_imports,
             ),
             as_folder(MinifierPass {
                 options: self.minify,

@@ -1,6 +1,7 @@
-use std::path::{Component, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{bail, Context, Error};
+use path_clean::PathClean;
 use swc_common::FileName;
 use tracing::{debug, info, trace, Level};
 
@@ -27,6 +28,7 @@ where
     base_url: PathBuf,
     base_url_filename: FileName,
     paths: Vec<(Pattern, Vec<String>)>,
+    rewrite_relative_imports: bool,
 }
 
 impl<R> TsConfigResolver<R>
@@ -50,7 +52,12 @@ where
     /// See https://www.typescriptlang.org/tsconfig#paths
     ///
     /// Note that this is not a hashmap because value is not used as a hash map.
-    pub fn new(inner: R, base_url: PathBuf, paths: Vec<(String, Vec<String>)>) -> Self {
+    pub fn new(
+        inner: R,
+        base_url: PathBuf,
+        paths: Vec<(String, Vec<String>)>,
+        rewrite_relative_imports: bool,
+    ) -> Self {
         if cfg!(debug_assertions) {
             info!(
                 base_url = tracing::field::display(base_url.display()),
@@ -97,8 +104,38 @@ where
             base_url_filename: FileName::Real(base_url.clone()),
             base_url,
             paths,
+            rewrite_relative_imports,
         }
     }
+}
+
+// Workaround for https://www.reddit.com/r/rust/comments/hkkquy/anyone_knows_how_to_fscanonicalize_but_without/
+// https://github.com/rust-lang/cargo/blob/2b3356c91b60d185c5f8ef2dad0971bf80e0ea8b/crates/cargo-util/src/paths.rs#LL82C1-L107C2
+fn normalize_path(path: PathBuf) -> PathBuf {
+    let mut components = path.components().peekable();
+    let mut ret = if let Some(c @ Component::Prefix(..)) = components.peek().cloned() {
+        components.next();
+        PathBuf::from(c.as_os_str())
+    } else {
+        PathBuf::new()
+    };
+
+    for component in components {
+        match component {
+            Component::Prefix(..) => unreachable!(),
+            Component::RootDir => {
+                ret.push(component.as_os_str());
+            }
+            Component::CurDir => {}
+            Component::ParentDir => {
+                ret.pop();
+            }
+            Component::Normal(c) => {
+                ret.push(c);
+            }
+        }
+    }
+    ret
 }
 
 impl<R> Resolve for TsConfigResolver<R>
@@ -126,6 +163,19 @@ where
                 || module_specifier.starts_with("./")
                 || module_specifier.starts_with("../"))
         {
+            if self.rewrite_relative_imports {
+                let base = match base {
+                    FileName::Real(v) => v,
+                    _ => bail!("tsc-resolver supports only files"),
+                };
+
+                let base_dir = base.parent().unwrap();
+
+                return Ok(FileName::Real(
+                    normalize_path(base_dir.join(module_specifier)).into(),
+                ));
+            }
+
             return self
                 .inner
                 .resolve(base, module_specifier)

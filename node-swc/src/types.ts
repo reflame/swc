@@ -671,6 +671,8 @@ export interface JscConfig {
   minify?: JsMinifyOptions;
 
   preserveAllComments?: boolean;
+
+  rewriteRelativeImports?: boolean;
 }
 
 export type JscTarget =
