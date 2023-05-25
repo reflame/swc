@@ -1497,8 +1497,8 @@ impl ModuleConfig {
             }
             _ => base.clone(),
         };
-        // let skip_resolver = base_url.as_os_str().is_empty() && paths.is_empty();
-        let skip_resolver = false;
+        let skip_resolver =
+            base_url.as_os_str().is_empty() && paths.is_empty() && !rewrite_relative_imports;
 
         match config {
             None | Some(ModuleConfig::Es6) | Some(ModuleConfig::NodeNext) => {

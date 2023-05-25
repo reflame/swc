@@ -35,28 +35,6 @@ impl<R> TsConfigResolver<R>
 where
     R: Resolve,
 {
-    fn wrap(&self, path: Option<PathBuf>) -> Result<FileName, Error> {
-        if let Some(path) = path {
-            if cfg!(debug_assertions) {
-                // info!(
-                //     base_url = tracing::field::display(base_url.display()),
-                //     "jsc.paths"
-                // );
-                info!(
-                    // base_dir,
-                    // module_specifier,
-                    path_to_string = path.to_str().unwrap().to_string(),
-                    filename = FileName::Real(path.to_str().unwrap().into()).to_string(),
-                    // base_dir.join(module_specifier).display(),
-                    "tsc wrap",
-                );
-            }
-
-            return Ok(FileName::Real(path.to_str().unwrap().into()));
-        }
-        bail!("index not found")
-    }
-
     ///
     /// # Parameters
     ///
@@ -131,6 +109,7 @@ where
     }
 }
 
+// Workaround for https://www.reddit.com/r/rust/comments/hkkquy/anyone_knows_how_to_fscanonicalize_but_without/
 // https://github.com/rust-lang/cargo/blob/2b3356c91b60d185c5f8ef2dad0971bf80e0ea8b/crates/cargo-util/src/paths.rs#LL82C1-L107C2
 fn normalize_path(path: PathBuf) -> PathBuf {
     let mut components = path.components().peekable();
@@ -164,10 +143,6 @@ where
     R: Resolve,
 {
     fn resolve(&self, base: &FileName, module_specifier: &str) -> Result<FileName, Error> {
-        if cfg!(debug_assertions) {
-            debug!("invoking tsc resolve");
-        }
-
         let _tracing = if cfg!(debug_assertions) {
             Some(
                 tracing::span!(
@@ -189,12 +164,6 @@ where
                 || module_specifier.starts_with("../"))
         {
             if self.rewrite_relative_imports {
-                if cfg!(debug_assertions) {
-                    debug!("tsc resolve relative");
-                }
-
-                // bail!("tsc-resolver relative")
-
                 let base = match base {
                     FileName::Real(v) => v,
                     _ => bail!("tsc-resolver supports only files"),
@@ -202,33 +171,15 @@ where
 
                 let base_dir = base.parent().unwrap();
 
-                if cfg!(debug_assertions) {
-                    // info!(
-                    //     base_url = tracing::field::display(base_url.display()),
-                    //     "jsc.paths"
-                    // );
-                    info!(
-                        // base_dir,
-                        // module_specifier,
-                        base = tracing::field::display(base.display()),
-                        base_dir = tracing::field::display(base_dir.display()),
-                        base_is_file = tracing::field::display(base.is_file()),
-                        base_parent = tracing::field::display(base.parent().unwrap().display()),
-                        base_dir_joint = tracing::field::display(
-                            normalize_path(base_dir.join(module_specifier)).display()
-                        ),
-                        // base_dir.join(module_specifier).display(),
-                        "tsc resolve relative",
-                    );
-                }
-
-                return self.wrap(Some(normalize_path(base_dir.join(module_specifier))));
+                return Ok(FileName::Real(
+                    normalize_path(base_dir.join(module_specifier)).into(),
+                ));
             }
 
-            return self.inner.resolve(base, module_specifier).context(
-                "not processed by tsc resolver because it's relative
-            import",
-            );
+            return self
+                .inner
+                .resolve(base, module_specifier)
+                .context("not processed by tsc resolver because it's relative import");
         }
 
         if cfg!(debug_assertions) {
@@ -241,8 +192,7 @@ where
                 _ => false,
             }) {
                 return self.inner.resolve(base, module_specifier).context(
-                    "not processed by tsc resolver because base module is in
-        node_modules",
+                    "not processed by tsc resolver because base module is in node_modules",
                 );
             }
         }
@@ -256,10 +206,7 @@ where
                         Some(v) => v,
                         None => {
                             if cfg!(debug_assertions) {
-                                trace!(
-                                    "skip because src doesn't start with
-        prefix"
-                                );
+                                trace!("skip because src doesn't start with prefix");
                             }
                             continue;
                         }
@@ -276,8 +223,7 @@ where
 
                         let res = self.inner.resolve(base, &rel).with_context(|| {
                             format!(
-                                "failed to resolve `{}`, which is expanded
-        from `{}`",
+                                "failed to resolve `{}`, which is expanded from `{}`",
                                 replaced, module_specifier
                             )
                         });
@@ -300,8 +246,7 @@ where
                     }
 
                     bail!(
-                        "`{}` matched `{}` (from tsconfig.paths) but failed
-        to resolve:\n{:?}",
+                        "`{}` matched `{}` (from tsconfig.paths) but failed to resolve:\n{:?}",
                         module_specifier,
                         prefix,
                         errors
@@ -320,8 +265,7 @@ where
                             .resolve(base, &format!("./{}", &to[0]))
                             .with_context(|| {
                                 format!(
-                                    "tried to resolve `{}` because `{}` was
-        exactly matched",
+                                    "tried to resolve `{}` because `{}` was exactly matched",
                                     to[0], from
                                 )
                             });
