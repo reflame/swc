@@ -7,7 +7,12 @@ test!(
         jsx: true,
         ..Default::default()
     }),
-    |_| refresh_setup(true, Some(RefreshSetupOptions {}),),
+    |_| refresh_setup(
+        true,
+        Some(RefreshSetupOptions {
+            pathname: Some("/hi.js".into()),
+        }),
+    ),
     basic_sample,
     // Input codes
     r#"
@@ -19,6 +24,7 @@ export const blah = 1234
 "#,
     // Output codes after transformed with plugin
     r#"
+import.meta.url = new URL("/hi.js", location.origin)
 const $reflamePathname = new URL(import.meta.url).pathname
 const $reflamePreviousRefreshReg = self.$RefreshReg$
 const $reflamePreviousRefreshSig = self.$RefreshSig$
@@ -57,7 +63,7 @@ test!(
         jsx: true,
         ..Default::default()
     }),
-    |_| refresh_setup(false, Some(RefreshSetupOptions {}),),
+    |_| refresh_setup(false, None,),
     disabled,
     // Input codes
     r#"

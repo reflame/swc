@@ -1,11 +1,14 @@
 use serde::{Deserialize, Deserializer, Serialize};
+use swc_common::DUMMY_SP;
 use swc_ecma_ast::*;
 use swc_ecma_quote_macros::internal_quote;
 use swc_ecma_visit::{as_folder, Fold, VisitMut, VisitMutWith};
 #[derive(Debug, Default, Clone, Serialize, Deserialize, Eq, PartialEq)]
 #[serde(rename_all = "camelCase")]
 #[serde(deny_unknown_fields)]
-pub struct RefreshSetupOptions {}
+pub struct RefreshSetupOptions {
+    pub pathname: Option<String>,
+}
 
 #[derive(Deserialize)]
 #[serde(untagged)]
@@ -32,14 +35,14 @@ mod tests;
 pub fn refresh_setup(dev: bool, options: Option<RefreshSetupOptions>) -> impl Fold + VisitMut {
     as_folder(RefreshSetup {
         enable: dev && options.is_some(),
-        // options: options.unwrap_or_default(),
+        options: options.unwrap_or_default(),
     })
 }
 
 #[derive(Clone)]
 struct RefreshSetup {
     enable: bool,
-    // options: RefreshSetupOptions,
+    options: RefreshSetupOptions,
 }
 
 impl VisitMut for RefreshSetup {
@@ -53,9 +56,21 @@ impl VisitMut for RefreshSetup {
 
         module_items.visit_mut_children_with(self);
 
+        let pathname = match &self.options.pathname {
+            Some(_) => self.options.pathname.as_ref().unwrap(),
+            None => {
+                panic!("wrong pathname")
+            }
+        };
+
         // Intuitively this feels like it should be faster than individual .inserts
         // TODO: benchmark if doing individual inserts makes a difference?
         let statements_before = [
+            ModuleItem::Stmt(internal_quote!(
+                r#"
+            import.meta.url = new URL($pathname, location.origin)"# as Stmt,
+                pathname = Ident::new(format!("\"{pathname}\"",).into(), DUMMY_SP),
+            )),
             ModuleItem::Stmt(internal_quote!(
                 r#"
             const $reflamePathname = new URL(import.meta.url).pathname"# as Stmt
