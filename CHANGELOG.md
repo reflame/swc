@@ -5,13 +5,25 @@
 
 
 
+- **(css/modules)** Don't drop the correct selector (#7450) ([d370324](https://github.com/swc-project/swc/commit/d370324cfd251af49853fe887644fcaa8d811431))
+
+
 - **(es/parser)** Fix parsing of generic jsx element name (#7449) ([77850dd](https://github.com/swc-project/swc/commit/77850dd8f01f51af1e9dda3eabddd07b7e39c841))
+
+
+- **(plugin/runner)** Disable `wasi_env` cleanup (#7458) ([1868d36](https://github.com/swc-project/swc/commit/1868d36cfed54e48c3439ec4547251e45731c93a))
 
 ### Features
 
 
 
 - **(es/minifier)** Inline for loop variables (#7445) ([0cd2b61](https://github.com/swc-project/swc/commit/0cd2b61b054031f1a49cae25a82925d52dff0a73))
+
+### Miscellaneous Tasks
+
+
+
+- **(es/preset-env)** Update data (#7459) ([e15adaf](https://github.com/swc-project/swc/commit/e15adaf6eaada62b6a3c1b8447fb39612dee7946))
 
 ## [1.3.60] - 2023-05-25
 
