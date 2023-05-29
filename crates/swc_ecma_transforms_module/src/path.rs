@@ -86,18 +86,14 @@ where
     R: Resolve,
 {
     resolver: R,
-    rewrite_relative_imports: bool,
 }
 
 impl<R> NodeImportResolver<R>
 where
     R: Resolve,
 {
-    pub fn new(resolver: R, rewrite_relative_imports: bool) -> Self {
-        Self {
-            resolver,
-            rewrite_relative_imports,
-        }
+    pub fn new(resolver: R) -> Self {
+        Self { resolver }
     }
 }
 
@@ -161,7 +157,6 @@ where
         });
 
         let target = self.resolver.resolve(base, module_specifier);
-
         let target = match target {
             Ok(v) => v,
             Err(err) => {
@@ -169,10 +164,6 @@ where
                 return Ok(module_specifier.into());
             }
         };
-
-        if self.rewrite_relative_imports {
-            return Ok(target.to_string().into());
-        }
 
         let mut target = match target {
             FileName::Real(v) => v,
@@ -184,7 +175,6 @@ where
                 )
             }
         };
-
         let mut base = match base {
             FileName::Real(v) => Cow::Borrowed(v),
             FileName::Anon => {

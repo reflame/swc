@@ -27,7 +27,6 @@ fn exact() {
             "jquery".into(),
             vec!["node_modules/jquery/dist/jquery".into()],
         )],
-        false,
     );
 
     {
@@ -64,7 +63,6 @@ fn pattern_1() {
         TestResolver(map),
         ".".into(),
         vec![("*".into(), vec!["*".into(), "generated/*".into()])],
-        false,
     );
 
     {

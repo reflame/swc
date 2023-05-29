@@ -193,7 +193,6 @@ pub mod resolver {
             NodeModulesResolver::new(target_env, alias, preserve_symlinks),
             base_url,
             paths,
-            false,
         );
         CachingResolver::new(40, r)
     }
