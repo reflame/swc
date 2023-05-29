@@ -10,7 +10,7 @@ const path = require("path");
 //   );
 // });
 
-it.skip("should handle targets in env", () => {
+it("should handle targets in env", () => {
   const filename = path.resolve(
     __dirname + "/../../tests/env/targets/input.js"
   );
