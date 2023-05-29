@@ -1,6 +1,7 @@
-use std::path::{Component, PathBuf};
+use std::path::{Component, Path, PathBuf};
 
 use anyhow::{bail, Context, Error};
+use path_clean::PathClean;
 use swc_common::FileName;
 use tracing::{debug, info, trace, Level};
 

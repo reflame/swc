@@ -171,11 +171,7 @@ where
         };
 
         if self.rewrite_relative_imports {
-            if cfg!(target_os = "windows") {
-                return Ok(target.to_string().replace('\\', "/").into());
-            } else {
-                return Ok(target.to_string().into());
-            }
+            return Ok(target.to_string().into());
         }
 
         let mut target = match target {
