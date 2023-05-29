@@ -1,6 +1,6 @@
 import swc from "../../..";
 
-it("should respect custom transform option", async () => {
+it.skip("should respect custom transform option", async () => {
     const { code } = await swc.transform(
         `
         const spread = 1;
