@@ -443,6 +443,8 @@ impl VisitMut for Fixer<'_> {
         node.visit_mut_children_with(self);
         match &mut *node.expr {
             Expr::Arrow(..) | Expr::Seq(..) => self.wrap(&mut node.expr),
+            Expr::Fn(FnExpr { ident: Some(_), .. })
+            | Expr::Class(ClassExpr { ident: Some(_), .. }) => self.wrap(&mut node.expr),
             _ => {}
         };
         self.ctx = old;

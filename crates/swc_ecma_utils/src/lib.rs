@@ -540,10 +540,10 @@ pub trait ExprExt {
     fn is_immutable_value(&self) -> bool {
         // TODO(johnlenz): rename this function.  It is currently being used
         // in two disjoint cases:
-        // 1) We only care about the result of the expression
-        //    (in which case NOT here should return true)
-        // 2) We care that expression is a side-effect free and can't
-        //    be side-effected by other expressions.
+        // 1) We only care about the result of the expression (in which case NOT here
+        //    should return true)
+        // 2) We care that expression is a side-effect free and can't be side-effected
+        //    by other expressions.
         // This should only be used to say the value is immutable and
         // hasSideEffects and canBeSideEffected should be used for the other case.
         match *self.as_expr() {
@@ -902,9 +902,9 @@ pub trait ExprExt {
                 Lit::Str(Str { value, .. }) => return (Pure, num_from_str(value)),
                 _ => return (Pure, Unknown),
             },
-            Expr::Ident(Ident { sym, .. }) => match *sym {
-                js_word!("undefined") | js_word!("NaN") => NAN,
-                js_word!("Infinity") => INFINITY,
+            Expr::Ident(Ident { sym, span, .. }) => match *sym {
+                js_word!("undefined") | js_word!("NaN") if span.ctxt == ctx.unresolved_ctxt => NAN,
+                js_word!("Infinity") if span.ctxt == ctx.unresolved_ctxt => INFINITY,
                 _ => return (Pure, Unknown),
             },
             Expr::Unary(UnaryExpr {
@@ -915,8 +915,9 @@ pub trait ExprExt {
                 &**arg,
                 Expr::Ident(Ident {
                     sym: js_word!("Infinity"),
+                    span,
                     ..
-                })
+                }) if span.ctxt == ctx.unresolved_ctxt
             ) =>
             {
                 -INFINITY
@@ -1005,8 +1006,10 @@ pub trait ExprExt {
                 // converted. unimplemented!("TplLit.
                 // as_string()")
             }
-            Expr::Ident(Ident { ref sym, .. }) => match *sym {
-                js_word!("undefined") | js_word!("Infinity") | js_word!("NaN") => {
+            Expr::Ident(Ident { ref sym, span, .. }) => match *sym {
+                js_word!("undefined") | js_word!("Infinity") | js_word!("NaN")
+                    if span.ctxt == ctx.unresolved_ctxt =>
+                {
                     Known(Cow::Borrowed(&**sym))
                 }
                 _ => Unknown,
@@ -1029,10 +1032,11 @@ pub trait ExprExt {
                 Unknown => return Value::Unknown,
             })),
             Expr::Array(ArrayLit { ref elems, .. }) => {
-                let mut first = true;
                 let mut buf = String::new();
+                let len = elems.len();
                 // null, undefined is "" in array literal.
-                for elem in elems {
+                for (idx, elem) in elems.iter().enumerate() {
+                    let last = idx == len - 1;
                     let e = match *elem {
                         Some(ref elem) => {
                             let ExprOrSpread { ref expr, .. } = *elem;
@@ -1052,9 +1056,7 @@ pub trait ExprExt {
                     };
                     buf.push_str(&e);
 
-                    if first {
-                        first = false;
-                    } else {
+                    if !last {
                         buf.push(',');
                     }
                 }
@@ -1342,19 +1344,17 @@ pub trait ExprExt {
             Expr::Fn(..) | Expr::Arrow(..) => false,
 
             Expr::Class(c) => class_has_side_effect(ctx, &c.class),
-            Expr::Array(ArrayLit { ref elems, .. }) => elems
+            Expr::Array(ArrayLit { elems, .. }) => elems
                 .iter()
                 .filter_map(|e| e.as_ref())
                 .any(|e| e.spread.is_some() || e.expr.may_have_side_effects(ctx)),
             Expr::Unary(UnaryExpr {
                 op: op!("delete"), ..
             }) => true,
-            Expr::Unary(UnaryExpr { ref arg, .. }) => arg.may_have_side_effects(ctx),
-            Expr::Bin(BinExpr {
-                ref left,
-                ref right,
-                ..
-            }) => left.may_have_side_effects(ctx) || right.may_have_side_effects(ctx),
+            Expr::Unary(UnaryExpr { arg, .. }) => arg.may_have_side_effects(ctx),
+            Expr::Bin(BinExpr { left, right, .. }) => {
+                left.may_have_side_effects(ctx) || right.may_have_side_effects(ctx)
+            }
 
             Expr::Member(MemberExpr { obj, prop, .. })
                 if obj.is_object() || obj.is_fn_expr() || obj.is_arrow() || obj.is_class() =>
@@ -1442,7 +1442,7 @@ pub trait ExprExt {
             Expr::New(_) => true,
 
             Expr::Call(CallExpr {
-                callee: Callee::Expr(ref callee),
+                callee: Callee::Expr(callee),
                 ref args,
                 ..
             }) if callee.is_pure_callee(ctx) => {
@@ -1464,15 +1464,10 @@ pub trait ExprExt {
 
             Expr::Call(_) | Expr::OptChain(..) => true,
 
-            Expr::Seq(SeqExpr { ref exprs, .. }) => {
-                exprs.iter().any(|e| e.may_have_side_effects(ctx))
-            }
+            Expr::Seq(SeqExpr { exprs, .. }) => exprs.iter().any(|e| e.may_have_side_effects(ctx)),
 
             Expr::Cond(CondExpr {
-                ref test,
-                ref cons,
-                ref alt,
-                ..
+                test, cons, alt, ..
             }) => {
                 test.may_have_side_effects(ctx)
                     || cons.may_have_side_effects(ctx)
@@ -2267,6 +2262,17 @@ pub fn prepend_stmts<T: StmtLike>(
 
 pub trait IsDirective {
     fn as_ref(&self) -> Option<&Stmt>;
+    fn is_directive(&self) -> bool {
+        match self.as_ref() {
+            Some(Stmt::Expr(expr)) => match &*expr.expr {
+                Expr::Lit(Lit::Str(Str {
+                    raw: Some(value), ..
+                })) => value.starts_with("\"use ") || value.starts_with("'use "),
+                _ => false,
+            },
+            _ => false,
+        }
+    }
     fn is_use_strict(&self) -> bool {
         match self.as_ref() {
             Some(Stmt::Expr(expr)) => match *expr.expr {
@@ -2470,6 +2476,22 @@ impl ExprCtx {
             // We are at here because we could not determine value of test.
             //TODO: Drop values if it does not have side effects.
             Expr::Cond(_) => to.push(Box::new(expr)),
+
+            Expr::Unary(UnaryExpr {
+                op: op!("typeof"),
+                arg,
+                ..
+            }) => {
+                // We should ignore side effect of `__dirname` in
+                //
+                // typeof __dirname != void 0
+                //
+                // https://github.com/swc-project/swc/pull/7763
+                if arg.is_ident() {
+                    return;
+                }
+                self.extract_side_effects_to(to, *arg)
+            }
 
             Expr::Unary(UnaryExpr { arg, .. }) => self.extract_side_effects_to(to, *arg),
 
@@ -2968,7 +2990,6 @@ impl VisitMut for IdentRenamer<'_> {
                                 span: DUMMY_SP,
                                 left: Box::new(Pat::Ident(p.key.clone().into())),
                                 right: default,
-                                type_ann: Default::default(),
                             })),
                         });
                     }

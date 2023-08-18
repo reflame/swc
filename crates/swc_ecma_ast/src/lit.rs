@@ -2,7 +2,6 @@ use std::{
     borrow::Cow,
     fmt::{self, Display, Formatter},
     hash::{Hash, Hasher},
-    mem,
 };
 
 use num_bigint::BigInt as BigIntValue;
@@ -86,7 +85,7 @@ impl EqIgnoreSpan for BigInt {
 #[cfg_attr(feature = "rkyv-impl", repr(C))]
 pub struct EncodeBigInt;
 
-#[cfg(any(feature = "rkyv-impl"))]
+#[cfg(feature = "rkyv-impl")]
 impl rkyv::with::ArchiveWith<Box<BigIntValue>> for EncodeBigInt {
     type Archived = rkyv::Archived<String>;
     type Resolver = rkyv::Resolver<String>;
@@ -104,7 +103,7 @@ impl rkyv::with::ArchiveWith<Box<BigIntValue>> for EncodeBigInt {
     }
 }
 
-#[cfg(any(feature = "rkyv-impl"))]
+#[cfg(feature = "rkyv-impl")]
 impl<S> rkyv::with::SerializeWith<Box<BigIntValue>, S> for EncodeBigInt
 where
     S: ?Sized + rkyv::ser::Serializer,
@@ -118,7 +117,7 @@ where
     }
 }
 
-#[cfg(any(feature = "rkyv-impl"))]
+#[cfg(feature = "rkyv-impl")]
 impl<D> rkyv::with::DeserializeWith<rkyv::Archived<String>, Box<BigIntValue>, D> for EncodeBigInt
 where
     D: ?Sized + rkyv::Fallible,
@@ -353,7 +352,7 @@ impl EqIgnoreSpan for Number {
 impl Hash for Number {
     fn hash<H: Hasher>(&self, state: &mut H) {
         fn integer_decode(val: f64) -> (u64, i16, i8) {
-            let bits: u64 = unsafe { mem::transmute(val) };
+            let bits: u64 = val.to_bits();
             let sign: i8 = if bits >> 63 == 0 { 1 } else { -1 };
             let mut exponent: i16 = ((bits >> 52) & 0x7ff) as i16;
             let mantissa = if exponent == 0 {

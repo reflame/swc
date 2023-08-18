@@ -57,7 +57,7 @@ fn init_helpers() -> Arc<PathBuf> {
             .unwrap()
             .to_path_buf();
 
-        let helper_dir = project_root.join("packages").join("swc-helpers");
+        let helper_dir = project_root.join("packages").join("helpers");
 
         if env::var("SKIP_HELPERS").unwrap_or_default() == "1" {
             return Arc::new(helper_dir);
@@ -103,7 +103,7 @@ fn init_helpers() -> Arc<PathBuf> {
                 .arg("install")
                 .arg("--no-save")
                 .arg("--no-package-lock")
-                .arg("./packages/swc-helpers");
+                .arg("./packages/helpers");
             let status = cmd
                 .status()
                 .expect("failed to install helper package from root");
@@ -187,17 +187,7 @@ fn create_matrix(entry: &Path) -> Vec<Options> {
                             Some(JsMinifyOptions {
                                 compress: BoolOrDataConfig::from_bool(true),
                                 mangle: BoolOrDataConfig::from_bool(true),
-                                format: Default::default(),
-                                ecma: Default::default(),
-                                keep_classnames: Default::default(),
-                                keep_fnames: Default::default(),
-                                module: Default::default(),
-                                safari10: Default::default(),
-                                toplevel: Default::default(),
-                                source_map: Default::default(),
-                                output_path: Default::default(),
-                                inline_sources_content: Default::default(),
-                                emit_source_map_columns: Default::default(),
+                                ..Default::default()
                             })
                         } else {
                             None

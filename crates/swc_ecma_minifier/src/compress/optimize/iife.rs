@@ -14,15 +14,11 @@ use super::{util::NormalMultiReplacer, Optimizer};
 use crate::debug::dump;
 use crate::{
     compress::optimize::Ctx,
-    mode::Mode,
     util::{idents_captured_by, idents_used_by, make_number},
 };
 
 /// Methods related to the option `negate_iife`.
-impl<M> Optimizer<'_, M>
-where
-    M: Mode,
-{
+impl Optimizer<'_> {
     /// Negates iife, while ignore return value.
     pub(super) fn negate_iife_ignoring_ret(&mut self, e: &mut Expr) {
         if !self.options.negate_iife || self.ctx.in_bang_arg || self.ctx.dont_use_negated_iife {
@@ -115,10 +111,7 @@ where
 }
 
 /// Methods related to iife.
-impl<M> Optimizer<'_, M>
-where
-    M: Mode,
-{
+impl Optimizer<'_> {
     /// # Example
     ///
     /// ## Input
@@ -471,7 +464,7 @@ where
                     return;
                 }
 
-                if self.ctx.in_top_level() && !self.ctx.in_call_arg && self.options.negate_iife {
+                if !self.may_add_ident() {
                     match &*f.body {
                         BlockStmtOrExpr::BlockStmt(body) => {
                             let has_decl =
@@ -528,7 +521,7 @@ where
                             let vars = param_ids
                                 .iter()
                                 .map(|name| VarDeclarator {
-                                    span: DUMMY_SP.apply_mark(self.marks.non_top_level),
+                                    span: DUMMY_SP,
                                     name: Ident::new(
                                         name.sym.clone(),
                                         name.span.with_ctxt(new_ctxt),
@@ -542,7 +535,7 @@ where
                             if !vars.is_empty() {
                                 self.prepend_stmts.push(
                                     VarDecl {
-                                        span: DUMMY_SP.apply_mark(self.marks.non_top_level),
+                                        span: DUMMY_SP,
                                         kind: VarDeclKind::Var,
                                         declare: Default::default(),
                                         decls: vars,
@@ -556,7 +549,7 @@ where
                         for (idx, param) in param_ids.iter().enumerate() {
                             if let Some(arg) = call.args.get_mut(idx) {
                                 exprs.push(Box::new(Expr::Assign(AssignExpr {
-                                    span: DUMMY_SP.apply_mark(self.marks.non_top_level),
+                                    span: DUMMY_SP,
                                     op: op!("="),
                                     left: PatOrExpr::Pat(
                                         Ident::new(
@@ -590,7 +583,7 @@ where
             Expr::Fn(f) => {
                 trace_op!("iife: Expr::Fn(..)");
 
-                if self.ctx.in_top_level() && !self.ctx.in_call_arg && self.options.negate_iife {
+                if !self.may_add_ident() {
                     let body = f.function.body.as_ref().unwrap();
                     let has_decl = body.stmts.iter().any(|stmt| matches!(stmt, Stmt::Decl(..)));
                     if has_decl {
@@ -642,7 +635,7 @@ where
                     }
                 }
 
-                trace_op!("iife: Empry function");
+                trace_op!("iife: Empty function");
 
                 let body = f.function.body.as_mut().unwrap();
                 if body.stmts.is_empty() && call.args.is_empty() {
@@ -717,7 +710,7 @@ where
         }
 
         // Don't create top-level variables.
-        if !param_ids.is_empty() && self.ctx.in_top_level() {
+        if !param_ids.is_empty() && !self.may_add_ident() {
             for pid in param_ids {
                 if let Some(usage) = self.data.vars.get(&pid.to_id()) {
                     if usage.ref_count > 1 || usage.assign_count > 0 || usage.inline_prevented {
@@ -731,7 +724,7 @@ where
         // Abort on eval.
         // See https://github.com/swc-project/swc/pull/6478
         //
-        // We completetly abort on eval, because we cannot know whether a variable in
+        // We completely abort on eval, because we cannot know whether a variable in
         // upper scope will be afftected by eval.
         // https://github.com/swc-project/swc/issues/6628
         if self.data.top.has_eval_call {
@@ -795,7 +788,7 @@ where
                     return false;
                 }
 
-                if self.ctx.in_top_level() && !self.options.module {
+                if !self.may_add_ident() {
                     return false;
                 }
 
@@ -807,7 +800,7 @@ where
 
                 // TODO: Check if parameter is used and inline if call is not related to parameters.
                 Expr::Call(e) => {
-                    if let Some(..) = e.callee.as_expr().and_then(|e| e.as_ident()) {
+                    if e.callee.as_expr().and_then(|e| e.as_ident()).is_some() {
                         return true;
                     }
 
@@ -876,9 +869,20 @@ where
                         let ids: Vec<Id> = find_pat_ids(&decl.name);
 
                         for id in ids {
-                            remap
-                                .entry(id)
+                            let ctx = remap
+                                .entry(id.clone())
                                 .or_insert_with(|| SyntaxContext::empty().apply_mark(Mark::new()));
+
+                            // [is_skippable_for_seq] would check fn scope
+                            if let Some(usage) = self.data.vars.get(&id) {
+                                let mut usage = usage.clone();
+                                // as we turn var declaration into assignment
+                                // we need to maintain correct var usage
+                                if decl.init.is_some() {
+                                    usage.ref_count += 1;
+                                }
+                                self.data.vars.insert((id.0, *ctx), usage);
+                            }
                         }
                     }
                 }
@@ -896,6 +900,8 @@ where
 
         for (idx, param) in params.into_iter().enumerate() {
             let arg = args.get_mut(idx).map(|arg| arg.expr.take());
+
+            let no_arg = arg.is_none();
 
             if let Some(arg) = arg {
                 if let Some(usage) = self.data.vars.get(&orig_params[idx].to_id()) {
@@ -920,7 +926,7 @@ where
 
                 exprs.push(
                     Expr::Assign(AssignExpr {
-                        span: DUMMY_SP.apply_mark(self.marks.non_top_level),
+                        span: DUMMY_SP,
                         op: op!("="),
                         left: PatOrExpr::Pat(Box::new(Pat::Ident(param.clone().into()))),
                         right: arg,
@@ -930,9 +936,13 @@ where
             };
 
             vars.push(VarDeclarator {
-                span: DUMMY_SP.apply_mark(self.marks.non_top_level),
+                span: DUMMY_SP,
                 name: Pat::Ident(param.into()),
-                init: None,
+                init: if self.ctx.executed_multiple_time && no_arg {
+                    Some(undefined(DUMMY_SP))
+                } else {
+                    None
+                },
                 definite: Default::default(),
             });
         }
@@ -948,7 +958,7 @@ where
 
             self.prepend_stmts.push(
                 VarDecl {
-                    span: DUMMY_SP.apply_mark(self.marks.non_top_level),
+                    span: DUMMY_SP,
                     kind: VarDeclKind::Var,
                     declare: Default::default(),
                     decls: vars,
@@ -963,13 +973,12 @@ where
                     for decl in &mut var.decls {
                         if decl.init.is_some() {
                             exprs.push(Box::new(Expr::Assign(AssignExpr {
-                                span: DUMMY_SP.apply_mark(self.marks.non_top_level),
+                                span: DUMMY_SP,
                                 op: op!("="),
                                 left: PatOrExpr::Pat(Box::new(decl.name.clone())),
                                 right: decl.init.take().unwrap(),
                             })))
                         }
-                        decl.span = decl.span.apply_mark(self.marks.non_top_level);
                     }
 
                     self.prepend_stmts.push(stmt);
@@ -1079,11 +1088,14 @@ where
 
             Expr::Arrow(ArrowExpr {
                 params,
-                body: box BlockStmtOrExpr::Expr(body),
+                body,
                 is_async: false,
                 is_generator: false,
                 ..
-            }) => params.iter().all(|p| p.is_ident()) && self.can_be_inlined_for_iife(body),
+            }) if body.is_expr() => {
+                params.iter().all(|p| p.is_ident())
+                    && self.can_be_inlined_for_iife(body.as_expr().unwrap())
+            }
 
             _ => false,
         }

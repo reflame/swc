@@ -816,7 +816,11 @@ where
                 } else {
                     emit!(e.obj);
                 }
-                punct!("?.");
+                if n.optional {
+                    punct!("?.");
+                } else if !e.prop.is_computed() {
+                    punct!(".");
+                }
 
                 match &e.prop {
                     MemberProp::Computed(computed) => emit!(computed),
@@ -827,7 +831,10 @@ where
             OptChainBase::Call(ref e) => {
                 debug_assert!(!e.callee.is_new());
                 emit!(e.callee);
-                punct!("?.");
+
+                if n.optional {
+                    punct!("?.");
+                }
 
                 punct!("(");
                 self.emit_expr_or_spreads(n.span(), &e.args, ListFormat::CallExpressionArguments)?;
@@ -959,6 +966,8 @@ where
                 emit!(private);
             }
         }
+
+        srcmap!(node, false);
     }
 
     #[emitter]
@@ -1594,8 +1603,24 @@ where
 
     #[emitter]
     fn emit_prop_name(&mut self, node: &PropName) -> Result {
-        match *node {
-            PropName::Ident(ref n) => emit!(n),
+        match node {
+            PropName::Ident(ident) => {
+                if self.cfg.ascii_only && !ident.sym.is_ascii() {
+                    punct!("\"");
+                    self.wr.write_symbol(
+                        DUMMY_SP,
+                        &get_ascii_only_ident(
+                            &handle_invalid_unicodes(&ident.sym),
+                            self.cfg.target,
+                        ),
+                    )?;
+                    punct!("\"");
+
+                    return Ok(());
+                }
+
+                emit!(ident)
+            }
             PropName::Str(ref n) => emit!(n),
             PropName::Num(ref n) => emit!(n),
             PropName::BigInt(ref n) => emit!(n),
@@ -2639,7 +2664,6 @@ where
         punct!(":");
         formatting_space!();
         emit!(node.value);
-        formatting_space!();
 
         srcmap!(node, false);
     }
@@ -2651,11 +2675,11 @@ where
         srcmap!(node, true);
 
         emit!(node.key);
-        formatting_space!();
         if let Some(value) = &node.value {
-            punct!("=");
-            emit!(value);
             formatting_space!();
+            punct!("=");
+            formatting_space!();
+            emit!(value);
         }
 
         srcmap!(node, false);
@@ -3762,6 +3786,8 @@ fn get_quoted_utf16(v: &str, ascii_only: bool, target: EsVersion) -> String {
 
                             inner_iter.next();
                             next = inner_iter.peek();
+                        } else if next != Some(&'D') && next != Some(&'d') {
+                            buf.push('\\');
                         }
 
                         if let Some(c @ 'D' | c @ 'd') = next {
@@ -3808,8 +3834,10 @@ fn get_quoted_utf16(v: &str, ascii_only: bool, target: EsVersion) -> String {
                                     iter.next();
                                 }
                             }
-                        } else {
+                        } else if is_curly {
                             buf.push_str("\\\\");
+                        } else {
+                            buf.push('\\');
                         }
                     }
                     _ => {

@@ -120,7 +120,11 @@ use std::{
 
 use anyhow::{bail, Context, Error};
 use atoms::JsWord;
-use common::{collections::AHashMap, comments::SingleThreadedComments, errors::HANDLER};
+use common::{
+    collections::AHashMap,
+    comments::{CommentKind, SingleThreadedComments},
+    errors::HANDLER,
+};
 use config::{IsModule, JsMinifyCommentOption, JsMinifyOptions, OutputCharset};
 use jsonc_parser::{parse_to_serde_value, ParseOptions};
 use once_cell::sync::Lazy;
@@ -136,7 +140,6 @@ use swc_common::{
     BytePos, FileName, Mark, SourceFile, SourceMap, Spanned, GLOBALS,
 };
 pub use swc_config::config_types::{BoolConfig, BoolOr, BoolOrDataConfig};
-use swc_config::merge::Merge;
 use swc_ecma_ast::{EsVersion, Ident, Program};
 use swc_ecma_codegen::{self, text_writer::WriteJs, Emitter, Node};
 use swc_ecma_loader::resolvers::{
@@ -506,6 +509,7 @@ impl Compiler {
         comments: Option<&dyn Comments>,
         emit_source_map_columns: bool,
         ascii_only: bool,
+        preamble: &str,
     ) -> Result<TransformOutput, Error>
     where
         T: Node + VisitWith<IdentCollector>,
@@ -518,7 +522,7 @@ impl Compiler {
             let src = {
                 let mut buf = vec![];
                 {
-                    let mut wr = Box::new(swc_ecma_codegen::text_writer::JsWriter::new(
+                    let mut w = swc_ecma_codegen::text_writer::JsWriter::new(
                         self.cm.clone(),
                         "\n",
                         &mut buf,
@@ -527,7 +531,9 @@ impl Compiler {
                         } else {
                             None
                         },
-                    )) as Box<dyn WriteJs>;
+                    );
+                    w.preamble(preamble).unwrap();
+                    let mut wr = Box::new(w) as Box<dyn WriteJs>;
 
                     if minify {
                         wr = Box::new(swc_ecma_codegen::text_writer::omit_trailing_semi(wr));
@@ -693,7 +699,15 @@ pub(crate) fn minify_file_comments(
         BoolOr::Data(JsMinifyCommentOption::PreserveSomeComments) => {
             let preserve_excl = |_: &BytePos, vc: &mut Vec<Comment>| -> bool {
                 // Preserve license comments.
-                vc.retain(|c: &Comment| c.text.contains("@license") || c.text.starts_with('!'));
+                //
+                // See https://github.com/terser/terser/blob/798135e04baddd94fea403cfaab4ba8b22b1b524/lib/output.js#L175-L181
+                vc.retain(|c: &Comment| {
+                    c.text.contains("@lic")
+                        || c.text.contains("@preserve")
+                        || c.text.contains("@copyright")
+                        || c.text.contains("@cc_on")
+                        || (c.kind == CommentKind::Block && c.text.starts_with('!'))
+                });
                 !vc.is_empty()
             };
             let (mut l, mut t) = comments.borrow_all_mut();
@@ -740,67 +754,73 @@ impl Compiler {
 
             let root = root.as_ref().unwrap_or(&CUR_DIR);
 
-            let config_file = match config_file {
-                Some(ConfigFile::Str(ref s)) => Some(load_swcrc(Path::new(&s))?),
+            let swcrc_path = match config_file {
+                Some(ConfigFile::Str(s)) => Some(PathBuf::from(s.clone())),
+                _ => {
+                    if *swcrc {
+                        if let FileName::Real(ref path) = name {
+                            find_swcrc(path, root, *root_mode)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    }
+                }
+            };
+
+            let config_file = match swcrc_path.as_deref() {
+                Some(s) => Some(load_swcrc(s)?),
+                _ => None,
+            };
+            let filename_path = match name {
+                FileName::Real(p) => Some(&**p),
                 _ => None,
             };
 
-            if let FileName::Real(ref path) = name {
-                if *swcrc {
-                    let mut parent = path.parent();
-                    while let Some(dir) = parent {
-                        let swcrc = dir.join(".swcrc");
+            if let Some(filename_path) = filename_path {
+                if let Some(config) = config_file {
+                    let dir = swcrc_path
+                        .as_deref()
+                        .and_then(|p| p.parent())
+                        .expect(".swcrc path should have parent dir");
 
-                        if swcrc.exists() {
-                            let config = load_swcrc(&swcrc)?;
+                    let mut config = config
+                        .into_config(Some(filename_path))
+                        .context("failed to process config file")?;
 
-                            let mut config = config
-                                .into_config(Some(path))
-                                .context("failed to process config file")?;
-
-                            if let Some(config_file) = config_file {
-                                config.merge(config_file.into_config(Some(path))?)
-                            }
-
-                            if let Some(c) = &mut config {
-                                if c.jsc.base_url != PathBuf::new() {
-                                    let joined = dir.join(&c.jsc.base_url);
-                                    c.jsc.base_url = if cfg!(target_os = "windows")
-                                        && c.jsc.base_url.as_os_str() == "."
-                                    {
-                                        dir.canonicalize().with_context(|| {
-                                            format!(
-                                                "failed to canonicalize base url using the path \
-                                                 of .swcrc\nDir: {}\n(Used logic for windows)",
-                                                dir.display(),
-                                            )
-                                        })?
-                                    } else {
-                                        joined.canonicalize().with_context(|| {
-                                            format!(
-                                                "failed to canonicalize base url using the path \
-                                                 of .swcrc\nPath: {}\nDir: {}\nbaseUrl: {}",
-                                                joined.display(),
-                                                dir.display(),
-                                                c.jsc.base_url.display()
-                                            )
-                                        })?
-                                    };
-                                }
-                            }
-
-                            return Ok(config);
+                    if let Some(c) = &mut config {
+                        if c.jsc.base_url != PathBuf::new() {
+                            let joined = dir.join(&c.jsc.base_url);
+                            c.jsc.base_url = if cfg!(target_os = "windows")
+                                && c.jsc.base_url.as_os_str() == "."
+                            {
+                                dir.canonicalize().with_context(|| {
+                                    format!(
+                                        "failed to canonicalize base url using the path of \
+                                         .swcrc\nDir: {}\n(Used logic for windows)",
+                                        dir.display(),
+                                    )
+                                })?
+                            } else {
+                                joined.canonicalize().with_context(|| {
+                                    format!(
+                                        "failed to canonicalize base url using the path of \
+                                         .swcrc\nPath: {}\nDir: {}\nbaseUrl: {}",
+                                        joined.display(),
+                                        dir.display(),
+                                        c.jsc.base_url.display()
+                                    )
+                                })?
+                            };
                         }
-
-                        if dir == root && *root_mode == RootMode::Root {
-                            break;
-                        }
-                        parent = dir.parent();
                     }
+
+                    return Ok(config);
                 }
 
                 let config_file = config_file.unwrap_or_default();
-                let config = config_file.into_config(Some(path))?;
+                let config = config_file.into_config(Some(filename_path))?;
 
                 return Ok(config);
             }
@@ -817,7 +837,7 @@ impl Compiler {
                 }
             }
         })
-        .with_context(|| format!("failed to read swcrc file ({})", name))
+        .with_context(|| format!("failed to read .swcrc file for input file at `{}`", name))
     }
 
     /// This method returns [None] if a file should be skipped.
@@ -1158,6 +1178,7 @@ impl Compiler {
                 Some(&comments),
                 opts.emit_source_map_columns,
                 opts.format.ascii_only,
+                &opts.format.preamble,
             )
         })
     }
@@ -1236,9 +1257,28 @@ impl Compiler {
                     .charset
                     .map(|v| matches!(v, OutputCharset::Ascii))
                     .unwrap_or(false),
+                &config.output.preamble,
             )
         })
     }
+}
+
+fn find_swcrc(path: &Path, root: &Path, root_mode: RootMode) -> Option<PathBuf> {
+    let mut parent = path.parent();
+    while let Some(dir) = parent {
+        let swcrc = dir.join(".swcrc");
+
+        if swcrc.exists() {
+            return Some(swcrc);
+        }
+
+        if dir == root && root_mode == RootMode::Root {
+            break;
+        }
+        parent = dir.parent();
+    }
+
+    None
 }
 
 #[tracing::instrument(level = "info", skip_all)]

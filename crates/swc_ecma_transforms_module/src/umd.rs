@@ -18,7 +18,7 @@ use crate::{
     module_ref_rewriter::{ImportMap, ModuleRefRewriter},
     path::{ImportResolver, Resolver},
     util::{
-        clone_first_use_strict, define_es_module, emit_export_stmts, local_name_for_src,
+        clone_first_use_directive, define_es_module, emit_export_stmts, local_name_for_src,
         use_strict, ImportInterop,
     },
 };
@@ -110,9 +110,6 @@ where
     fn visit_mut_module(&mut self, module: &mut Module) {
         let import_interop = self.config.config.import_interop();
 
-        let filename = self.cm.span_to_filename(module.span);
-        let exported_name = self.config.determine_export_name(filename);
-
         let module_items = &mut module.body;
 
         let mut strip = ModuleDeclStrip::new(self.const_var_kind);
@@ -122,7 +119,7 @@ where
 
         // "use strict";
         if self.config.config.strict_mode {
-            stmts.push(clone_first_use_strict(module_items).unwrap_or_else(use_strict));
+            stmts.push(clone_first_use_directive(module_items, true).unwrap_or_else(use_strict));
         }
 
         let ModuleDeclStrip {
@@ -147,7 +144,7 @@ where
         );
 
         stmts.extend(module_items.take().into_iter().filter_map(|i| match i {
-            ModuleItem::Stmt(stmt) if !stmt.is_use_strict() => Some(stmt),
+            ModuleItem::Stmt(stmt) if !stmt.is_directive() => Some(stmt),
             _ => None,
         }));
 
@@ -170,7 +167,7 @@ where
         //  Emit
         // ====================
 
-        let (adapter_fn_expr, factory_params) = self.adapter(exported_name, is_export_assign);
+        let (adapter_fn_expr, factory_params) = self.adapter(module.span, is_export_assign);
 
         let factory_fn_expr: Expr = Function {
             params: factory_params,
@@ -341,7 +338,7 @@ where
     /// });
     /// ```
     /// Return: adapter expr and factory params
-    fn adapter(&mut self, exported_name: Ident, is_export_assign: bool) -> (FnExpr, Vec<Param>) {
+    fn adapter(&mut self, module_span: Span, is_export_assign: bool) -> (FnExpr, Vec<Param>) {
         macro_rules! js_typeof {
             ($test:expr =>! $type:expr) => {
                 Expr::Unary(UnaryExpr {
@@ -375,7 +372,6 @@ where
         let factory = private_ident!("factory");
 
         let module_exports = module.clone().make_member(quote_ident!("exports"));
-        let global_lib = global.clone().make_member(exported_name);
         let define_amd = define.clone().make_member(quote_ident!("amd"));
 
         let mut cjs_args = vec![];
@@ -385,6 +381,10 @@ where
         let mut factory_params = vec![];
 
         if !is_export_assign && self.exports.is_some() {
+            let filename = self.cm.span_to_filename(module_span);
+            let exported_name = self.config.determine_export_name(filename);
+            let global_lib = global.clone().make_member(exported_name);
+
             cjs_args.push(quote_ident!("exports").as_arg());
             amd_dep_list.push(Some(quote_str!("exports").as_arg()));
             browser_args.push(

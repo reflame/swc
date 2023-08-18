@@ -323,7 +323,7 @@
         const iterator = values[Symbol.iterator](), set = new Set();
         for (const o of other){
             let value, done;
-            if (!set.has(o)) for(; { value , done  } = iterator.next();){
+            if (!set.has(o)) for(; { value, done } = iterator.next();){
                 if (done) return !1;
                 if (set.add(value), Object.is(o, value)) break;
             }
@@ -340,22 +340,20 @@
     function translateY(y) {
         return "translate(0," + (y + 0.5) + ")";
     }
-    function number$1(scale) {
-        return (d)=>+scale(d);
-    }
-    function center(scale) {
-        var offset = Math.max(0, scale.bandwidth() - 1) / 2;
-        return scale.round() && (offset = Math.round(offset)), function(d) {
-            return +scale(d) + offset;
-        };
-    }
     function entering() {
         return !this.__axis;
     }
     function axis(orient, scale) {
         var tickArguments = [], tickValues = null, tickFormat = null, tickSizeInner = 6, tickSizeOuter = 6, tickPadding = 3, k = 1 === orient || 4 === orient ? -1 : 1, x = 4 === orient || 2 === orient ? "x" : "y", transform = 1 === orient || 3 === orient ? translateX : translateY;
         function axis(context) {
-            var values = null == tickValues ? scale.ticks ? scale.ticks.apply(scale, tickArguments) : scale.domain() : tickValues, format = null == tickFormat ? scale.tickFormat ? scale.tickFormat.apply(scale, tickArguments) : identity$1 : tickFormat, spacing = Math.max(tickSizeInner, 0) + tickPadding, range = scale.range(), range0 = +range[0] + 0.5, range1 = +range[range.length - 1] + 0.5, position = (scale.bandwidth ? center : number$1)(scale.copy()), selection = context.selection ? context.selection() : context, path = selection.selectAll(".domain").data([
+            var values = null == tickValues ? scale.ticks ? scale.ticks.apply(scale, tickArguments) : scale.domain() : tickValues, format = null == tickFormat ? scale.tickFormat ? scale.tickFormat.apply(scale, tickArguments) : identity$1 : tickFormat, spacing = Math.max(tickSizeInner, 0) + tickPadding, range = scale.range(), range0 = +range[0] + 0.5, range1 = +range[range.length - 1] + 0.5, position = (scale.bandwidth ? function(scale) {
+                var offset = Math.max(0, scale.bandwidth() - 1) / 2;
+                return scale.round() && (offset = Math.round(offset)), function(d) {
+                    return +scale(d) + offset;
+                };
+            } : function(scale) {
+                return (d)=>+scale(d);
+            })(scale.copy()), selection = context.selection ? context.selection() : context, path = selection.selectAll(".domain").data([
                 null
             ]), tick = selection.selectAll(".tick").data(values, scale).order(), tickExit = tick.exit(), tickEnter = tick.enter().append("g").attr("class", "tick"), line = tick.select("line"), text = tick.select("text");
             path = path.merge(path.enter().insert("path", ".tick").attr("class", "domain").attr("stroke", "currentColor")), tick = tick.merge(tickEnter), line = line.merge(tickEnter.append("line").attr("stroke", "currentColor").attr(x + "2", k * tickSizeInner)), text = text.merge(tickEnter.append("text").attr("fill", "currentColor").attr(x, k * spacing).attr("dy", 1 === orient ? "0em" : 3 === orient ? "0.71em" : "0.32em")), context !== selection && (path = path.transition(context), tick = tick.transition(context), line = line.transition(context), text = text.transition(context), tickExit = tickExit.transition(context).attr("opacity", 1e-6).attr("transform", function(d) {
@@ -463,20 +461,18 @@
             local: name
         } : name;
     }
-    function creatorInherit(name) {
-        return function() {
-            var document1 = this.ownerDocument, uri = this.namespaceURI;
-            return uri === xhtml && document1.documentElement.namespaceURI === xhtml ? document1.createElement(name) : document1.createElementNS(uri, name);
-        };
-    }
-    function creatorFixed(fullname) {
-        return function() {
-            return this.ownerDocument.createElementNS(fullname.space, fullname.local);
-        };
-    }
     function creator(name) {
         var fullname = namespace(name);
-        return (fullname.local ? creatorFixed : creatorInherit)(fullname);
+        return (fullname.local ? function(fullname) {
+            return function() {
+                return this.ownerDocument.createElementNS(fullname.space, fullname.local);
+            };
+        } : function(name) {
+            return function() {
+                var document1 = this.ownerDocument, uri = this.namespaceURI;
+                return uri === xhtml && document1.documentElement.namespaceURI === xhtml ? document1.createElement(name) : document1.createElementNS(uri, name);
+            };
+        })(fullname);
     }
     function none() {}
     function selector(selector) {
@@ -535,75 +531,11 @@
     function ascending$1(a, b) {
         return a < b ? -1 : a > b ? 1 : a >= b ? 0 : NaN;
     }
-    function attrRemove(name) {
-        return function() {
-            this.removeAttribute(name);
-        };
-    }
-    function attrRemoveNS(fullname) {
-        return function() {
-            this.removeAttributeNS(fullname.space, fullname.local);
-        };
-    }
-    function attrConstant(name, value) {
-        return function() {
-            this.setAttribute(name, value);
-        };
-    }
-    function attrConstantNS(fullname, value) {
-        return function() {
-            this.setAttributeNS(fullname.space, fullname.local, value);
-        };
-    }
-    function attrFunction(name, value) {
-        return function() {
-            var v = value.apply(this, arguments);
-            null == v ? this.removeAttribute(name) : this.setAttribute(name, v);
-        };
-    }
-    function attrFunctionNS(fullname, value) {
-        return function() {
-            var v = value.apply(this, arguments);
-            null == v ? this.removeAttributeNS(fullname.space, fullname.local) : this.setAttributeNS(fullname.space, fullname.local, v);
-        };
-    }
     function defaultView(node) {
         return node.ownerDocument && node.ownerDocument.defaultView || node.document && node || node.defaultView;
     }
-    function styleRemove(name) {
-        return function() {
-            this.style.removeProperty(name);
-        };
-    }
-    function styleConstant(name, value, priority) {
-        return function() {
-            this.style.setProperty(name, value, priority);
-        };
-    }
-    function styleFunction(name, value, priority) {
-        return function() {
-            var v = value.apply(this, arguments);
-            null == v ? this.style.removeProperty(name) : this.style.setProperty(name, v, priority);
-        };
-    }
     function styleValue(node, name) {
         return node.style.getPropertyValue(name) || defaultView(node).getComputedStyle(node, null).getPropertyValue(name);
-    }
-    function propertyRemove(name) {
-        return function() {
-            delete this[name];
-        };
-    }
-    function propertyConstant(name, value) {
-        return function() {
-            this[name] = value;
-        };
-    }
-    function propertyFunction(name, value) {
-        return function() {
-            var v = value.apply(this, arguments);
-            null == v ? delete this[name] : this[name] = v;
-        };
     }
     function classArray(string) {
         return string.trim().split(/^|\s+/);
@@ -620,48 +552,11 @@
     function classedRemove(node, names) {
         for(var list = classList(node), i = -1, n = names.length; ++i < n;)list.remove(names[i]);
     }
-    function classedTrue(names) {
-        return function() {
-            classedAdd(this, names);
-        };
-    }
-    function classedFalse(names) {
-        return function() {
-            classedRemove(this, names);
-        };
-    }
-    function classedFunction(names, value) {
-        return function() {
-            (value.apply(this, arguments) ? classedAdd : classedRemove)(this, names);
-        };
-    }
     function textRemove() {
         this.textContent = "";
     }
-    function textConstant(value) {
-        return function() {
-            this.textContent = value;
-        };
-    }
-    function textFunction(value) {
-        return function() {
-            var v = value.apply(this, arguments);
-            this.textContent = null == v ? "" : v;
-        };
-    }
     function htmlRemove() {
         this.innerHTML = "";
-    }
-    function htmlConstant(value) {
-        return function() {
-            this.innerHTML = value;
-        };
-    }
-    function htmlFunction(value) {
-        return function() {
-            var v = value.apply(this, arguments);
-            this.innerHTML = null == v ? "" : v;
-        };
     }
     function raise() {
         this.nextSibling && this.parentNode.appendChild(this);
@@ -718,16 +613,6 @@
     function dispatchEvent(node, type, params) {
         var window1 = defaultView(node), event = window1.CustomEvent;
         "function" == typeof event ? event = new event(type, params) : (event = window1.document.createEvent("Event"), params ? (event.initEvent(type, params.bubbles, params.cancelable), event.detail = params.detail) : event.initEvent(type, !1, !1)), node.dispatchEvent(event);
-    }
-    function dispatchConstant(type, params) {
-        return function() {
-            return dispatchEvent(this, type, params);
-        };
-    }
-    function dispatchFunction(type, params) {
-        return function() {
-            return dispatchEvent(this, type, params.apply(this, arguments));
-        };
     }
     EnterNode.prototype = {
         constructor: EnterNode,
@@ -898,13 +783,65 @@
                 var node = this.node();
                 return fullname.local ? node.getAttributeNS(fullname.space, fullname.local) : node.getAttribute(fullname);
             }
-            return this.each((null == value ? fullname.local ? attrRemoveNS : attrRemove : "function" == typeof value ? fullname.local ? attrFunctionNS : attrFunction : fullname.local ? attrConstantNS : attrConstant)(fullname, value));
+            return this.each((null == value ? fullname.local ? function(fullname) {
+                return function() {
+                    this.removeAttributeNS(fullname.space, fullname.local);
+                };
+            } : function(name) {
+                return function() {
+                    this.removeAttribute(name);
+                };
+            } : "function" == typeof value ? fullname.local ? function(fullname, value) {
+                return function() {
+                    var v = value.apply(this, arguments);
+                    null == v ? this.removeAttributeNS(fullname.space, fullname.local) : this.setAttributeNS(fullname.space, fullname.local, v);
+                };
+            } : function(name, value) {
+                return function() {
+                    var v = value.apply(this, arguments);
+                    null == v ? this.removeAttribute(name) : this.setAttribute(name, v);
+                };
+            } : fullname.local ? function(fullname, value) {
+                return function() {
+                    this.setAttributeNS(fullname.space, fullname.local, value);
+                };
+            } : function(name, value) {
+                return function() {
+                    this.setAttribute(name, value);
+                };
+            })(fullname, value));
         },
         style: function(name, value, priority) {
-            return arguments.length > 1 ? this.each((null == value ? styleRemove : "function" == typeof value ? styleFunction : styleConstant)(name, value, null == priority ? "" : priority)) : styleValue(this.node(), name);
+            return arguments.length > 1 ? this.each((null == value ? function(name) {
+                return function() {
+                    this.style.removeProperty(name);
+                };
+            } : "function" == typeof value ? function(name, value, priority) {
+                return function() {
+                    var v = value.apply(this, arguments);
+                    null == v ? this.style.removeProperty(name) : this.style.setProperty(name, v, priority);
+                };
+            } : function(name, value, priority) {
+                return function() {
+                    this.style.setProperty(name, value, priority);
+                };
+            })(name, value, null == priority ? "" : priority)) : styleValue(this.node(), name);
         },
         property: function(name, value) {
-            return arguments.length > 1 ? this.each((null == value ? propertyRemove : "function" == typeof value ? propertyFunction : propertyConstant)(name, value)) : this.node()[name];
+            return arguments.length > 1 ? this.each((null == value ? function(name) {
+                return function() {
+                    delete this[name];
+                };
+            } : "function" == typeof value ? function(name, value) {
+                return function() {
+                    var v = value.apply(this, arguments);
+                    null == v ? delete this[name] : this[name] = v;
+                };
+            } : function(name, value) {
+                return function() {
+                    this[name] = value;
+                };
+            })(name, value)) : this.node()[name];
         },
         classed: function(name, value) {
             var names = classArray(name + "");
@@ -912,13 +849,43 @@
                 for(var list = classList(this.node()), i = -1, n = names.length; ++i < n;)if (!list.contains(names[i])) return !1;
                 return !0;
             }
-            return this.each(("function" == typeof value ? classedFunction : value ? classedTrue : classedFalse)(names, value));
+            return this.each(("function" == typeof value ? function(names, value) {
+                return function() {
+                    (value.apply(this, arguments) ? classedAdd : classedRemove)(this, names);
+                };
+            } : value ? function(names) {
+                return function() {
+                    classedAdd(this, names);
+                };
+            } : function(names) {
+                return function() {
+                    classedRemove(this, names);
+                };
+            })(names, value));
         },
         text: function(value) {
-            return arguments.length ? this.each(null == value ? textRemove : ("function" == typeof value ? textFunction : textConstant)(value)) : this.node().textContent;
+            return arguments.length ? this.each(null == value ? textRemove : ("function" == typeof value ? function(value) {
+                return function() {
+                    var v = value.apply(this, arguments);
+                    this.textContent = null == v ? "" : v;
+                };
+            } : function(value) {
+                return function() {
+                    this.textContent = value;
+                };
+            })(value)) : this.node().textContent;
         },
         html: function(value) {
-            return arguments.length ? this.each(null == value ? htmlRemove : ("function" == typeof value ? htmlFunction : htmlConstant)(value)) : this.node().innerHTML;
+            return arguments.length ? this.each(null == value ? htmlRemove : ("function" == typeof value ? function(value) {
+                return function() {
+                    var v = value.apply(this, arguments);
+                    this.innerHTML = null == v ? "" : v;
+                };
+            } : function(value) {
+                return function() {
+                    this.innerHTML = value;
+                };
+            })(value)) : this.node().innerHTML;
         },
         raise: function() {
             return this.each(raise);
@@ -966,7 +933,15 @@
             return this;
         },
         dispatch: function(type, params) {
-            return this.each(("function" == typeof params ? dispatchFunction : dispatchConstant)(type, params));
+            return this.each(("function" == typeof params ? function(type, params) {
+                return function() {
+                    return dispatchEvent(this, type, params.apply(this, arguments));
+                };
+            } : function(type, params) {
+                return function() {
+                    return dispatchEvent(this, type, params);
+                };
+            })(type, params));
         },
         [Symbol.iterator]: function*() {
             for(var groups = this._groups, j = 0, m = groups.length; j < m; ++j)for(var node, group = groups[j], i = 0, n = group.length; i < n; ++i)(node = group[i]) && (yield node);
@@ -1040,7 +1015,7 @@
         }
     };
     var constant$2 = (x)=>()=>x;
-    function DragEvent(type, { sourceEvent , subject , target , identifier , active , x , y , dx , dy , dispatch  }) {
+    function DragEvent(type, { sourceEvent, subject, target, identifier, active, x, y, dx, dy, dispatch }) {
         Object.defineProperties(this, {
             type: {
                 value: type,
@@ -1880,39 +1855,6 @@
             empty && delete node.__transition;
         }
     }
-    function tweenRemove(id, name) {
-        var tween0, tween1;
-        return function() {
-            var schedule = set$2(this, id), tween = schedule.tween;
-            if (tween !== tween0) {
-                tween1 = tween0 = tween;
-                for(var i = 0, n = tween1.length; i < n; ++i)if (tween1[i].name === name) {
-                    (tween1 = tween1.slice()).splice(i, 1);
-                    break;
-                }
-            }
-            schedule.tween = tween1;
-        };
-    }
-    function tweenFunction(id, name, value) {
-        var tween0, tween1;
-        if ("function" != typeof value) throw Error();
-        return function() {
-            var schedule = set$2(this, id), tween = schedule.tween;
-            if (tween !== tween0) {
-                tween1 = (tween0 = tween).slice();
-                for(var t = {
-                    name: name,
-                    value: value
-                }, i = 0, n = tween1.length; i < n; ++i)if (tween1[i].name === name) {
-                    tween1[i] = t;
-                    break;
-                }
-                i === n && tween1.push(t);
-            }
-            schedule.tween = tween1;
-        };
-    }
     function tweenValue(transition, name, value) {
         var id = transition._id;
         return transition.each(function() {
@@ -1925,84 +1867,6 @@
     function interpolate$1(a, b) {
         var c;
         return ("number" == typeof b ? interpolateNumber : b instanceof color ? interpolateRgb : (c = color(b)) ? (b = c, interpolateRgb) : interpolateString)(a, b);
-    }
-    function attrRemove$1(name) {
-        return function() {
-            this.removeAttribute(name);
-        };
-    }
-    function attrRemoveNS$1(fullname) {
-        return function() {
-            this.removeAttributeNS(fullname.space, fullname.local);
-        };
-    }
-    function attrConstant$1(name, interpolate, value1) {
-        var string00, interpolate0, string1 = value1 + "";
-        return function() {
-            var string0 = this.getAttribute(name);
-            return string0 === string1 ? null : string0 === string00 ? interpolate0 : interpolate0 = interpolate(string00 = string0, value1);
-        };
-    }
-    function attrConstantNS$1(fullname, interpolate, value1) {
-        var string00, interpolate0, string1 = value1 + "";
-        return function() {
-            var string0 = this.getAttributeNS(fullname.space, fullname.local);
-            return string0 === string1 ? null : string0 === string00 ? interpolate0 : interpolate0 = interpolate(string00 = string0, value1);
-        };
-    }
-    function attrFunction$1(name, interpolate, value) {
-        var string00, string10, interpolate0;
-        return function() {
-            var string0, string1, value1 = value(this);
-            return null == value1 ? void this.removeAttribute(name) : (string0 = this.getAttribute(name)) === (string1 = value1 + "") ? null : string0 === string00 && string1 === string10 ? interpolate0 : (string10 = string1, interpolate0 = interpolate(string00 = string0, value1));
-        };
-    }
-    function attrFunctionNS$1(fullname, interpolate, value) {
-        var string00, string10, interpolate0;
-        return function() {
-            var string0, string1, value1 = value(this);
-            return null == value1 ? void this.removeAttributeNS(fullname.space, fullname.local) : (string0 = this.getAttributeNS(fullname.space, fullname.local)) === (string1 = value1 + "") ? null : string0 === string00 && string1 === string10 ? interpolate0 : (string10 = string1, interpolate0 = interpolate(string00 = string0, value1));
-        };
-    }
-    function attrTweenNS(fullname, value) {
-        var t0, i0;
-        function tween() {
-            var i = value.apply(this, arguments);
-            return i !== i0 && (t0 = (i0 = i) && function(t) {
-                this.setAttributeNS(fullname.space, fullname.local, i.call(this, t));
-            }), t0;
-        }
-        return tween._value = value, tween;
-    }
-    function attrTween(name, value) {
-        var t0, i0;
-        function tween() {
-            var i = value.apply(this, arguments);
-            return i !== i0 && (t0 = (i0 = i) && function(t) {
-                this.setAttribute(name, i.call(this, t));
-            }), t0;
-        }
-        return tween._value = value, tween;
-    }
-    function delayFunction(id, value) {
-        return function() {
-            init(this, id).delay = +value.apply(this, arguments);
-        };
-    }
-    function delayConstant(id, value) {
-        return value = +value, function() {
-            init(this, id).delay = value;
-        };
-    }
-    function durationFunction(id, value) {
-        return function() {
-            set$2(this, id).duration = +value.apply(this, arguments);
-        };
-    }
-    function durationConstant(id, value) {
-        return value = +value, function() {
-            set$2(this, id).duration = value;
-        };
     }
     var Selection$1 = selection.prototype.constructor;
     function styleRemove$1(name) {
@@ -2085,7 +1949,39 @@
         },
         attr: function(name, value) {
             var fullname = namespace(name), i = "transform" === fullname ? interpolateTransformSvg : interpolate$1;
-            return this.attrTween(name, "function" == typeof value ? (fullname.local ? attrFunctionNS$1 : attrFunction$1)(fullname, i, tweenValue(this, "attr." + name, value)) : null == value ? (fullname.local ? attrRemoveNS$1 : attrRemove$1)(fullname) : (fullname.local ? attrConstantNS$1 : attrConstant$1)(fullname, i, value));
+            return this.attrTween(name, "function" == typeof value ? (fullname.local ? function(fullname, interpolate, value) {
+                var string00, string10, interpolate0;
+                return function() {
+                    var string0, string1, value1 = value(this);
+                    return null == value1 ? void this.removeAttributeNS(fullname.space, fullname.local) : (string0 = this.getAttributeNS(fullname.space, fullname.local)) === (string1 = value1 + "") ? null : string0 === string00 && string1 === string10 ? interpolate0 : (string10 = string1, interpolate0 = interpolate(string00 = string0, value1));
+                };
+            } : function(name, interpolate, value) {
+                var string00, string10, interpolate0;
+                return function() {
+                    var string0, string1, value1 = value(this);
+                    return null == value1 ? void this.removeAttribute(name) : (string0 = this.getAttribute(name)) === (string1 = value1 + "") ? null : string0 === string00 && string1 === string10 ? interpolate0 : (string10 = string1, interpolate0 = interpolate(string00 = string0, value1));
+                };
+            })(fullname, i, tweenValue(this, "attr." + name, value)) : null == value ? (fullname.local ? function(fullname) {
+                return function() {
+                    this.removeAttributeNS(fullname.space, fullname.local);
+                };
+            } : function(name) {
+                return function() {
+                    this.removeAttribute(name);
+                };
+            })(fullname) : (fullname.local ? function(fullname, interpolate, value1) {
+                var string00, interpolate0, string1 = value1 + "";
+                return function() {
+                    var string0 = this.getAttributeNS(fullname.space, fullname.local);
+                    return string0 === string1 ? null : string0 === string00 ? interpolate0 : interpolate0 = interpolate(string00 = string0, value1);
+                };
+            } : function(name, interpolate, value1) {
+                var string00, interpolate0, string1 = value1 + "";
+                return function() {
+                    var string0 = this.getAttribute(name);
+                    return string0 === string1 ? null : string0 === string00 ? interpolate0 : interpolate0 = interpolate(string00 = string0, value1);
+                };
+            })(fullname, i, value));
         },
         attrTween: function(name, value) {
             var key = "attr." + name;
@@ -2093,7 +1989,25 @@
             if (null == value) return this.tween(key, null);
             if ("function" != typeof value) throw Error();
             var fullname = namespace(name);
-            return this.tween(key, (fullname.local ? attrTweenNS : attrTween)(fullname, value));
+            return this.tween(key, (fullname.local ? function(fullname, value) {
+                var t0, i0;
+                function tween() {
+                    var i = value.apply(this, arguments);
+                    return i !== i0 && (t0 = (i0 = i) && function(t) {
+                        this.setAttributeNS(fullname.space, fullname.local, i.call(this, t));
+                    }), t0;
+                }
+                return tween._value = value, tween;
+            } : function(name, value) {
+                var t0, i0;
+                function tween() {
+                    var i = value.apply(this, arguments);
+                    return i !== i0 && (t0 = (i0 = i) && function(t) {
+                        this.setAttribute(name, i.call(this, t));
+                    }), t0;
+                }
+                return tween._value = value, tween;
+            })(fullname, value));
         },
         style: function(name, value, priority) {
             var name1, string00, string10, interpolate0, name2, value1, string001, string101, interpolate01, id, name3, on0, on1, listener0, remove, key, event, name4, string002, interpolate02, string1, i = "transform" == (name += "") ? interpolateTransformCss : interpolate$1;
@@ -2166,15 +2080,62 @@
                 for(var t, tween = get$1(this.node(), id).tween, i = 0, n = tween.length; i < n; ++i)if ((t = tween[i]).name === name) return t.value;
                 return null;
             }
-            return this.each((null == value ? tweenRemove : tweenFunction)(id, name, value));
+            return this.each((null == value ? function(id, name) {
+                var tween0, tween1;
+                return function() {
+                    var schedule = set$2(this, id), tween = schedule.tween;
+                    if (tween !== tween0) {
+                        tween1 = tween0 = tween;
+                        for(var i = 0, n = tween1.length; i < n; ++i)if (tween1[i].name === name) {
+                            (tween1 = tween1.slice()).splice(i, 1);
+                            break;
+                        }
+                    }
+                    schedule.tween = tween1;
+                };
+            } : function(id, name, value) {
+                var tween0, tween1;
+                if ("function" != typeof value) throw Error();
+                return function() {
+                    var schedule = set$2(this, id), tween = schedule.tween;
+                    if (tween !== tween0) {
+                        tween1 = (tween0 = tween).slice();
+                        for(var t = {
+                            name: name,
+                            value: value
+                        }, i = 0, n = tween1.length; i < n; ++i)if (tween1[i].name === name) {
+                            tween1[i] = t;
+                            break;
+                        }
+                        i === n && tween1.push(t);
+                    }
+                    schedule.tween = tween1;
+                };
+            })(id, name, value));
         },
         delay: function(value) {
             var id = this._id;
-            return arguments.length ? this.each(("function" == typeof value ? delayFunction : delayConstant)(id, value)) : get$1(this.node(), id).delay;
+            return arguments.length ? this.each(("function" == typeof value ? function(id, value) {
+                return function() {
+                    init(this, id).delay = +value.apply(this, arguments);
+                };
+            } : function(id, value) {
+                return value = +value, function() {
+                    init(this, id).delay = value;
+                };
+            })(id, value)) : get$1(this.node(), id).delay;
         },
         duration: function(value) {
             var id = this._id;
-            return arguments.length ? this.each(("function" == typeof value ? durationFunction : durationConstant)(id, value)) : get$1(this.node(), id).duration;
+            return arguments.length ? this.each(("function" == typeof value ? function(id, value) {
+                return function() {
+                    set$2(this, id).duration = +value.apply(this, arguments);
+                };
+            } : function(id, value) {
+                return value = +value, function() {
+                    set$2(this, id).duration = value;
+                };
+            })(id, value)) : get$1(this.node(), id).duration;
         },
         ease: function(value) {
             var id = this._id;
@@ -2311,7 +2272,7 @@
     var root$1 = [
         null
     ], constant$4 = (x)=>()=>x;
-    function BrushEvent(type, { sourceEvent , target , selection , mode , dispatch  }) {
+    function BrushEvent(type, { sourceEvent, target, selection, mode, dispatch }) {
         Object.defineProperties(this, {
             type: {
                 value: type,
@@ -2355,7 +2316,7 @@
     }, MODE_CENTER = {
         name: "center"
     };
-    const { abs , max: max$1 , min: min$1  } = Math;
+    const { abs, max: max$1, min: min$1 } = Math;
     function number1(e) {
         return [
             +e[0],
@@ -3289,7 +3250,7 @@
         }
         update() {
             let i0, i1, i2;
-            const { coords , _hullPrev: hullPrev , _hullNext: hullNext , _hullTri: hullTri , _hullHash: hullHash  } = this, n = coords.length >> 1;
+            const { coords, _hullPrev: hullPrev, _hullNext: hullNext, _hullTri: hullTri, _hullHash: hullHash } = this, n = coords.length >> 1;
             let minX = 1 / 0, minY = 1 / 0, maxX = -1 / 0, maxY = -1 / 0;
             for(let i = 0; i < n; i++){
                 const x = coords[2 * i], y = coords[2 * i + 1];
@@ -3375,7 +3336,7 @@
             }(x - this._cx, y - this._cy) * this._hashSize) % this._hashSize;
         }
         _legalize(a) {
-            const { _triangles: triangles , _halfedges: halfedges , coords  } = this;
+            const { _triangles: triangles, _halfedges: halfedges, coords } = this;
             let i = 0, ar = 0;
             for(;;){
                 const b = halfedges[a], a0 = a - a % 3;
@@ -3527,7 +3488,7 @@
             return this.delaunay.update(), this._init(), this;
         }
         _init() {
-            const { delaunay: { points , hull , triangles  } , vectors  } = this, circumcenters = this.circumcenters = this._circumcenters.subarray(0, triangles.length / 3 * 2);
+            const { delaunay: { points, hull, triangles }, vectors } = this, circumcenters = this.circumcenters = this._circumcenters.subarray(0, triangles.length / 3 * 2);
             for(let i = 0, j = 0, n = triangles.length, x, y; i < n; i += 3, j += 2){
                 const t1 = 2 * triangles[i], t2 = 2 * triangles[i + 1], t3 = 2 * triangles[i + 2], x1 = points[t1], y1 = points[t1 + 1], x2 = points[t2], y2 = points[t2 + 1], x3 = points[t3], y3 = points[t3 + 1], dx = x2 - x1, dy = y2 - y1, ex = x3 - x1, ey = y3 - y1, bl = dx * dx + dy * dy, cl = ex * ex + ey * ey, ab = (dx * ey - dy * ex) * 2;
                 if (ab) {
@@ -3544,7 +3505,7 @@
             for(let i = 0; i < hull.length; ++i)h = hull[i], p0 = p1, x0 = x1, y0 = y1, p1 = 4 * h, x1 = points[2 * h], y1 = points[2 * h + 1], vectors[p0 + 2] = vectors[p1] = y0 - y1, vectors[p0 + 3] = vectors[p1 + 1] = x1 - x0;
         }
         render(context) {
-            const buffer = null == context ? context = new Path$1 : void 0, { delaunay: { halfedges , inedges , hull  } , circumcenters , vectors  } = this;
+            const buffer = null == context ? context = new Path$1 : void 0, { delaunay: { halfedges, inedges, hull }, circumcenters, vectors } = this;
             if (hull.length <= 1) return null;
             for(let i = 0, n = halfedges.length; i < n; ++i){
                 const j = halfedges[i];
@@ -3574,7 +3535,7 @@
             return context.closePath(), buffer && buffer.value();
         }
         *cellPolygons() {
-            const { delaunay: { points  }  } = this;
+            const { delaunay: { points } } = this;
             for(let i = 0, n = points.length / 2; i < n; ++i){
                 const cell = this.cellPolygon(i);
                 cell && (cell.index = i, yield cell);
@@ -3605,7 +3566,7 @@
             }
         }
         _cell(i) {
-            const { circumcenters , delaunay: { inedges , halfedges , triangles  }  } = this, e0 = inedges[i];
+            const { circumcenters, delaunay: { inedges, halfedges, triangles } } = this, e0 = inedges[i];
             if (-1 === e0) return null;
             const points = [];
             let e = e0;
@@ -3629,7 +3590,7 @@
             ];
             const points = this._cell(i);
             if (null === points) return null;
-            const { vectors: V  } = this, v = 4 * i;
+            const { vectors: V } = this, v = 4 * i;
             return V[v] || V[v + 1] ? this._clipInfinite(i, points, V[v], V[v + 1], V[v + 2], V[v + 3]) : this._clipFinite(i, points);
         }
         _clipFinite(i, points) {
@@ -3792,7 +3753,7 @@
         _init() {
             const d = this._delaunator, points = this.points;
             if (d.hull && d.hull.length > 2 && function(d) {
-                const { triangles , coords  } = d;
+                const { triangles, coords } = d;
                 for(let i = 0; i < triangles.length; i += 3){
                     const a = 2 * triangles[i], b = 2 * triangles[i + 1], c = 2 * triangles[i + 2], cross = (coords[c] - coords[a]) * (coords[b + 1] - coords[a + 1]) - (coords[b] - coords[a]) * (coords[c + 1] - coords[a + 1]);
                     if (cross > 1e-10) return !1;
@@ -3830,7 +3791,7 @@
             return new Voronoi(this, bounds);
         }
         *neighbors(i) {
-            const { inedges , hull , _hullIndex , halfedges , triangles , collinear  } = this;
+            const { inedges, hull, _hullIndex, halfedges, triangles, collinear } = this;
             if (collinear) {
                 const l = collinear.indexOf(i);
                 l > 0 && (yield collinear[l - 1]), l < collinear.length - 1 && (yield collinear[l + 1]);
@@ -3856,7 +3817,7 @@
             return c;
         }
         _step(i, x, y) {
-            const { inedges , hull , _hullIndex , halfedges , triangles , points  } = this;
+            const { inedges, hull, _hullIndex, halfedges, triangles, points } = this;
             if (-1 === inedges[i] || !points.length) return (i + 1) % (points.length >> 1);
             let c = i, dc = pow(x - points[2 * i], 2) + pow(y - points[2 * i + 1], 2);
             const e0 = inedges[i];
@@ -3873,7 +3834,7 @@
             return c;
         }
         render(context) {
-            const buffer = null == context ? context = new Path$1 : void 0, { points , halfedges , triangles  } = this;
+            const buffer = null == context ? context = new Path$1 : void 0, { points, halfedges, triangles } = this;
             for(let i = 0, n = halfedges.length; i < n; ++i){
                 const j = halfedges[i];
                 if (j < i) continue;
@@ -3883,7 +3844,7 @@
             return this.renderHull(context), buffer && buffer.value();
         }
         renderPoints(context, r = 2) {
-            const buffer = null == context ? context = new Path$1 : void 0, { points  } = this;
+            const buffer = null == context ? context = new Path$1 : void 0, { points } = this;
             for(let i = 0, n = points.length; i < n; i += 2){
                 const x = points[i], y = points[i + 1];
                 context.moveTo(x + r, y), context.arc(x, y, r, 0, tau$3);
@@ -3891,7 +3852,7 @@
             return buffer && buffer.value();
         }
         renderHull(context) {
-            const buffer = null == context ? context = new Path$1 : void 0, { hull , points  } = this, h = 2 * hull[0], n = hull.length;
+            const buffer = null == context ? context = new Path$1 : void 0, { hull, points } = this, h = 2 * hull[0], n = hull.length;
             context.moveTo(points[h], points[h + 1]);
             for(let i = 1; i < n; ++i){
                 const h = 2 * hull[i];
@@ -3904,11 +3865,11 @@
             return this.renderHull(polygon), polygon.value();
         }
         renderTriangle(i, context) {
-            const buffer = null == context ? context = new Path$1 : void 0, { points , triangles  } = this, t0 = 2 * triangles[i *= 3], t1 = 2 * triangles[i + 1], t2 = 2 * triangles[i + 2];
+            const buffer = null == context ? context = new Path$1 : void 0, { points, triangles } = this, t0 = 2 * triangles[i *= 3], t1 = 2 * triangles[i + 1], t2 = 2 * triangles[i + 2];
             return context.moveTo(points[t0], points[t0 + 1]), context.lineTo(points[t1], points[t1 + 1]), context.lineTo(points[t2], points[t2 + 1]), context.closePath(), buffer && buffer.value();
         }
         *trianglePolygons() {
-            const { triangles  } = this;
+            const { triangles } = this;
             for(let i = 0, n = triangles.length / 3; i < n; ++i)yield this.trianglePolygon(i);
         }
         trianglePolygon(i) {
@@ -4208,7 +4169,7 @@
             (parent[i + 1 & 3] || parent[i + 2 & 3] || parent[i + 3 & 3]) && (retainer = parent, j = i);
         }
         for(; node.data !== d;)if (previous = node, !(node = node.next)) return this;
-        return ((next = node.next) && delete node.next, previous) ? (next ? previous.next = next : delete previous.next, this) : parent ? (next ? parent[i] = next : delete parent[i], (node = parent[0] || parent[1] || parent[2] || parent[3]) && node === (parent[3] || parent[2] || parent[1] || parent[0]) && !node.length && (retainer ? retainer[j] = node : this._root = node), this) : (this._root = next, this);
+        return ((next = node.next) && delete node.next, previous) ? next ? previous.next = next : delete previous.next : parent ? (next ? parent[i] = next : delete parent[i], (node = parent[0] || parent[1] || parent[2] || parent[3]) && node === (parent[3] || parent[2] || parent[1] || parent[0]) && !node.length && (retainer ? retainer[j] = node : this._root = node)) : this._root = next, this;
     }, treeProto.removeAll = function(data) {
         for(var i = 0, n = data.length; i < n; ++i)this.remove(data[i]);
         return this;
@@ -4577,8 +4538,8 @@
                 -normal[0],
                 0
             ], normal);
-            cartesianNormalizeInPlace(inflection);
-            var phii, delta = lambda - lambda2, sign = delta > 0 ? 1 : -1, lambdai = (inflection = spherical(inflection))[0] * degrees$2 * sign, antimeridian = abs$2(delta) > 180;
+            cartesianNormalizeInPlace(inflection), inflection = spherical(inflection);
+            var phii, delta = lambda - lambda2, sign = delta > 0 ? 1 : -1, lambdai = inflection[0] * degrees$2 * sign, antimeridian = abs$2(delta) > 180;
             antimeridian ^ (sign * lambda2 < lambdai && lambdai < sign * lambda) ? (phii = inflection[1] * degrees$2) > phi1 && (phi1 = phii) : antimeridian ^ (sign * lambda2 < (lambdai = (lambdai + 360) % 360 - 180) && lambdai < sign * lambda) ? (phii = -inflection[1] * degrees$2) < phi0 && (phi0 = phii) : (phi < phi0 && (phi0 = phi), phi > phi1 && (phi1 = phi)), antimeridian ? lambda < lambda2 ? angle(lambda0$1, lambda) > angle(lambda0$1, lambda1) && (lambda1 = lambda) : angle(lambda, lambda1) > angle(lambda0$1, lambda1) && (lambda0$1 = lambda) : lambda1 >= lambda0$1 ? (lambda < lambda0$1 && (lambda0$1 = lambda), lambda > lambda1 && (lambda1 = lambda)) : lambda > lambda2 ? angle(lambda0$1, lambda) > angle(lambda0$1, lambda1) && (lambda1 = lambda) : angle(lambda, lambda1) > angle(lambda0$1, lambda1) && (lambda0$1 = lambda);
         } else ranges.push(range$1 = [
             lambda0$1 = lambda,
@@ -4659,7 +4620,7 @@
     function centroidRingPointFirst(lambda, phi) {
         lambda00$2 = lambda, phi00$2 = phi, lambda *= radians$1, phi *= radians$1, centroidStream.point = centroidRingPoint;
         var cosPhi = cos$1(phi);
-        centroidPointCartesian(x0 = cosPhi * cos$1(lambda), y0 = cosPhi * sin$1(lambda), z0 = sin$1(phi));
+        x0 = cosPhi * cos$1(lambda), y0 = cosPhi * sin$1(lambda), z0 = sin$1(phi), centroidPointCartesian(x0, y0, z0);
     }
     function centroidRingPoint(lambda, phi) {
         lambda *= radians$1;
@@ -5827,9 +5788,9 @@
     }
     function azimuthalInvert(angle) {
         return function(x, y) {
-            var z = sqrt(x * x + y * y), c = angle(z), sc = sin$1(c), cc = cos$1(c);
+            var z = sqrt(x * x + y * y), c = angle(z), sc = sin$1(c);
             return [
-                atan2(x * sc, z * cc),
+                atan2(x * sc, z * cos$1(c)),
                 asin(z && y * sc / z)
             ];
         };
@@ -6403,7 +6364,7 @@
             return mu = null == mu ? 0 : +mu, sigma = null == sigma ? 1 : +sigma, function() {
                 var y;
                 if (null != x) y = x, x = null;
-                else do r = (x = 2 * source() - 1) * x + (y = 2 * source() - 1) * y;
+                else do x = 2 * source() - 1, y = 2 * source() - 1, r = x * x + y * y;
                 while (!r || r > 1)
                 return mu + sigma * y * Math.sqrt(-2 * Math.log(r) / r);
             };
@@ -6676,7 +6637,7 @@
         var transform, untransform, unknown, piecewise, output, input, domain = unit, range = unit, interpolate$1 = interpolate, clamp = identity$6;
         function rescale() {
             var a, b, t, n = Math.min(domain.length, range.length);
-            return clamp !== identity$6 && ((a = domain[0]) > (b = domain[n - 1]) && (t = a, a = b, b = t), clamp = function(x) {
+            return clamp !== identity$6 && (a = domain[0], b = domain[n - 1], a > b && (t = a, a = b, b = t), clamp = function(x) {
                 return Math.max(a, Math.min(b, x));
             }), piecewise = n > 2 ? polymap : bimap, output = input = null, scale;
         }
@@ -7701,7 +7662,7 @@
             };
         }
         return scale.domain = function(_) {
-            return arguments.length ? ([x0, x1] = _, k10 = (t0 = transform(x0 = +x0)) === (t1 = transform(x1 = +x1)) ? 0 : 1 / (t1 - t0), scale) : [
+            return arguments.length ? ([x0, x1] = _, t0 = transform(x0 = +x0), t1 = transform(x1 = +x1), k10 = t0 === t1 ? 0 : 1 / (t1 - t0), scale) : [
                 x0,
                 x1
             ];
@@ -7712,7 +7673,7 @@
         }, scale.range = range(interpolate), scale.rangeRound = range(interpolateRound), scale.unknown = function(_) {
             return arguments.length ? (unknown = _, scale) : unknown;
         }, function(t) {
-            return transform = t, k10 = (t0 = t(x0)) === (t1 = t(x1)) ? 0 : 1 / (t1 - t0), scale;
+            return transform = t, t0 = t(x0), t1 = t(x1), k10 = t0 === t1 ? 0 : 1 / (t1 - t0), scale;
         };
     }
     function copy$1(source, target) {
@@ -8800,7 +8761,7 @@
         }
     };
     var constant$b = (x)=>()=>x;
-    function ZoomEvent(type, { sourceEvent , target , transform , dispatch  }) {
+    function ZoomEvent(type, { sourceEvent, target, transform, dispatch }) {
         Object.defineProperties(this, {
             type: {
                 value: type,
@@ -9225,7 +9186,7 @@
         for (const v of values){
             let value, done;
             if (set.has(v)) return !1;
-            for(; ({ value , done  } = iterator.next()) && !done;){
+            for(; ({ value, done } = iterator.next()) && !done;){
                 if (Object.is(v, value)) return !1;
                 set.add(value);
             }
@@ -10067,11 +10028,11 @@
         return values;
     }, exports1.interval = function(callback, delay, time) {
         var t = new Timer, total = delay;
-        return null == delay ? (t.restart(callback, delay, time), t) : (t._restart = t.restart, t.restart = function(callback, delay, time) {
+        return null == delay || (t._restart = t.restart, t.restart = function(callback, delay, time) {
             delay = +delay, time = null == time ? now() : +time, t._restart(function tick(elapsed) {
                 elapsed += total, t._restart(tick, total += delay, time), callback(elapsed);
             }, delay, time);
-        }, t.restart(callback, delay, time), t);
+        }), t.restart(callback, delay, time), t;
     }, exports1.isoFormat = formatIso, exports1.isoParse = parseIso, exports1.json = function(input, init) {
         return fetch(input, init).then(responseJson);
     }, exports1.lab = lab, exports1.lch = function(l, c, h, opacity) {
@@ -10160,7 +10121,7 @@
                 return sortValues(arcs[i], arcs[j]);
             }) : null != sort && index.sort(function(i, j) {
                 return sort(data[i], data[j]);
-            }), i = 0, k = sum ? (da - n * pa) / sum : 0; i < n; ++i, a0 = a1)v = arcs[j = index[i]], a1 = a0 + (v > 0 ? v * k : 0) + pa, arcs[j] = {
+            }), i = 0, k = sum ? (da - n * pa) / sum : 0; i < n; ++i, a0 = a1)a1 = a0 + ((v = arcs[j = index[i]]) > 0 ? v * k : 0) + pa, arcs[j] = {
                 data: data[j],
                 index: i,
                 value: v,
@@ -10229,10 +10190,10 @@
         const iterator = values[Symbol.iterator]();
         let done, next, index = -1;
         if (arguments.length < 3) {
-            if ({ done , value  } = iterator.next(), done) return;
+            if ({ done, value } = iterator.next(), done) return;
             ++index;
         }
-        for(; { done , value: next  } = iterator.next(), !done;)value = reducer(value, next, ++index, values);
+        for(; { done, value: next } = iterator.next(), !done;)value = reducer(value, next, ++index, values);
         return value;
     }, exports1.reverse = function(values) {
         if ("function" != typeof values[Symbol.iterator]) throw TypeError("values is not iterable");

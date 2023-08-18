@@ -266,7 +266,6 @@ impl<'a> VisitMut for PrivateAccessVisitor<'a> {
                             right: right.take(),
                         });
 
-                        e.visit_mut_children_with(self);
                         return;
                     }
                 };
@@ -437,7 +436,7 @@ impl<'a> VisitMut for PrivateAccessVisitor<'a> {
 
             Expr::OptChain(OptChainExpr {
                 base,
-                question_dot_token,
+                optional,
                 span,
             }) if match &**base {
                 OptChainBase::Call(call) => call.callee.is_member(),
@@ -460,7 +459,7 @@ impl<'a> VisitMut for PrivateAccessVisitor<'a> {
                         span: *span,
                         callee: OptChainExpr {
                             span: *span,
-                            question_dot_token: *question_dot_token,
+                            optional: *optional,
                             base: Box::new(OptChainBase::Member(MemberExpr {
                                 span: call.span,
                                 obj: Box::new(expr),

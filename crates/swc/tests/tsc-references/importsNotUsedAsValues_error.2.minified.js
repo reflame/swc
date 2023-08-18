@@ -1,18 +1,15 @@
 //// [importsNotUsedAsValues_error.ts]
 //// [/a.ts]
 import { _ as _class_call_check } from "@swc/helpers/_/_class_call_check";
-var _default = function _default() {
-    "use strict";
+var C, _default = function _default() {
     _class_call_check(this, _default);
 };
 export var A = function A() {
-    "use strict";
     _class_call_check(this, A);
 };
-export var C;
-!function(C) {
-    C[C.One = 0] = "One", C[C.Two = 1] = "Two";
-}(C || (C = {}));
+var C1;
+export { C1 as C };
+(C = C1 || (C1 = {}))[C.One = 0] = "One", C[C.Two = 1] = "Two";
 export { _default as default };
 //// [/b.ts]
 console.log(void 0, void 0);
@@ -27,9 +24,7 @@ console.log(A, void 0);
 export { };
 //// [/f.ts]
 import { C } from "./a";
-C.One;
-var c = C.Two, d = C.Two;
-console.log(c, d);
+C.One, console.log(C.Two, C.Two);
 //// [/g.ts]
 console.log(void 0, void 0);
 export { };

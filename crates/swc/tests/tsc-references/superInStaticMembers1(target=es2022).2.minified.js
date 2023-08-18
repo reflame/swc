@@ -9,10 +9,11 @@ export default class {
 //// [locals.ts]
 class C extends B {
     static{
+        let Reflect, Reflect1;
         this._ = [
             void super.w(),
             (()=>{
-                var { Reflect  } = {
+                var { Reflect } = {
                     Reflect: null
                 };
                 super.w();
@@ -25,14 +26,8 @@ class C extends B {
             })(),
             void super.w(),
             void super.w(),
-            (()=>{
-                let Reflect;
-                Reflect || (Reflect = {}), super.w();
-            })(),
-            (()=>{
-                let Reflect;
-                Reflect || (Reflect = {}), super.w();
-            })(),
+            void (Reflect || (Reflect = {}), super.w()),
+            void (Reflect1 || (Reflect1 = {}), super.w()),
             void super.w(),
             void super.w(),
             void super.w(),
@@ -40,7 +35,7 @@ class C extends B {
         ];
     }
     static{
-        var { Reflect  } = {
+        var { Reflect } = {
             Reflect: null
         };
         super.w();
@@ -90,7 +85,7 @@ class C extends B {
 }
 export { };
 //// [varInContainingScopeStaticField2.ts]
-var { Reflect  } = {
+var { Reflect } = {
     Reflect: null
 };
 class C extends B {
@@ -117,7 +112,7 @@ class C extends B {
 }
 export { };
 //// [varInContainingScopeStaticBlock2.ts]
-var { Reflect  } = {
+var { Reflect } = {
     Reflect: null
 };
 class C extends B {

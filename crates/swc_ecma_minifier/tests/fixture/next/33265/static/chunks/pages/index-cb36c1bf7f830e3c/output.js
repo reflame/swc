@@ -469,9 +469,7 @@
                     var id = getvint(bytes, i, !1), dataHeader = getvint(bytes, i + id.length), dataStart = i + id.length + dataHeader.length;
                     0x7f === dataHeader.value && (dataHeader.value = getInfinityDataSize(id, bytes, dataStart), dataHeader.value !== bytes.length && (dataHeader.value -= dataStart));
                     var dataEnd = dataStart + dataHeader.value > bytes.length ? bytes.length : dataStart + dataHeader.value, data = bytes.subarray(dataStart, dataEnd);
-                    (0, byte_helpers.G3)(paths[0], id.bytes) && (1 === paths.length ? results.push(data) : results = results.concat(findEbml(data, paths.slice(1))));
-                    var totalLength = id.length + dataHeader.length + data.length;
-                    i += totalLength;
+                    (0, byte_helpers.G3)(paths[0], id.bytes) && (1 === paths.length ? results.push(data) : results = results.concat(findEbml(data, paths.slice(1)))), i += id.length + dataHeader.length + data.length;
                 }
                 return results;
             }, id3_helpers = __webpack_require__(8925), NAL_TYPE_ONE = (0, byte_helpers.Ki)([
@@ -2168,7 +2166,7 @@
                                         NAMESPACE.isHTML(el.uri) && !el.closed ? end = function(source, elStartEnd, tagName, entityReplacer, domBuilder) {
                                             if (/^(?:script|textarea)$/i.test(tagName)) {
                                                 var elEndStart = source.indexOf("</" + tagName + ">", elStartEnd), text = source.substring(elStartEnd + 1, elEndStart);
-                                                if (/[&<]/.test(text)) return /^script$/i.test(tagName) ? (domBuilder.characters(text, 0, text.length), elEndStart) : (text = text.replace(/&#?\w+;/g, entityReplacer), domBuilder.characters(text, 0, text.length), elEndStart);
+                                                if (/[&<]/.test(text)) return /^script$/i.test(tagName) || (text = text.replace(/&#?\w+;/g, entityReplacer)), domBuilder.characters(text, 0, text.length), elEndStart;
                                             }
                                             return elStartEnd + 1;
                                         }(source, end, el.tagName, entityReplacer, domBuilder) : end++;
@@ -3010,7 +3008,6 @@
                 DASH_EMPTY_MANIFEST: "DASH_EMPTY_MANIFEST",
                 DASH_INVALID_XML: "DASH_INVALID_XML",
                 NO_BASE_URL: "NO_BASE_URL",
-                MISSING_SEGMENT_INFORMATION: "MISSING_SEGMENT_INFORMATION",
                 SEGMENT_TIME_UNSPECIFIED: "SEGMENT_TIME_UNSPECIFIED",
                 UNSUPPORTED_UTC_TIMING_SCHEME: "UNSUPPORTED_UTC_TIMING_SCHEME"
             }, urlTypeToSegment = function(_ref) {

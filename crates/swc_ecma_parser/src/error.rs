@@ -67,7 +67,6 @@ pub enum SyntaxError {
     GetterParam,
     SetterParam,
 
-    TopLevelAwait,
     TopLevelAwaitInScript,
 
     LegacyDecimal,
@@ -195,6 +194,7 @@ pub enum SyntaxError {
     TsBindingPatCannotBeOptional,
     SuperCallOptional,
     OptChainCannotFollowConstructorCall,
+    TaggedTplInOptChain,
 
     TrailingCommaInsideImport,
 
@@ -298,9 +298,6 @@ impl SyntaxError {
             SyntaxError::PrivateNameInInterface => {
                 "private names are not allowed in interface".into()
             }
-            SyntaxError::TopLevelAwait => "top level await requires target to es2017 or higher \
-                                           and topLevelAwait:true for ecmascript"
-                .into(),
             SyntaxError::TopLevelAwaitInScript => {
                 "top level await is only allowed in module".into()
             }
@@ -469,6 +466,9 @@ impl SyntaxError {
             SyntaxError::SuperCallOptional => "Super call cannot be optional".into(),
             SyntaxError::OptChainCannotFollowConstructorCall => {
                 "Constructor in/after an optional chaining is not allowed.".into()
+            }
+            SyntaxError::TaggedTplInOptChain => {
+                "Tagged template literal is not allowed in optional chain.".into()
             }
             SyntaxError::TsInvalidParamPropPat => {
                 "Typescript parameter property must be an identifier or assignment pattern".into()

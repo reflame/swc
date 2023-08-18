@@ -1,6 +1,9 @@
 use indexmap::IndexMap;
 use swc_atoms::JsWord;
-use swc_common::{collections::AHashMap, Mark, SyntaxContext};
+use swc_common::{
+    collections::{AHashMap, ARandomState},
+    Mark, SyntaxContext,
+};
 use swc_ecma_ast::*;
 use swc_ecma_transforms_base::scope::ScopeKind;
 use swc_ecma_visit::{noop_visit_mut_type, VisitMut, VisitMutWith};
@@ -24,7 +27,7 @@ struct BlockScopedVars {
 struct Scope {
     kind: ScopeKind,
 
-    vars: IndexMap<Id, VarDeclKind, ahash::RandomState>,
+    vars: IndexMap<Id, VarDeclKind, ARandomState>,
     usages: Vec<Id>,
 
     children: Vec<Scope>,
@@ -34,7 +37,7 @@ struct Scope {
 struct ParentScope<'a> {
     parent: Option<&'a ParentScope<'a>>,
 
-    vars: &'a IndexMap<Id, VarDeclKind, ahash::RandomState>,
+    vars: &'a IndexMap<Id, VarDeclKind, ARandomState>,
 }
 
 #[swc_trace]
@@ -140,7 +143,7 @@ impl Scope {
     /// console.log(a)
     /// ```
     fn can_access(&self, id: &Id, parent: ParentScope, deny_let_const: bool) -> bool {
-        if let Some(..) = parent.get_var(id) {
+        if parent.get_var(id).is_some() {
             return true;
         }
 

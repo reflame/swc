@@ -586,6 +586,7 @@ impl<I: Tokens> Parser<I> {
         let body = self
             .with_ctx(Context {
                 in_class_field: true,
+                allow_using_decl: true,
                 ..self.ctx()
             })
             .parse_block(false)?;
@@ -1091,7 +1092,7 @@ impl<I: Tokens> Parser<I> {
                 p.emit_err(p.input.cur_span(), SyntaxError::TS1005);
             }
 
-            if let Some(..) = accessor_token {
+            if accessor_token.is_some() {
                 return Ok(ClassMember::AutoAccessor(AutoAccessor {
                     span: span!(p, start),
                     key,

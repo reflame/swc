@@ -1,13 +1,10 @@
-use std::{
-    collections::{hash_map::Entry, HashSet},
-    hash::BuildHasherDefault,
-};
+use std::collections::hash_map::Entry;
 
 use indexmap::IndexSet;
-use rustc_hash::{FxHashMap, FxHashSet, FxHasher};
+use rustc_hash::FxHashMap;
 use swc_atoms::JsWord;
 use swc_common::{
-    collections::{AHashMap, AHashSet},
+    collections::{AHashMap, AHashSet, ARandomState},
     SyntaxContext,
 };
 use swc_ecma_ast::*;
@@ -22,7 +19,7 @@ use swc_ecma_usage_analyzer::{
 };
 use swc_ecma_visit::VisitWith;
 
-pub(crate) fn analyze<N>(n: &N, _module_info: &ModuleInfo, marks: Option<Marks>) -> ProgramData
+pub(crate) fn analyze<N>(n: &N, marks: Option<Marks>) -> ProgramData
 where
     N: VisitWith<UsageAnalyzer<ProgramData>>,
 {
@@ -38,7 +35,7 @@ pub(crate) struct ProgramData {
 
     pub(crate) scopes: FxHashMap<SyntaxContext, ScopeData>,
 
-    initialized_vars: IndexSet<Id, ahash::RandomState>,
+    initialized_vars: IndexSet<Id, ARandomState>,
 }
 
 #[derive(Debug, Default, Clone)]
@@ -46,15 +43,6 @@ pub(crate) struct ScopeData {
     pub(crate) has_with_stmt: bool,
     pub(crate) has_eval_call: bool,
     pub(crate) used_arguments: bool,
-}
-
-#[derive(Debug, Default)]
-pub(crate) struct ModuleInfo {
-    /// Imported identifiers which should be treated as a black box.
-    ///
-    /// Imports from `@swc/helpers` are excluded as helpers are not modified by
-    /// accessing/calling other modules.
-    pub(crate) blackbox_imports: AHashSet<Id>,
 }
 
 #[derive(Debug, Clone)]
@@ -118,6 +106,9 @@ pub(crate) struct VarUsageInfo {
 
     pub(crate) callee_count: u32,
 
+    /// `a` in `foo(a)` or `foo({ a })`.
+    pub(crate) used_as_ref: bool,
+
     pub(crate) used_as_arg: bool,
 
     pub(crate) indexed_with_dynamic_key: bool,
@@ -173,6 +164,7 @@ impl Default for VarUsageInfo {
             used_recursively: Default::default(),
             is_top_level: Default::default(),
             assigned_fn_local: true,
+            used_as_ref: false,
         }
     }
 }
@@ -294,6 +286,7 @@ impl Storage for ProgramData {
 
                     e.get_mut().callee_count += var_info.callee_count;
                     e.get_mut().used_as_arg |= var_info.used_as_arg;
+                    e.get_mut().used_as_ref |= var_info.used_as_ref;
                     e.get_mut().indexed_with_dynamic_key |= var_info.indexed_with_dynamic_key;
 
                     e.get_mut().pure_fn |= var_info.pure_fn;
@@ -402,6 +395,31 @@ impl Storage for ProgramData {
     fn truncate_initialized_cnt(&mut self, len: usize) {
         self.initialized_vars.truncate(len)
     }
+
+    fn mark_property_mutattion(&mut self, id: Id, ctx: Ctx) {
+        let e = self.vars.entry(id).or_default();
+        e.has_property_mutation = true;
+
+        let mut to_mark_mutate = Vec::new();
+        for (other, kind) in &e.infects_to {
+            if *kind == AccessKind::Reference {
+                to_mark_mutate.push(other.clone())
+            }
+        }
+
+        for other in to_mark_mutate {
+            let other = self.vars.entry(other).or_insert_with(|| {
+                let simple_assign = ctx.is_exact_reassignment && !ctx.is_op_assign;
+
+                VarUsageInfo {
+                    used_above_decl: !simple_assign,
+                    ..Default::default()
+                }
+            });
+
+            other.has_property_mutation = true;
+        }
+    }
 }
 
 impl ScopeDataLike for ScopeData {
@@ -447,15 +465,12 @@ impl VarDataLike for VarUsageInfo {
         self.has_property_access = true;
     }
 
-    fn mark_has_property_mutation(&mut self) {
-        self.has_property_mutation = true;
-    }
-
     fn mark_used_as_callee(&mut self) {
         self.callee_count += 1;
     }
 
     fn mark_used_as_arg(&mut self) {
+        self.used_as_ref = true;
         self.used_as_arg = true
     }
 
@@ -475,12 +490,20 @@ impl VarDataLike for VarUsageInfo {
         self.reassigned = true;
     }
 
+    fn mark_used_as_ref(&mut self) {
+        self.used_as_ref = true;
+    }
+
     fn add_infects_to(&mut self, other: Access) {
         self.infects_to.push(other);
     }
 
     fn prevent_inline(&mut self) {
         self.inline_prevented = true;
+    }
+
+    fn mark_as_exported(&mut self) {
+        self.exported = true;
     }
 
     fn mark_initialized_with_safe_value(&mut self) {
@@ -501,69 +524,6 @@ impl VarDataLike for VarUsageInfo {
 }
 
 impl ProgramData {
-    pub(crate) fn expand_infected(
-        &self,
-        module_info: &ModuleInfo,
-        ids: FxHashSet<Access>,
-        max_num: usize,
-    ) -> Option<FxHashSet<Access>> {
-        let init =
-            HashSet::with_capacity_and_hasher(max_num, BuildHasherDefault::<FxHasher>::default());
-        ids.into_iter()
-            .try_fold(init, |mut res, id| {
-                let mut ids = Vec::with_capacity(max_num);
-                ids.push(id);
-                let mut ranges = vec![0..1usize];
-                loop {
-                    let range = ranges.remove(0);
-                    for index in range {
-                        let iid = ids.get(index).unwrap();
-
-                        // Abort on imported variables, because we can't analyze them
-                        if module_info.blackbox_imports.contains(&iid.0) {
-                            return Err(());
-                        }
-                        if !res.insert(iid.clone()) {
-                            continue;
-                        }
-                        if res.len() >= max_num {
-                            return Err(());
-                        }
-                        if let Some(info) = self.vars.get(&iid.0) {
-                            let infects = &info.infects_to;
-                            if !infects.is_empty() {
-                                let old_len = ids.len();
-
-                                // This is not a call, so effects from call can be skipped
-                                let can_skip_non_call = matches!(iid.1, AccessKind::Reference)
-                                    || (info.declared_count == 1
-                                        && info.declared_as_fn_decl
-                                        && !info.reassigned());
-
-                                if can_skip_non_call {
-                                    ids.extend(
-                                        infects
-                                            .iter()
-                                            .filter(|(_, kind)| *kind != AccessKind::Call)
-                                            .cloned(),
-                                    );
-                                } else {
-                                    ids.extend_from_slice(infects.as_slice());
-                                }
-                                let new_len = ids.len();
-                                ranges.push(old_len..new_len);
-                            }
-                        }
-                    }
-                    if ranges.is_empty() {
-                        break;
-                    }
-                }
-                Ok(res)
-            })
-            .ok()
-    }
-
     pub(crate) fn contains_unresolved(&self, e: &Expr) -> bool {
         match e {
             Expr::Ident(i) => {
@@ -632,6 +592,10 @@ impl ProgramData {
             }
         });
 
+        if is_first {
+            e.used_as_ref |= ctx.is_id_ref;
+        }
+
         e.inline_prevented |= ctx.inline_prevented;
 
         if is_first {
@@ -650,15 +614,6 @@ impl ProgramData {
 
         // Passing object as a argument is possibly modification.
         e.mutated |= is_modify || (call_may_mutate && ctx.is_exact_arg);
-        let mut to_mark_mutate = Vec::new();
-        if call_may_mutate && ctx.is_exact_arg {
-            e.has_property_mutation = true;
-            for (other, kind) in e.infects_to.clone() {
-                if kind == AccessKind::Reference {
-                    to_mark_mutate.push(other)
-                }
-            }
-        }
 
         e.executed_multiple_time |= ctx.executed_multiple_time;
         e.used_in_cond |= ctx.in_cond;
@@ -676,7 +631,7 @@ impl ProgramData {
                     && e.var_kind != Some(VarDeclKind::Const)
                     && !inited
                 {
-                    self.initialized_vars.insert(i);
+                    self.initialized_vars.insert(i.clone());
                     e.assign_count -= 1;
                     e.var_initialized = true;
                 } else {
@@ -695,19 +650,8 @@ impl ProgramData {
             e.usage_count += 1;
         }
 
-        for other in to_mark_mutate {
-            let other = self.vars.entry(other).or_insert_with(|| {
-                // trace!("insert({}{:?})", i.0, i.1);
-
-                let simple_assign = ctx.is_exact_reassignment && !ctx.is_op_assign;
-
-                VarUsageInfo {
-                    used_above_decl: !simple_assign,
-                    ..Default::default()
-                }
-            });
-
-            other.has_property_mutation = true;
+        if call_may_mutate && ctx.is_exact_arg {
+            self.mark_property_mutattion(i, ctx)
         }
     }
 }

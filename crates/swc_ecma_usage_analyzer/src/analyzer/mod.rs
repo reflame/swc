@@ -1,7 +1,7 @@
 use swc_atoms::js_word;
 use swc_common::{collections::AHashMap, Mark, SyntaxContext};
 use swc_ecma_ast::*;
-use swc_ecma_utils::{find_pat_ids, ExprCtx, IsEmpty, StmtExt};
+use swc_ecma_utils::{find_pat_ids, ExprCtx, ExprExt, IsEmpty, StmtExt};
 use swc_ecma_visit::{noop_visit_type, Visit, VisitWith};
 use swc_timer::timer;
 
@@ -191,7 +191,7 @@ where
 {
     noop_visit_type!();
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_arrow_expr(&mut self, n: &ArrowExpr) {
         self.with_child(n.span.ctxt, ScopeKind::Fn, |child| {
             {
@@ -216,25 +216,6 @@ where
     }
 
     #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
-    fn visit_constructor(&mut self, n: &Constructor) {
-        self.with_child(n.span.ctxt, ScopeKind::Fn, |child| {
-            {
-                let ctx = Ctx {
-                    in_pat_of_param: true,
-                    is_delete_arg: false,
-                    ..child.ctx
-                };
-                n.params.visit_with(&mut *child.with_ctx(ctx));
-            }
-
-            // Bypass visit_block_stmt
-            if let Some(body) = &n.body {
-                body.visit_with(child);
-            }
-        })
-    }
-
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
     fn visit_assign_expr(&mut self, n: &AssignExpr) {
         let ctx = Ctx {
             in_assign_lhs: true,
@@ -249,6 +230,12 @@ where
             in_assign_lhs: false,
             is_exact_reassignment: false,
             is_delete_arg: false,
+            // We mark bar in
+            //
+            // foo[i] = bar
+            //
+            // as `used_as_ref`.
+            is_id_ref: matches!(n.op, op!("=") | op!("||=") | op!("&&=") | op!("??=")),
             ..self.ctx
         };
         n.right.visit_with(&mut *self.with_ctx(ctx));
@@ -293,7 +280,7 @@ where
         }
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_await_expr(&mut self, n: &AwaitExpr) {
         let ctx = Ctx {
             in_await_arg: true,
@@ -303,14 +290,53 @@ where
         n.visit_children_with(&mut *self.with_ctx(ctx));
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    fn visit_bin_expr(&mut self, e: &BinExpr) {
+        if e.op.may_short_circuit() {
+            let ctx = Ctx {
+                is_id_ref: true,
+                ..self.ctx
+            };
+            e.left.visit_with(&mut *self.with_ctx(ctx));
+            let ctx = Ctx {
+                in_cond: true,
+                is_delete_arg: false,
+                is_id_ref: true,
+                ..self.ctx
+            };
+            self.with_ctx(ctx).visit_in_cond(&e.right);
+        } else {
+            if e.op == op!("in") {
+                for_each_id_ref_in_expr(&e.right, &mut |obj| {
+                    let var = self.data.var_or_default(obj.to_id());
+
+                    match &*e.left {
+                        Expr::Lit(Lit::Str(prop)) => {
+                            var.add_accessed_property(prop.value.clone());
+                        }
+
+                        _ => {
+                            var.mark_indexed_with_dynamic_key();
+                        }
+                    }
+                })
+            }
+
+            let ctx = Ctx {
+                is_id_ref: false,
+                ..self.ctx
+            };
+            e.visit_children_with(&mut *self.with_ctx(ctx));
+        }
+    }
+
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_block_stmt(&mut self, n: &BlockStmt) {
         self.with_child(n.span.ctxt, ScopeKind::Block, |child| {
             n.visit_children_with(child);
         });
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_call_expr(&mut self, n: &CallExpr) {
         let inline_prevented = self.ctx.inline_prevented
             || self
@@ -328,11 +354,9 @@ where
         }
 
         if let Callee::Expr(callee) = &n.callee {
-            if let Expr::Ident(callee) = &**callee {
-                self.data
-                    .var_or_default(callee.to_id())
-                    .mark_used_as_callee();
-            }
+            for_each_id_ref_in_expr(callee, &mut |i| {
+                self.data.var_or_default(i.to_id()).mark_used_as_callee();
+            });
 
             match &**callee {
                 Expr::Fn(callee) => {
@@ -386,15 +410,16 @@ where
                 is_exact_arg: true,
                 is_exact_reassignment: false,
                 is_callee: false,
+                is_id_ref: true,
                 ..self.ctx
             };
             n.args.visit_with(&mut *self.with_ctx(ctx));
         }
 
         for arg in &n.args {
-            if let Expr::Ident(arg) = &*arg.expr {
+            for_each_id_ref_in_expr(&arg.expr, &mut |arg| {
                 self.data.var_or_default(arg.to_id()).mark_used_as_arg();
-            }
+            })
         }
 
         if let Callee::Expr(callee) = &n.callee {
@@ -407,7 +432,7 @@ where
         }
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_catch_clause(&mut self, n: &CatchClause) {
         {
             let ctx = Ctx {
@@ -429,7 +454,7 @@ where
         }
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_class(&mut self, n: &Class) {
         n.decorators.visit_with(self);
 
@@ -445,14 +470,14 @@ where
         self.with_child(n.span.ctxt, ScopeKind::Fn, |child| n.body.visit_with(child))
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_class_decl(&mut self, n: &ClassDecl) {
         self.declare_decl(&n.ident, true, None, false);
 
         n.visit_children_with(self);
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_class_expr(&mut self, n: &ClassExpr) {
         n.visit_children_with(self);
 
@@ -461,7 +486,47 @@ where
         }
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
+    fn visit_class_method(&mut self, n: &ClassMethod) {
+        n.function.decorators.visit_with(self);
+
+        self.with_child(n.function.span.ctxt, ScopeKind::Fn, |a| {
+            n.key.visit_with(a);
+            {
+                let ctx = Ctx {
+                    in_pat_of_param: true,
+                    ..a.ctx
+                };
+                n.function.params.visit_with(&mut *a.with_ctx(ctx));
+            }
+
+            n.function.visit_with(a);
+        });
+    }
+
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
+    fn visit_class_prop(&mut self, n: &ClassProp) {
+        let ctx = Ctx {
+            is_delete_arg: false,
+            is_id_ref: true,
+            ..self.ctx
+        };
+
+        n.visit_children_with(&mut *self.with_ctx(ctx));
+    }
+
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
+    fn visit_computed_prop_name(&mut self, n: &ComputedPropName) {
+        let ctx = Ctx {
+            is_delete_arg: false,
+            is_id_ref: true,
+            ..self.ctx
+        };
+
+        n.visit_children_with(&mut *self.with_ctx(ctx));
+    }
+
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_cond_expr(&mut self, n: &CondExpr) {
         n.test.visit_with(self);
 
@@ -473,6 +538,25 @@ where
             self.with_ctx(ctx).visit_in_cond(&n.cons);
             self.with_ctx(ctx).visit_in_cond(&n.alt);
         }
+    }
+
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
+    fn visit_constructor(&mut self, n: &Constructor) {
+        self.with_child(n.span.ctxt, ScopeKind::Fn, |child| {
+            {
+                let ctx = Ctx {
+                    in_pat_of_param: true,
+                    is_delete_arg: false,
+                    ..child.ctx
+                };
+                n.params.visit_with(&mut *child.with_ctx(ctx));
+            }
+
+            // Bypass visit_block_stmt
+            if let Some(body) = &n.body {
+                body.visit_with(child);
+            }
+        })
     }
 
     fn visit_default_decl(&mut self, d: &DefaultDecl) {
@@ -493,7 +577,7 @@ where
         }
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_do_while_stmt(&mut self, n: &DoWhileStmt) {
         n.body.visit_with(&mut *self.with_ctx(Ctx {
             is_delete_arg: false,
@@ -507,7 +591,7 @@ where
         }));
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_export_decl(&mut self, n: &ExportDecl) {
         n.visit_children_with(self);
 
@@ -522,18 +606,30 @@ where
                 let ids = find_pat_ids(v);
 
                 for id in ids {
-                    self.data.var_or_default(id).prevent_inline();
+                    self.data.var_or_default(id).mark_as_exported();
                 }
             }
             _ => {}
         }
     }
 
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
+    fn visit_export_default_expr(&mut self, n: &ExportDefaultExpr) {
+        let ctx = Ctx {
+            is_id_ref: true,
+            ..self.ctx
+        };
+
+        n.visit_children_with(&mut *self.with_ctx(ctx));
+    }
+
     fn visit_export_named_specifier(&mut self, n: &ExportNamedSpecifier) {
         match &n.orig {
             ModuleExportName::Ident(orig) => {
                 self.report_usage(orig, false);
-                self.data.var_or_default(orig.to_id()).prevent_inline();
+                let v = self.data.var_or_default(orig.to_id());
+                v.prevent_inline();
+                v.mark_used_as_ref();
             }
             ModuleExportName::Str(..) => {}
         };
@@ -578,56 +674,15 @@ where
         e.visit_children_with(self);
 
         if e.spread.is_some() {
-            if let Expr::Ident(i) = &*e.expr {
+            for_each_id_ref_in_expr(&e.expr, &mut |i| {
                 self.data
                     .var_or_default(i.to_id())
                     .mark_indexed_with_dynamic_key();
-            }
+            });
         }
     }
 
     #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
-    fn visit_spread_element(&mut self, e: &SpreadElement) {
-        e.visit_children_with(self);
-
-        if let Expr::Ident(i) = &*e.expr {
-            self.data
-                .var_or_default(i.to_id())
-                .mark_indexed_with_dynamic_key();
-        }
-    }
-
-    fn visit_bin_expr(&mut self, e: &BinExpr) {
-        if e.op.may_short_circuit() {
-            e.left.visit_with(self);
-            let ctx = Ctx {
-                in_cond: true,
-                is_delete_arg: false,
-                ..self.ctx
-            };
-            self.with_ctx(ctx).visit_in_cond(&e.right);
-        } else {
-            if e.op == op!("in") {
-                if let Expr::Ident(obj) = &*e.right {
-                    let var = self.data.var_or_default(obj.to_id());
-
-                    match &*e.left {
-                        Expr::Lit(Lit::Str(prop)) => {
-                            var.add_accessed_property(prop.value.clone());
-                        }
-
-                        _ => {
-                            var.mark_indexed_with_dynamic_key();
-                        }
-                    }
-                }
-            }
-
-            e.visit_children_with(self);
-        }
-    }
-
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
     fn visit_fn_decl(&mut self, n: &FnDecl) {
         let ctx = Ctx {
             in_decl_with_no_side_effect_for_member_access: true,
@@ -661,7 +716,7 @@ where
         }
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_fn_expr(&mut self, n: &FnExpr) {
         if let Some(n_id) = &n.ident {
             self.data
@@ -690,7 +745,7 @@ where
         }
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_for_in_stmt(&mut self, n: &ForInStmt) {
         n.right.visit_with(self);
 
@@ -716,7 +771,7 @@ where
         });
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_for_of_stmt(&mut self, n: &ForOfStmt) {
         n.right.visit_with(self);
 
@@ -739,7 +794,7 @@ where
         });
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_for_stmt(&mut self, n: &ForStmt) {
         n.init.visit_with(self);
 
@@ -755,7 +810,7 @@ where
         self.with_ctx(ctx).visit_in_cond(&n.body);
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_function(&mut self, n: &Function) {
         n.decorators.visit_with(self);
 
@@ -791,7 +846,16 @@ where
             })
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
+    fn visit_getter_prop(&mut self, n: &GetterProp) {
+        self.with_child(n.span.ctxt, ScopeKind::Fn, |a| {
+            n.key.visit_with(a);
+
+            n.body.visit_with(a);
+        });
+    }
+
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_if_stmt(&mut self, n: &IfStmt) {
         let ctx = Ctx {
             in_cond: true,
@@ -823,6 +887,7 @@ where
                 is_exact_arg: false,
                 is_exact_reassignment: false,
                 is_callee: false,
+                is_id_ref: false,
                 ..self.ctx
             };
             e.obj.visit_with(&mut *self.with_ctx(ctx));
@@ -838,7 +903,7 @@ where
             };
             c.visit_with(&mut *self.with_ctx(ctx));
         }
-        if let Expr::Ident(obj) = &*e.obj {
+        for_each_id_ref_in_expr(&e.obj, &mut |obj| {
             let v = self.data.var_or_default(obj.to_id());
             v.mark_has_property_access();
 
@@ -850,26 +915,35 @@ where
                 v.mark_indexed_with_dynamic_key();
             }
 
-            if self.ctx.in_assign_lhs || self.ctx.is_delete_arg {
-                v.mark_has_property_mutation();
-            }
-
             if let MemberProp::Ident(prop) = &e.prop {
                 v.add_accessed_property(prop.sym.clone());
             }
-        }
+
+            if self.ctx.in_assign_lhs || self.ctx.is_delete_arg {
+                self.data.mark_property_mutattion(obj.to_id(), self.ctx)
+            }
+        })
+    }
+
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
+    fn visit_method_prop(&mut self, n: &MethodProp) {
+        n.function.decorators.visit_with(self);
+
+        self.with_child(n.function.span.ctxt, ScopeKind::Fn, |a| {
+            n.key.visit_with(a);
+            {
+                let ctx = Ctx {
+                    in_pat_of_param: true,
+                    ..a.ctx
+                };
+                n.function.params.visit_with(&mut *a.with_ctx(ctx));
+            }
+
+            n.function.visit_with(a);
+        });
     }
 
     fn visit_module(&mut self, n: &Module) {
-        let ctx = Ctx {
-            skip_standalone: true,
-            is_top_level: true,
-            ..self.ctx
-        };
-        n.visit_children_with(&mut *self.with_ctx(ctx))
-    }
-
-    fn visit_script(&mut self, n: &Script) {
         let ctx = Ctx {
             skip_standalone: true,
             is_top_level: true,
@@ -885,20 +959,21 @@ where
         n.visit_children_with(self);
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_new_expr(&mut self, n: &NewExpr) {
         {
             n.callee.visit_with(self);
             let ctx = Ctx {
                 in_call_arg_of: Some(CalleeKind::from_expr(&n.callee, &self.expr_ctx)),
                 is_exact_arg: true,
+                is_id_ref: true,
                 ..self.ctx
             };
             n.args.visit_with(&mut *self.with_ctx(ctx));
         }
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_object_pat_prop(&mut self, n: &ObjectPatProp) {
         n.visit_children_with(self);
 
@@ -907,7 +982,7 @@ where
         }
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_param(&mut self, n: &Param) {
         let ctx = Ctx {
             in_pat_of_param: false,
@@ -918,12 +993,13 @@ where
         let ctx = Ctx {
             in_pat_of_param: true,
             var_decl_kind_of_pat: None,
+            is_id_ref: true,
             ..self.ctx
         };
         n.pat.visit_with(&mut *self.with_ctx(ctx));
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_pat(&mut self, n: &Pat) {
         match n {
             Pat::Ident(..) => {
@@ -943,7 +1019,7 @@ where
         }
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_pat_or_expr(&mut self, n: &PatOrExpr) {
         match n {
             PatOrExpr::Expr(e) => {
@@ -959,82 +1035,7 @@ where
         }
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
-    fn visit_prop(&mut self, n: &Prop) {
-        let ctx = Ctx {
-            is_exact_arg: false,
-            is_exact_reassignment: false,
-            ..self.ctx
-        };
-        n.visit_children_with(&mut *self.with_ctx(ctx));
-
-        if let Prop::Shorthand(i) = n {
-            self.report_usage(i, false);
-        }
-    }
-
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
-    fn visit_setter_prop(&mut self, n: &SetterProp) {
-        self.with_child(n.span.ctxt, ScopeKind::Fn, |a| {
-            n.key.visit_with(a);
-            {
-                let ctx = Ctx {
-                    in_pat_of_param: true,
-                    ..a.ctx
-                };
-                n.param.visit_with(&mut *a.with_ctx(ctx));
-            }
-
-            n.body.visit_with(a);
-        });
-    }
-
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
-    fn visit_method_prop(&mut self, n: &MethodProp) {
-        n.function.decorators.visit_with(self);
-
-        self.with_child(n.function.span.ctxt, ScopeKind::Fn, |a| {
-            n.key.visit_with(a);
-            {
-                let ctx = Ctx {
-                    in_pat_of_param: true,
-                    ..a.ctx
-                };
-                n.function.params.visit_with(&mut *a.with_ctx(ctx));
-            }
-
-            n.function.visit_with(a);
-        });
-    }
-
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
-    fn visit_getter_prop(&mut self, n: &GetterProp) {
-        self.with_child(n.span.ctxt, ScopeKind::Fn, |a| {
-            n.key.visit_with(a);
-
-            n.body.visit_with(a);
-        });
-    }
-
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
-    fn visit_class_method(&mut self, n: &ClassMethod) {
-        n.function.decorators.visit_with(self);
-
-        self.with_child(n.function.span.ctxt, ScopeKind::Fn, |a| {
-            n.key.visit_with(a);
-            {
-                let ctx = Ctx {
-                    in_pat_of_param: true,
-                    ..a.ctx
-                };
-                n.function.params.visit_with(&mut *a.with_ctx(ctx));
-            }
-
-            n.function.visit_with(a);
-        });
-    }
-
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_private_method(&mut self, n: &PrivateMethod) {
         n.function.decorators.visit_with(self);
 
@@ -1052,7 +1053,69 @@ where
         });
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
+    fn visit_private_prop(&mut self, n: &PrivateProp) {
+        let ctx = Ctx {
+            is_delete_arg: false,
+            is_id_ref: true,
+            ..self.ctx
+        };
+
+        n.visit_children_with(&mut *self.with_ctx(ctx));
+    }
+
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
+    fn visit_prop(&mut self, n: &Prop) {
+        let ctx = Ctx {
+            is_exact_arg: false,
+            is_exact_reassignment: false,
+            is_id_ref: true,
+            ..self.ctx
+        };
+        n.visit_children_with(&mut *self.with_ctx(ctx));
+
+        if let Prop::Shorthand(i) = n {
+            self.report_usage(i, false);
+        }
+    }
+
+    fn visit_script(&mut self, n: &Script) {
+        let ctx = Ctx {
+            skip_standalone: true,
+            is_top_level: true,
+            ..self.ctx
+        };
+        n.visit_children_with(&mut *self.with_ctx(ctx))
+    }
+
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
+    fn visit_setter_prop(&mut self, n: &SetterProp) {
+        self.with_child(n.span.ctxt, ScopeKind::Fn, |a| {
+            n.key.visit_with(a);
+            {
+                let ctx = Ctx {
+                    in_pat_of_param: true,
+                    ..a.ctx
+                };
+                n.param.visit_with(&mut *a.with_ctx(ctx));
+            }
+
+            n.body.visit_with(a);
+        });
+    }
+
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
+    fn visit_spread_element(&mut self, e: &SpreadElement) {
+        e.visit_children_with(self);
+
+        for_each_id_ref_in_expr(&e.expr, &mut |i| {
+            self.data
+                .var_or_default(i.to_id())
+                .mark_indexed_with_dynamic_key();
+        });
+    }
+
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_stmt(&mut self, n: &Stmt) {
         let ctx = Ctx {
             in_update_arg: false,
@@ -1061,6 +1124,7 @@ where
             in_assign_lhs: false,
             in_await_arg: false,
             is_delete_arg: false,
+            is_id_ref: true,
             ..self.ctx
         };
         n.visit_children_with(&mut *self.with_ctx(ctx));
@@ -1073,6 +1137,7 @@ where
             let ctx = Ctx {
                 in_cond: self.ctx.in_cond || had_cond,
                 is_delete_arg: false,
+                is_id_ref: true,
                 ..self.ctx
             };
 
@@ -1089,13 +1154,14 @@ where
                 is_exact_arg: false,
                 is_exact_reassignment: false,
                 is_delete_arg: false,
+                is_id_ref: false,
                 ..self.ctx
             };
             c.visit_with(&mut *self.with_ctx(ctx));
         }
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_switch_stmt(&mut self, n: &SwitchStmt) {
         n.discriminant.visit_with(self);
 
@@ -1117,7 +1183,27 @@ where
         }
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
+    fn visit_tagged_tpl(&mut self, n: &TaggedTpl) {
+        let ctx = Ctx {
+            is_id_ref: false,
+            ..self.ctx
+        };
+
+        n.visit_children_with(&mut *self.with_ctx(ctx))
+    }
+
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
+    fn visit_tpl(&mut self, n: &Tpl) {
+        let ctx = Ctx {
+            is_id_ref: false,
+            ..self.ctx
+        };
+
+        n.visit_children_with(&mut *self.with_ctx(ctx))
+    }
+
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_try_stmt(&mut self, n: &TryStmt) {
         let ctx = Ctx {
             in_cond: true,
@@ -1128,18 +1214,7 @@ where
         self.with_ctx(ctx).visit_children_in_cond(n);
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
-    fn visit_update_expr(&mut self, n: &UpdateExpr) {
-        let ctx = Ctx {
-            in_update_arg: true,
-            is_exact_reassignment: true,
-            is_delete_arg: false,
-            ..self.ctx
-        };
-        n.visit_children_with(&mut *self.with_ctx(ctx));
-    }
-
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_unary_expr(&mut self, n: &UnaryExpr) {
         let ctx = Ctx {
             in_update_arg: false,
@@ -1150,7 +1225,18 @@ where
         n.visit_children_with(&mut *self.with_ctx(ctx));
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
+    fn visit_update_expr(&mut self, n: &UpdateExpr) {
+        let ctx = Ctx {
+            in_update_arg: true,
+            is_exact_reassignment: true,
+            is_delete_arg: false,
+            ..self.ctx
+        };
+        n.visit_children_with(&mut *self.with_ctx(ctx));
+    }
+
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_var_decl(&mut self, n: &VarDecl) {
         let ctx = Ctx {
             var_decl_kind_of_pat: Some(n.kind),
@@ -1212,20 +1298,25 @@ where
             let ctx = Ctx {
                 inline_prevented: self.ctx.inline_prevented || prevent_inline,
                 in_pat_of_var_decl: false,
+                is_id_ref: true,
                 ..self.ctx
             };
 
-            if let Some(..) = &self.marks {
+            if self.marks.is_some() {
                 if let VarDeclarator {
                     name: Pat::Ident(id),
-                    init: Some(..),
+                    init: Some(init),
                     definite: false,
                     ..
                 } = e
                 {
                     let id = id.to_id();
-                    self.used_recursively
-                        .insert(id.clone(), RecursiveUsage::Var { can_ignore: false });
+                    self.used_recursively.insert(
+                        id.clone(),
+                        RecursiveUsage::Var {
+                            can_ignore: !init.may_have_side_effects(&self.expr_ctx),
+                        },
+                    );
                     e.init.visit_with(&mut *self.with_ctx(ctx));
                     self.used_recursively.remove(&id);
                     return;
@@ -1236,7 +1327,7 @@ where
         }
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_while_stmt(&mut self, n: &WhileStmt) {
         n.test.visit_with(&mut *self.with_ctx(Ctx {
             executed_multiple_time: true,
@@ -1253,10 +1344,185 @@ where
         self.with_ctx(ctx).visit_in_cond(&n.body);
     }
 
-    #[cfg_attr(feature = "debug", tracing::instrument(skip(self, n)))]
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_with_stmt(&mut self, n: &WithStmt) {
         self.scope.mark_with_stmt();
         n.visit_children_with(self);
+    }
+}
+
+/// - `a` => `a`
+/// - `a ? b : c` => `b`, `c`
+fn for_each_id_ref_in_expr(e: &Expr, op: &mut impl FnMut(&Ident)) {
+    match e {
+        Expr::Ident(i) => op(i),
+        Expr::Cond(c) => {
+            for_each_id_ref_in_expr(&c.cons, op);
+            for_each_id_ref_in_expr(&c.alt, op);
+        }
+        Expr::Bin(
+            b @ BinExpr {
+                op: op!("||") | op!("??") | op!("&&"),
+                ..
+            },
+        ) => {
+            for_each_id_ref_in_expr(&b.left, op);
+            for_each_id_ref_in_expr(&b.right, op);
+        }
+
+        Expr::Class(c) => {
+            for_each_id_ref_in_class(&c.class, op);
+        }
+
+        Expr::Fn(f) => {
+            for_each_id_ref_in_fn(&f.function, op);
+        }
+
+        Expr::Seq(s) => {
+            for_each_id_ref_in_expr(s.exprs.last().unwrap(), op);
+        }
+
+        Expr::Array(arr) => {
+            arr.elems.iter().flatten().for_each(|e| {
+                for_each_id_ref_in_expr(&e.expr, op);
+            });
+        }
+
+        Expr::Object(obj) => {
+            obj.props.iter().for_each(|p| match p {
+                PropOrSpread::Spread(p) => {
+                    for_each_id_ref_in_expr(&p.expr, op);
+                }
+                PropOrSpread::Prop(p) => match &**p {
+                    Prop::Shorthand(p) => {
+                        op(p);
+                    }
+                    Prop::KeyValue(p) => {
+                        for_each_id_ref_in_prop_name(&p.key, op);
+                        for_each_id_ref_in_expr(&p.value, op);
+                    }
+                    Prop::Assign(p) => {
+                        for_each_id_ref_in_expr(&p.value, op);
+                    }
+                    Prop::Getter(p) => {
+                        for_each_id_ref_in_prop_name(&p.key, op);
+                    }
+                    Prop::Setter(p) => {
+                        for_each_id_ref_in_prop_name(&p.key, op);
+                        for_each_id_ref_in_pat(&p.param, op);
+                    }
+                    Prop::Method(p) => {
+                        for_each_id_ref_in_fn(&p.function, op);
+                    }
+                },
+            });
+        }
+        _ => {}
+    }
+}
+
+fn for_each_id_ref_in_class(c: &Class, op: &mut impl FnMut(&Ident)) {
+    c.body.iter().for_each(|m| match m {
+        ClassMember::Constructor(m) => {
+            for_each_id_ref_in_prop_name(&m.key, op);
+            m.params.iter().for_each(|p| match p {
+                ParamOrTsParamProp::TsParamProp(..) => {
+                    unreachable!()
+                }
+                ParamOrTsParamProp::Param(p) => {
+                    for_each_id_ref_in_pat(&p.pat, op);
+                }
+            });
+        }
+
+        ClassMember::Method(m) => {
+            for_each_id_ref_in_prop_name(&m.key, op);
+            for_each_id_ref_in_fn(&m.function, op);
+        }
+
+        ClassMember::PrivateMethod(m) => {
+            for_each_id_ref_in_fn(&m.function, op);
+        }
+
+        ClassMember::ClassProp(m) => {
+            for_each_id_ref_in_prop_name(&m.key, op);
+            if let Some(value) = &m.value {
+                for_each_id_ref_in_expr(value, op);
+            }
+        }
+
+        ClassMember::PrivateProp(m) => {
+            if let Some(value) = &m.value {
+                for_each_id_ref_in_expr(value, op);
+            }
+        }
+
+        ClassMember::AutoAccessor(m) => {
+            if let Key::Public(key) = &m.key {
+                for_each_id_ref_in_prop_name(key, op);
+            }
+
+            if let Some(v) = &m.value {
+                for_each_id_ref_in_expr(v, op);
+            }
+        }
+
+        ClassMember::Empty(..)
+        | ClassMember::StaticBlock(..)
+        | ClassMember::TsIndexSignature(..) => {}
+    });
+}
+fn for_each_id_ref_in_prop_name(p: &PropName, op: &mut impl FnMut(&Ident)) {
+    if let PropName::Computed(p) = p {
+        for_each_id_ref_in_expr(&p.expr, op);
+    }
+}
+
+fn for_each_id_ref_in_pat(p: &Pat, op: &mut impl FnMut(&Ident)) {
+    match p {
+        Pat::Ident(..) => {
+            // IdentifierBinding is not IdentifierReference
+        }
+        Pat::Array(p) => {
+            p.elems.iter().flatten().for_each(|e| {
+                for_each_id_ref_in_pat(e, op);
+            });
+        }
+        Pat::Rest(p) => {
+            for_each_id_ref_in_pat(&p.arg, op);
+        }
+        Pat::Object(p) => {
+            p.props.iter().for_each(|p| match p {
+                ObjectPatProp::KeyValue(p) => {
+                    for_each_id_ref_in_prop_name(&p.key, op);
+                    for_each_id_ref_in_pat(&p.value, op);
+                }
+                ObjectPatProp::Assign(p) => {
+                    // We skip key because it's IdentifierBinding
+
+                    if let Some(value) = &p.value {
+                        for_each_id_ref_in_expr(value, op);
+                    }
+                }
+                ObjectPatProp::Rest(p) => {
+                    for_each_id_ref_in_pat(&p.arg, op);
+                }
+            });
+        }
+        Pat::Assign(p) => {
+            for_each_id_ref_in_pat(&p.left, op);
+            for_each_id_ref_in_expr(&p.right, op);
+        }
+        Pat::Invalid(..) => {}
+        Pat::Expr(p) => {
+            for_each_id_ref_in_expr(p, op);
+        }
+    }
+}
+
+fn for_each_id_ref_in_fn(f: &Function, op: &mut impl FnMut(&Ident)) {
+    for p in &f.params {
+        for_each_id_ref_in_pat(&p.pat, op);
     }
 }
 

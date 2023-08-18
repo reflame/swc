@@ -5370,23 +5370,19 @@
                         var point = _this.updateChangeTouches(evt);
                         _this.movedPoint = point, _this.isTouchMoved = !(point.clientX === _this.startPoint.clientX && point.clientY === _this.startPoint.clientY);
                         var eScrollArgs = {};
-                        if (_this.isTouchMoved) {
-                            clearTimeout(_this.timeOutTapHold), _this.calcScrollPoints(evt);
-                            var scrollArg = {
-                                startEvents: _this.startEventData,
-                                originalEvent: evt,
-                                startX: _this.startPoint.clientX,
-                                startY: _this.startPoint.clientY,
-                                distanceX: _this.distanceX,
-                                distanceY: _this.distanceY,
-                                scrollDirection: _this.scrollDirection,
-                                velocity: _this.getVelocity(point)
-                            };
-                            eScrollArgs = util_extend(eScrollArgs, {}, scrollArg), _this.trigger('scroll', eScrollArgs), _this.lastMovedPoint = {
-                                clientX: point.clientX,
-                                clientY: point.clientY
-                            };
-                        }
+                        _this.isTouchMoved && (clearTimeout(_this.timeOutTapHold), _this.calcScrollPoints(evt), eScrollArgs = util_extend(eScrollArgs, {}, {
+                            startEvents: _this.startEventData,
+                            originalEvent: evt,
+                            startX: _this.startPoint.clientX,
+                            startY: _this.startPoint.clientY,
+                            distanceX: _this.distanceX,
+                            distanceY: _this.distanceY,
+                            scrollDirection: _this.scrollDirection,
+                            velocity: _this.getVelocity(point)
+                        }), _this.trigger('scroll', eScrollArgs), _this.lastMovedPoint = {
+                            clientX: point.clientX,
+                            clientY: point.clientY
+                        });
                     }, _this.cancelEvent = function(evt) {
                         clearTimeout(_this.timeOutTapHold), clearTimeout(_this.timeOutTap), _this.tapCount = 0, _this.swipeFn(evt), EventHandler.remove(_this.element, Browser.touchCancelEvent, _this.cancelEvent);
                     }, _this.endEvent = function(evt) {
@@ -5524,33 +5520,33 @@
                 compile: new (function() {
                     function Engine() {}
                     return Engine.prototype.compile = function(templateString, helper, ignorePrefix) {
-                        var helper1, argName, str, helper2, ignorePrefix1, varCOunt, localKeys, isClass, singleSpace;
-                        return void 0 === helper && (helper = {}), argName = 'data', str = templateString, helper2 = helper1 = helper, ignorePrefix1 = void 0, varCOunt = 0, localKeys = [], isClass = str.match(/class="([^"]+|)\s{2}/g), singleSpace = '', isClass && isClass.forEach(function(value) {
+                        var helper1, argName, str, nameSpace, helper2, ignorePrefix1, varCOunt, localKeys, isClass, singleSpace;
+                        return void 0 === helper && (helper = {}), str = templateString, nameSpace = argName = 'data', helper2 = helper1 = helper, ignorePrefix1 = void 0, varCOunt = 0, localKeys = [], isClass = str.match(/class="([^"]+|)\s{2}/g), singleSpace = '', isClass && isClass.forEach(function(value) {
                             singleSpace = value.replace(/\s\s+/g, ' '), str = str.replace(value, singleSpace);
                         }), Function(argName, "var str=\"" + str.replace(LINES, '').replace(DBL_QUOTED_STR, '\'$1\'').replace(exp, function(match, cnt, offset, matchStr) {
                             var matches = cnt.match(CALL_FUNCTION);
                             if (matches) {
                                 var rlStr = matches[1];
                                 if (ELSEIF_STMT.test(cnt)) cnt = '";} ' + cnt.replace(matches[1], rlStr.replace(WORD, function(str) {
-                                    return addNameSpace(str = str.trim(), !QUOTES.test(str) && -1 === localKeys.indexOf(str), argName, localKeys, ignorePrefix1);
+                                    return addNameSpace(str = str.trim(), !QUOTES.test(str) && -1 === localKeys.indexOf(str), nameSpace, localKeys, ignorePrefix1);
                                 })) + '{ \n str = str + "';
                                 else if (IF_STMT.test(cnt)) cnt = '"; ' + cnt.replace(matches[1], rlStr.replace(WORDIF, function(strs) {
-                                    return HandleSpecialCharArrObj(strs, argName, localKeys, ignorePrefix1);
+                                    return HandleSpecialCharArrObj(strs, nameSpace, localKeys, ignorePrefix1);
                                 })) + '{ \n str = str + "';
                                 else if (FOR_STMT.test(cnt)) {
                                     var rlStr_1 = matches[1].split(' of ');
                                     cnt = '"; ' + cnt.replace(matches[1], function(mtc) {
-                                        return localKeys.push(rlStr_1[0]), localKeys.push(rlStr_1[0] + 'Index'), 'var i' + (varCOunt += 1) + '=0; i' + varCOunt + ' < ' + addNameSpace(rlStr_1[1], !0, argName, localKeys, ignorePrefix1) + '.length; i' + varCOunt + '++';
-                                    }) + '{ \n ' + rlStr_1[0] + '= ' + addNameSpace(rlStr_1[1], !0, argName, localKeys, ignorePrefix1) + '[i' + varCOunt + ']; \n var ' + rlStr_1[0] + 'Index=i' + varCOunt + '; \n str = str + "';
+                                        return localKeys.push(rlStr_1[0]), localKeys.push(rlStr_1[0] + 'Index'), 'var i' + (varCOunt += 1) + '=0; i' + varCOunt + ' < ' + addNameSpace(rlStr_1[1], !0, nameSpace, localKeys, ignorePrefix1) + '.length; i' + varCOunt + '++';
+                                    }) + '{ \n ' + rlStr_1[0] + '= ' + addNameSpace(rlStr_1[1], !0, nameSpace, localKeys, ignorePrefix1) + '[i' + varCOunt + ']; \n var ' + rlStr_1[0] + 'Index=i' + varCOunt + '; \n str = str + "';
                                 } else {
                                     var fnStr = cnt.split('('), fNameSpace = helper2 && helper2.hasOwnProperty(fnStr[0]) ? 'this.' : 'global';
                                     fNameSpace = /\./.test(fnStr[0]) ? '' : fNameSpace;
                                     var ftArray = matches[1].split(',');
-                                    0 === matches[1].length || /data/.test(ftArray[0]) || /window./.test(ftArray[0]) || (matches[1] = 'global' === fNameSpace ? argName + '.' + matches[1] : matches[1]), WINDOWFUNC.test(cnt) && /\]\./gm.test(cnt) || /@|\$|#/gm.test(cnt) ? /@|\$|#|\]\./gm.test(cnt) && (cnt = '"+ ' + ('global' === fNameSpace ? '' : fNameSpace) + cnt.replace(matches[1], rlStr.replace(WORDFUNC, function(strs) {
-                                        return HandleSpecialCharArrObj(strs, argName, localKeys, ignorePrefix1);
-                                    })) + '+ "') : cnt = '" + ' + ('global' === fNameSpace ? '' : fNameSpace) + cnt.replace(rlStr, addNameSpace(matches[1].replace(/,( |)data.|,/gi, ',' + argName + '.').replace(/,( |)data.window/gi, ',window'), 'global' !== fNameSpace, argName, localKeys, ignorePrefix1)) + '+"';
+                                    0 === matches[1].length || /data/.test(ftArray[0]) || /window./.test(ftArray[0]) || (matches[1] = 'global' === fNameSpace ? nameSpace + '.' + matches[1] : matches[1]), WINDOWFUNC.test(cnt) && /\]\./gm.test(cnt) || /@|\$|#/gm.test(cnt) ? /@|\$|#|\]\./gm.test(cnt) && (cnt = '"+ ' + ('global' === fNameSpace ? '' : fNameSpace) + cnt.replace(matches[1], rlStr.replace(WORDFUNC, function(strs) {
+                                        return HandleSpecialCharArrObj(strs, nameSpace, localKeys, ignorePrefix1);
+                                    })) + '+ "') : cnt = '" + ' + ('global' === fNameSpace ? '' : fNameSpace) + cnt.replace(rlStr, addNameSpace(matches[1].replace(/,( |)data.|,/gi, ',' + nameSpace + '.').replace(/,( |)data.window/gi, ',window'), 'global' !== fNameSpace, nameSpace, localKeys, ignorePrefix1)) + '+"';
                                 }
-                            } else ELSE_STMT.test(cnt) ? cnt = '"; ' + cnt.replace(ELSE_STMT, '} else { \n str = str + "') : cnt.match(IF_OR_FOR) ? cnt = cnt.replace(IF_OR_FOR, '"; \n } \n str = str + "') : /@|#|\$/gm.test(cnt) ? (cnt.match(SINGLE_SLASH) && (cnt = SlashReplace(cnt)), cnt = '"+' + NameSpaceForspecialChar(cnt, -1 === localKeys.indexOf(cnt), argName, localKeys) + '"]+"') : cnt = cnt.match(SINGLE_SLASH) ? '"+' + NameSpaceForspecialChar(cnt = SlashReplace(cnt), -1 === localKeys.indexOf(cnt), argName, localKeys) + '"]+"' : '"+' + addNameSpace(cnt.replace(/,/gi, '+' + argName + '.'), -1 === localKeys.indexOf(cnt), argName, localKeys, ignorePrefix1) + '+"';
+                            } else ELSE_STMT.test(cnt) ? cnt = '"; ' + cnt.replace(ELSE_STMT, '} else { \n str = str + "') : cnt.match(IF_OR_FOR) ? cnt = cnt.replace(IF_OR_FOR, '"; \n } \n str = str + "') : /@|#|\$/gm.test(cnt) ? (cnt.match(SINGLE_SLASH) && (cnt = SlashReplace(cnt)), cnt = '"+' + NameSpaceForspecialChar(cnt, -1 === localKeys.indexOf(cnt), nameSpace, localKeys) + '"]+"') : cnt = cnt.match(SINGLE_SLASH) ? '"+' + NameSpaceForspecialChar(cnt = SlashReplace(cnt), -1 === localKeys.indexOf(cnt), nameSpace, localKeys) + '"]+"' : '"+' + addNameSpace(cnt.replace(/,/gi, '+' + nameSpace + '.'), -1 === localKeys.indexOf(cnt), nameSpace, localKeys, ignorePrefix1) + '+"';
                             return cnt;
                         }) + "\";var valueRegEx = (/value=\\'([A-Za-z0-9 _]*)((.)([\\w)(!-;?-■\\s]+)['])/g);\n    var hrefRegex = (/(?:href)([\\s='\"./]+)([\\w-./?=&\\\\#\"]+)((.)([\\w)(!-;/?-■\\s]+)['])/g);\n    if(str.match(valueRegEx)){\n        var check = str.match(valueRegEx);\n        var str1 = str;\n        for (var i=0; i < check.length; i++) {\n            var check1 = str.match(valueRegEx)[i].split('value=')[1];\n            var change = check1.match(/^'/) !== null ? check1.replace(/^'/, '\"') : check1;\n            change =change.match(/.$/)[0] === '\\'' ? change.replace(/.$/,'\"') : change;\n            str1 = str1.replace(check1, change);\n        }\n        str = str.replace(str, str1);\n    }\n    else if (str.match(/(?:href='')/) === null) {\n        if(str.match(hrefRegex)) {\n            var check = str.match(hrefRegex);\n            var str1 = str;\n            for (var i=0; i < check.length; i++) {\n                var check1 = str.match(hrefRegex)[i].split('href=')[1];\n                if (check1) {\n                    var change = check1.match(/^'/) !== null ? check1.replace(/^'/, '\"') : check1;\n                    change =change.match(/.$/)[0] === '\\'' ? change.replace(/.$/,'\"') : change;\n                    str1 = str1.replace(check1, change);\n                }\n            }\n            str = str.replace(str, str1);\n        }\n    }\n     return str;").bind(helper1);
                     }, Engine;
@@ -7713,7 +7709,7 @@
                     var ele = this.reactElement;
                     ele && !this.isAppendCalled && (this.isAppendCalled = !0, this.appendTo(ele));
                 }, ComponentBase.prototype.shouldComponentUpdate = function(nextProps) {
-                    return (this.isshouldComponentUpdateCalled = !0, this.initRenderCalled) ? (this.isAppendCalled || (clearTimeout(this.cachedTimeOut), this.isAppendCalled = !0, this.appendTo(this.reactElement)), this.updateProperties(nextProps), !0) : (this.updateProperties(nextProps, !0), !0);
+                    return (this.isshouldComponentUpdateCalled = !0, this.initRenderCalled) ? (this.isAppendCalled || (clearTimeout(this.cachedTimeOut), this.isAppendCalled = !0, this.appendTo(this.reactElement)), this.updateProperties(nextProps)) : this.updateProperties(nextProps, !0), !0;
                 }, ComponentBase.prototype.updateProperties = function(nextProps, silent) {
                     for(var _this = this, dProps = (0, ej2_base.l7)({}, nextProps), keys = Object.keys(nextProps), _i = 0; _i < keys.length; _i++){
                         var propkey = keys[_i], isClassName = 'className' === propkey;
@@ -8240,7 +8236,7 @@
                         baseToolbar: this.parent.getBaseToolbarObject()
                     });
                     var serializeValue = this.parent.serializeValue(editHTML.value);
-                    value = null === serializeValue || '' === serializeValue ? 'DIV' === this.parent.enterKey ? '<div><br/></div>' : 'BR' === this.parent.enterKey ? '<br/>' : '<p><br/></p>' : serializeValue, this.parent.iframeSettings.enable ? (editHTML.parentElement.style.display = 'none', editHTML.style.display = 'none', this.contentModule.getPanel().style.display = 'block', this.contentModule.getEditPanel().innerHTML = value) : (editHTML.style.display = 'none', this.contentModule.getEditPanel().style.display = 'block', this.contentModule.getEditPanel().innerHTML = value), this.parent.isBlur = !1, this.parent.enableToolbarItem(this.parent.toolbarSettings.items), this.parent.getToolbar() && (0, ej2_base.IV)([
+                    value = null === serializeValue || '' === serializeValue ? 'DIV' === this.parent.enterKey ? '<div><br/></div>' : 'BR' === this.parent.enterKey ? '<br/>' : '<p><br/></p>' : serializeValue, this.parent.iframeSettings.enable ? (editHTML.parentElement.style.display = 'none', editHTML.style.display = 'none', this.contentModule.getPanel().style.display = 'block') : (editHTML.style.display = 'none', this.contentModule.getEditPanel().style.display = 'block'), this.contentModule.getEditPanel().innerHTML = value, this.parent.isBlur = !1, this.parent.enableToolbarItem(this.parent.toolbarSettings.items), this.parent.getToolbar() && (0, ej2_base.IV)([
                         this.parent.getToolbar()
                     ], [
                         classes.Yi
@@ -13136,7 +13132,7 @@
                         } else anchorNodes[j += 1] = this.createAchorNode(e), cloneNode = finalinlineNodes[i + 1].cloneNode(!0), anchorNodes[j].appendChild(cloneNode);
                     }
                     this.parent.nodeSelection.setRange(document, save.range);
-                    for(var i = 0, j_2 = 0, k = 0; i <= finalinlineNodes.length; i++)0 === i && (finalinlineNodes[i].parentNode.insertBefore(anchorNodes[j_2], finalinlineNodes[i].nextSibling), 1 === this.parent.domNode.blockNodes().length && this.parent.nodeSelection.setSelectionNode(this.parent.currentDocument, anchorNodes[j_2]), removeNodes[k] = finalinlineNodes[i], k++), i < finalinlineNodes.length - 1 && (finalinlineNodes[i].parentNode === finalinlineNodes[i + 1].parentNode ? (removeNodes[k] = finalinlineNodes[i + 1], k++) : (j_2 += 1, finalinlineNodes[i + 1].parentNode.insertBefore(anchorNodes[j_2], finalinlineNodes[i + 1]), removeNodes[k] = finalinlineNodes[i + 1], k++));
+                    for(var i = 0, j_2 = 0, k = 0; i <= finalinlineNodes.length; i++)0 === i && (finalinlineNodes[i].parentNode.insertBefore(anchorNodes[j_2], finalinlineNodes[i].nextSibling), 1 === this.parent.domNode.blockNodes().length && this.parent.nodeSelection.setSelectionNode(this.parent.currentDocument, anchorNodes[j_2]), removeNodes[k] = finalinlineNodes[i], k++), i < finalinlineNodes.length - 1 && (finalinlineNodes[i].parentNode === finalinlineNodes[i + 1].parentNode || (j_2 += 1, finalinlineNodes[i + 1].parentNode.insertBefore(anchorNodes[j_2], finalinlineNodes[i + 1])), removeNodes[k] = finalinlineNodes[i + 1], k++);
                     for(var i = 0; i < removeNodes.length; i++)removeNodes[i].parentNode && removeNodes[i].parentNode.removeChild(removeNodes[i]);
                 }, LinkCommand.prototype.createAchorNode = function(e) {
                     var anchorEle = (0, ej2_base.az)('a', {
@@ -13288,7 +13284,7 @@
                     });
                     for(var i = 0; i < indentsNodes.length; i++){
                         var parentNode = indentsNodes[i], marginLeftOrRight = isRtl ? parentNode.style.marginRight : parentNode.style.marginLeft, indentsValue = void 0;
-                        'Indent' === e.subCommand ? (indentsValue = '' === marginLeftOrRight ? this.indentValue + 'px' : parseInt(marginLeftOrRight, null) + this.indentValue + 'px', isRtl ? parentNode.style.marginRight = indentsValue : parentNode.style.marginLeft = indentsValue) : (indentsValue = '' === marginLeftOrRight || '0px' === marginLeftOrRight ? '' : parseInt(marginLeftOrRight, null) - this.indentValue + 'px', isRtl ? parentNode.style.marginRight = indentsValue : parentNode.style.marginLeft = indentsValue);
+                        indentsValue = 'Indent' === e.subCommand ? '' === marginLeftOrRight ? this.indentValue + 'px' : parseInt(marginLeftOrRight, null) + this.indentValue + 'px' : '' === marginLeftOrRight || '0px' === marginLeftOrRight ? '' : parseInt(marginLeftOrRight, null) - this.indentValue + 'px', isRtl ? parentNode.style.marginRight = indentsValue : parentNode.style.marginLeft = indentsValue;
                     }
                     editEle.focus(), (0, common_util.FA)() && (0, common_util.ze)(editEle, e.selector), (save = this.parent.domNode.saveMarker(save)).restore(), e.callBack && e.callBack({
                         requestType: e.subCommand,
@@ -19231,7 +19227,7 @@
                 }, Toolbar.prototype.pushingPoppedEle = function(tbarObj, popupPri, ele, eleHeight, sepHeight) {
                     var element = tbarObj.element, poppedEle = [].slice.call((0, ej2_base.td)('.' + CLS_POPUP, element.querySelector('.' + CLS_ITEMS))), nodes = (0, ej2_base.td)('.' + CLS_TBAROVERFLOW, ele), nodeIndex = 0, nodePri = 0;
                     poppedEle.forEach(function(el, index) {
-                        nodes = (0, ej2_base.td)('.' + CLS_TBAROVERFLOW, ele), el.classList.contains(CLS_TBAROVERFLOW) && nodes.length > 0 ? tbarObj.tbResize && nodes.length > index ? (ele.insertBefore(el, nodes[index]), ++nodePri) : (ele.insertBefore(el, ele.children[nodes.length]), ++nodePri) : el.classList.contains(CLS_TBAROVERFLOW) ? (ele.insertBefore(el, ele.firstChild), ++nodePri) : tbarObj.tbResize && el.classList.contains(CLS_POPOVERFLOW) && ele.children.length > 0 && 0 === nodes.length ? (ele.insertBefore(el, ele.firstChild), ++nodePri) : el.classList.contains(CLS_POPOVERFLOW) ? popupPri.push(el) : tbarObj.tbResize ? (ele.insertBefore(el, ele.childNodes[nodeIndex + nodePri]), ++nodeIndex) : ele.appendChild(el), el.classList.contains(CLS_SEPARATOR) ? (0, ej2_base.V7)(el, {
+                        nodes = (0, ej2_base.td)('.' + CLS_TBAROVERFLOW, ele), el.classList.contains(CLS_TBAROVERFLOW) && nodes.length > 0 ? (tbarObj.tbResize && nodes.length > index ? ele.insertBefore(el, nodes[index]) : ele.insertBefore(el, ele.children[nodes.length]), ++nodePri) : el.classList.contains(CLS_TBAROVERFLOW) ? (ele.insertBefore(el, ele.firstChild), ++nodePri) : tbarObj.tbResize && el.classList.contains(CLS_POPOVERFLOW) && ele.children.length > 0 && 0 === nodes.length ? (ele.insertBefore(el, ele.firstChild), ++nodePri) : el.classList.contains(CLS_POPOVERFLOW) ? popupPri.push(el) : tbarObj.tbResize ? (ele.insertBefore(el, ele.childNodes[nodeIndex + nodePri]), ++nodeIndex) : ele.appendChild(el), el.classList.contains(CLS_SEPARATOR) ? (0, ej2_base.V7)(el, {
                             display: '',
                             height: sepHeight + 'px'
                         }) : (0, ej2_base.V7)(el, {
@@ -19492,7 +19488,7 @@
                         var sepBeforePri_1 = 0;
                         'Extended' !== this_1.overflowMode && eleSplice.slice(0, index).forEach(function(el) {
                             (el.classList.contains(CLS_TBAROVERFLOW) || el.classList.contains(CLS_SEPARATOR)) && (el.classList.contains(CLS_SEPARATOR) && (el.style.display = '', width -= el.offsetWidth), sepBeforePri_1++);
-                        }), ignoreCount = this_1.ignoreEleFetch(index, innerEle), el.classList.contains(CLS_TBAROVERFLOW) ? (this_1.tbarPriRef(innerEle, index, sepBeforePri_1, el, destroy, elWidth, width, ignoreCount), width -= el.offsetWidth) : 0 === index ? (innerEle.insertBefore(el, innerEle.firstChild), width -= el.offsetWidth) : (priEleCnt = (0, ej2_base.td)('.' + CLS_TBAROVERFLOW, this_1.popObj.element).length, innerEle.insertBefore(el, innerEle.children[index + ignoreCount - priEleCnt]), width -= el.offsetWidth), el.style.height = '';
+                        }), ignoreCount = this_1.ignoreEleFetch(index, innerEle), el.classList.contains(CLS_TBAROVERFLOW) ? this_1.tbarPriRef(innerEle, index, sepBeforePri_1, el, destroy, elWidth, width, ignoreCount) : 0 === index ? innerEle.insertBefore(el, innerEle.firstChild) : (priEleCnt = (0, ej2_base.td)('.' + CLS_TBAROVERFLOW, this_1.popObj.element).length, innerEle.insertBefore(el, innerEle.children[index + ignoreCount - priEleCnt])), width -= el.offsetWidth, el.style.height = '';
                     }(_a[_i]); _i++);
                     this.checkOverflow(this.element, this.element.getElementsByClassName(CLS_ITEMS)[0]) && !destroy && this.renderOverflowMode();
                 }, Toolbar.prototype.removePositioning = function() {
@@ -19907,12 +19903,9 @@
                 else for(var i = decorators.length - 1; i >= 0; i--)(d = decorators[i]) && (r = (c < 3 ? d(r) : c > 3 ? d(target, key, r) : d(target, key)) || r);
                 return c > 3 && r && Object.defineProperty(target, key, r), r;
             }, classNames = {
-                DISABLED: 'e-disabled',
-                FOCUS: 'e-focused',
                 ICON: 'e-menu-icon',
                 ITEM: 'e-item',
                 POPUP: 'e-dropdown-popup',
-                RTL: 'e-rtl',
                 SEPARATOR: 'e-separator',
                 VERTICAL: 'e-vertical'
             }, DropDownButton = function(_super) {
@@ -21194,7 +21187,6 @@
                 horizontalTooltipAfter: 'e-slider-horizontal-after',
                 verticalTooltipBefore: 'e-slider-vertical-before',
                 verticalTooltipAfter: 'e-slider-vertical-after',
-                materialTooltip: 'e-material-tooltip',
                 materialTooltipOpen: 'e-material-tooltip-open',
                 materialTooltipActive: 'e-tooltip-active',
                 materialSlider: 'e-material-slider',
@@ -21213,7 +21205,6 @@
                 sliderFirstTick: 'e-first-tick',
                 sliderLastTick: 'e-last-tick',
                 sliderButtonClass: 'e-slider-btn',
-                sliderTooltipWrapper: 'e-tooltip-wrap',
                 sliderTabTrack: 'e-tab-track',
                 sliderTabRange: 'e-tab-range',
                 sliderActiveHandle: 'e-handle-active',
@@ -21442,7 +21433,7 @@
                         this.sliderContainer
                     ], slider_classNames.rtl);
                     var preDir = 'Vertical' !== this.orientation ? this.horDir : this.verDir;
-                    this.enableRtl ? (this.horDir = 'right', this.verDir = 'bottom') : (this.horDir = 'left', this.verDir = 'bottom'), preDir !== ('Vertical' !== this.orientation ? this.horDir : this.verDir) && 'Horizontal' === this.orientation && ((0, ej2_base.V7)(this.firstHandle, {
+                    this.enableRtl ? this.horDir = 'right' : this.horDir = 'left', this.verDir = 'bottom', preDir !== ('Vertical' !== this.orientation ? this.horDir : this.verDir) && 'Horizontal' === this.orientation && ((0, ej2_base.V7)(this.firstHandle, {
                         right: '',
                         left: 'auto'
                     }), 'Range' === this.type && (0, ej2_base.V7)(this.secondHandle, {
@@ -21462,7 +21453,7 @@
                     content = this.formatContent(this.tooltipFormatInfo, !1), this.tooltipObj.content = content;
                 }, Slider.prototype.formatContent = function(formatInfo, ariaContent) {
                     var content = '', handle1 = this.handleVal1, handle2 = this.handleVal2;
-                    return (!(0, ej2_base.le)(this.customValues) && this.customValues.length > 0 && (handle1 = this.customValues[this.handleVal1], handle2 = this.customValues[this.handleVal2]), ariaContent) ? ('Range' === this.type ? content = this.enableRtl && 'Vertical' !== this.orientation ? (0, ej2_base.le)(this.tooltip) || (0, ej2_base.le)(this.tooltip.format) ? handle2.toString() + ' - ' + handle1.toString() : this.formatString(handle2, formatInfo).elementVal + ' - ' + this.formatString(handle1, formatInfo).elementVal : (0, ej2_base.le)(this.tooltip) || (0, ej2_base.le)(this.tooltip.format) ? handle1.toString() + ' - ' + handle2.toString() : this.formatString(handle1, formatInfo).elementVal + ' - ' + this.formatString(handle2, formatInfo).elementVal : (0, ej2_base.le)(handle1) || (content = (0, ej2_base.le)(this.tooltip) || (0, ej2_base.le)(this.tooltip.format) ? handle1.toString() : this.formatString(handle1, formatInfo).elementVal), content) : ('Range' === this.type ? content = this.enableRtl && 'Vertical' !== this.orientation ? (0, ej2_base.le)(formatInfo.format) ? handle2.toString() + ' - ' + handle1.toString() : this.formatString(handle2, formatInfo).formatString + ' - ' + this.formatString(handle1, formatInfo).formatString : (0, ej2_base.le)(formatInfo.format) ? handle1.toString() + ' - ' + handle2.toString() : this.formatString(handle1, formatInfo).formatString + ' - ' + this.formatString(handle2, formatInfo).formatString : (0, ej2_base.le)(handle1) || (content = (0, ej2_base.le)(formatInfo.format) ? handle1.toString() : this.formatString(handle1, formatInfo).formatString), content);
+                    return (!(0, ej2_base.le)(this.customValues) && this.customValues.length > 0 && (handle1 = this.customValues[this.handleVal1], handle2 = this.customValues[this.handleVal2]), ariaContent) ? 'Range' === this.type ? content = this.enableRtl && 'Vertical' !== this.orientation ? (0, ej2_base.le)(this.tooltip) || (0, ej2_base.le)(this.tooltip.format) ? handle2.toString() + ' - ' + handle1.toString() : this.formatString(handle2, formatInfo).elementVal + ' - ' + this.formatString(handle1, formatInfo).elementVal : (0, ej2_base.le)(this.tooltip) || (0, ej2_base.le)(this.tooltip.format) ? handle1.toString() + ' - ' + handle2.toString() : this.formatString(handle1, formatInfo).elementVal + ' - ' + this.formatString(handle2, formatInfo).elementVal : (0, ej2_base.le)(handle1) || (content = (0, ej2_base.le)(this.tooltip) || (0, ej2_base.le)(this.tooltip.format) ? handle1.toString() : this.formatString(handle1, formatInfo).elementVal) : 'Range' === this.type ? content = this.enableRtl && 'Vertical' !== this.orientation ? (0, ej2_base.le)(formatInfo.format) ? handle2.toString() + ' - ' + handle1.toString() : this.formatString(handle2, formatInfo).formatString + ' - ' + this.formatString(handle1, formatInfo).formatString : (0, ej2_base.le)(formatInfo.format) ? handle1.toString() + ' - ' + handle2.toString() : this.formatString(handle1, formatInfo).formatString + ' - ' + this.formatString(handle2, formatInfo).formatString : (0, ej2_base.le)(handle1) || (content = (0, ej2_base.le)(formatInfo.format) ? handle1.toString() : this.formatString(handle1, formatInfo).formatString), content;
                 }, Slider.prototype.addTooltipClass = function(content) {
                     if (this.isMaterialTooltip) {
                         var count = content.toString().length;
@@ -21781,7 +21772,7 @@
                 }, Slider.prototype.checkValidValueAndPos = function(value) {
                     return value = this.checkHandleValue(value), value = this.checkHandlePosition(value);
                 }, Slider.prototype.setLimitBarPositions = function(fromMinPostion, fromMaxpostion, toMinPostion, toMaxpostion) {
-                    'Horizontal' === this.orientation ? this.enableRtl ? (this.limitBarFirst.style.right = fromMinPostion + 'px', this.limitBarFirst.style.width = fromMaxpostion - fromMinPostion + 'px') : (this.limitBarFirst.style.left = fromMinPostion + 'px', this.limitBarFirst.style.width = fromMaxpostion - fromMinPostion + 'px') : (this.limitBarFirst.style.bottom = fromMinPostion + 'px', this.limitBarFirst.style.height = fromMaxpostion - fromMinPostion + 'px'), 'Range' === this.type && ('Horizontal' === this.orientation ? this.enableRtl ? (this.limitBarSecond.style.right = toMinPostion + 'px', this.limitBarSecond.style.width = toMaxpostion - toMinPostion + 'px') : (this.limitBarSecond.style.left = toMinPostion + 'px', this.limitBarSecond.style.width = toMaxpostion - toMinPostion + 'px') : (this.limitBarSecond.style.bottom = toMinPostion + 'px', this.limitBarSecond.style.height = toMaxpostion - toMinPostion + 'px'));
+                    'Horizontal' === this.orientation ? (this.enableRtl ? this.limitBarFirst.style.right = fromMinPostion + 'px' : this.limitBarFirst.style.left = fromMinPostion + 'px', this.limitBarFirst.style.width = fromMaxpostion - fromMinPostion + 'px') : (this.limitBarFirst.style.bottom = fromMinPostion + 'px', this.limitBarFirst.style.height = fromMaxpostion - fromMinPostion + 'px'), 'Range' === this.type && ('Horizontal' === this.orientation ? (this.enableRtl ? this.limitBarSecond.style.right = toMinPostion + 'px' : this.limitBarSecond.style.left = toMinPostion + 'px', this.limitBarSecond.style.width = toMaxpostion - toMinPostion + 'px') : (this.limitBarSecond.style.bottom = toMinPostion + 'px', this.limitBarSecond.style.height = toMaxpostion - toMinPostion + 'px'));
                 }, Slider.prototype.setLimitBar = function() {
                     if ('Default' === this.type || 'MinRange' === this.type) {
                         var fromPosition = this.getLimitValueAndPosition(this.limits.minStart, this.limits.minStart, this.limits.minEnd, !0)[0];
@@ -21902,7 +21893,7 @@
                     }), this.refreshTooltip(this.tooltipTarget), this.setBarColor();
                 }, Slider.prototype.changeHandleValue = function(value) {
                     var position = null;
-                    1 === this.activeHandle ? (this.limits.enabled && this.limits.startHandleFixed || (this.handleVal1 = this.checkHandleValue(value), this.handlePos1 = this.checkHandlePosition(this.handleVal1), 'Range' === this.type && this.handlePos1 > this.handlePos2 && (this.handlePos1 = this.handlePos2, this.handleVal1 = this.handleVal2), this.handlePos1 === this.preHandlePos1 || (position = this.preHandlePos1 = this.handlePos1)), this.modifyZindex()) : (this.limits.enabled && this.limits.endHandleFixed || (this.handleVal2 = this.checkHandleValue(value), this.handlePos2 = this.checkHandlePosition(this.handleVal2), 'Range' === this.type && this.handlePos2 < this.handlePos1 && (this.handlePos2 = this.handlePos1, this.handleVal2 = this.handleVal1), this.handlePos2 === this.preHandlePos2 || (position = this.preHandlePos2 = this.handlePos2)), this.modifyZindex()), null !== position && ('Default' !== this.type && this.setRangeBar(), this.setHandlePosition(null));
+                    1 === this.activeHandle ? this.limits.enabled && this.limits.startHandleFixed || (this.handleVal1 = this.checkHandleValue(value), this.handlePos1 = this.checkHandlePosition(this.handleVal1), 'Range' === this.type && this.handlePos1 > this.handlePos2 && (this.handlePos1 = this.handlePos2, this.handleVal1 = this.handleVal2), this.handlePos1 === this.preHandlePos1 || (position = this.preHandlePos1 = this.handlePos1)) : this.limits.enabled && this.limits.endHandleFixed || (this.handleVal2 = this.checkHandleValue(value), this.handlePos2 = this.checkHandlePosition(this.handleVal2), 'Range' === this.type && this.handlePos2 < this.handlePos1 && (this.handlePos2 = this.handlePos1, this.handleVal2 = this.handleVal1), this.handlePos2 === this.preHandlePos2 || (position = this.preHandlePos2 = this.handlePos2)), this.modifyZindex(), null !== position && ('Default' !== this.type && this.setRangeBar(), this.setHandlePosition(null));
                 }, Slider.prototype.tempStartEnd = function() {
                     return this.min > this.max ? {
                         start: this.max,

@@ -361,7 +361,11 @@ impl<I: Tokens> Parser<I> {
         };
 
         let type_args = if !self.input.had_line_break_before_cur() && is!(self, '<') {
-            Some(self.parse_ts_type_args()?)
+            let ctx = Context {
+                should_not_lex_lt_or_gt_as_type: false,
+                ..self.ctx()
+            };
+            Some(self.with_ctx(ctx).parse_ts_type_args()?)
         } else {
             None
         };
@@ -1158,7 +1162,6 @@ impl<I: Tokens> Parser<I> {
         expect!(self, ';');
         Ok(Box::new(TsImportEqualsDecl {
             span: span!(self, start),
-            declare: false,
             id,
             is_export,
             is_type_only,

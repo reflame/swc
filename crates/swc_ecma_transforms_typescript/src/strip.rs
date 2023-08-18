@@ -155,7 +155,7 @@ pub fn strip_with_config(config: Config, top_level_mark: Mark) -> impl Fold + Vi
     chain!(
         as_folder(Strip {
             config,
-            comments: NoopComments,
+            comments: Option::<NoopComments>::None,
             jsx: None,
             top_level_ctxt: SyntaxContext::empty().apply_mark(top_level_mark),
             ts_enum_lit: ts_enum_lit.clone(),
@@ -248,6 +248,7 @@ fn id_for_jsx(e: &Expr) -> Id {
     match e {
         Expr::Ident(i) => i.to_id(),
         Expr::Member(MemberExpr { obj, .. }) => id_for_jsx(obj),
+        Expr::Lit(Lit::Null(..)) => (js_word!("null"), Default::default()),
         _ => {
             panic!("failed to determine top-level Id for jsx expression")
         }
@@ -447,6 +448,7 @@ where
             | Expr::TsSatisfies(TsSatisfiesExpr { expr, .. }) => {
                 expr.visit_mut_with(self);
                 let expr = *expr.take();
+
                 *n = expr;
             }
 
@@ -1118,10 +1120,6 @@ where
                             is_type_only: true,
                             module_ref: TsModuleRef::TsExternalModuleRef(..),
                             ..
-                        } | TsImportEqualsDecl {
-                            declare: true,
-                            module_ref: TsModuleRef::TsExternalModuleRef(..),
-                            ..
                         }
                     ) =>
                 {
@@ -1184,7 +1182,6 @@ where
                         &*import,
                         TsImportEqualsDecl {
                             module_ref: TsModuleRef::TsEntityName(..),
-                            declare: false,
                             ..
                         }
                     ) =>
@@ -1886,7 +1883,6 @@ where
                                             span,
                                             left: i.into(),
                                             right,
-                                            type_ann: None,
                                         }),
                                     },
                                 )
@@ -2047,7 +2043,7 @@ where
     }
 
     fn visit_mut_expr(&mut self, n: &mut Expr) {
-        let mut stack = vec![n];
+        let mut stack = vec![&mut *n];
         loop {
             let mut new_stack = vec![];
             for expr in stack {
@@ -2057,6 +2053,37 @@ where
             }
 
             if new_stack.is_empty() {
+                // https://github.com/swc-project/swc/issues/7659
+                // a?.b!.c
+                // should be identical to
+                // a?.b.c
+                // and it's optional chaining expression with optional = false
+                match n {
+                    Expr::Member(me) if me.obj.is_opt_chain() => {
+                        *n = Expr::OptChain(OptChainExpr {
+                            span: me.span,
+                            optional: false,
+                            base: Box::new(OptChainBase::Member(me.take())),
+                        });
+                    }
+
+                    Expr::Call(ce)
+                        if ce.callee.is_expr() && ce.callee.as_expr().unwrap().is_opt_chain() =>
+                    {
+                        *n = Expr::OptChain(OptChainExpr {
+                            span: ce.span,
+                            optional: false,
+                            base: Box::new(OptChainBase::Call(OptCall {
+                                span: ce.span,
+                                callee: ce.callee.take().expect_expr(),
+                                args: ce.args.take(),
+                                type_args: ce.type_args.take(),
+                            })),
+                        });
+                    }
+
+                    _ => {}
+                }
                 return;
             }
 
@@ -2301,10 +2328,6 @@ where
                             is_type_only: true,
                             module_ref: TsModuleRef::TsExternalModuleRef(..),
                             ..
-                        } | TsImportEqualsDecl {
-                            declare: true,
-                            module_ref: TsModuleRef::TsExternalModuleRef(..),
-                            ..
                         }
                     ) =>
                 {
@@ -2362,7 +2385,6 @@ where
                         &*import,
                         TsImportEqualsDecl {
                             module_ref: TsModuleRef::TsEntityName(..),
-                            declare: false,
                             ..
                         }
                     ) =>

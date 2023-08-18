@@ -5891,9 +5891,9 @@
                     ]);
                     return !sourceTech || ((str1 = sourceTech.tech, str2 = this.techName_, toTitleCase$1(str1) !== toTitleCase$1(str2)) ? (this.changingSrc_ = !0, this.loadTech_(sourceTech.tech, sourceTech.source), this.tech_.ready(function() {
                         _this15.changingSrc_ = !1;
-                    }), !1) : (this.ready(function() {
+                    })) : this.ready(function() {
                         this.tech_.constructor.prototype.hasOwnProperty("setSource") ? this.techCall_("setSource", source) : this.techCall_("src", source.src), this.changingSrc_ = !1;
-                    }, !0), !1));
+                    }, !0), !1);
                 }, _proto.load = function() {
                     this.techCall_("load");
                 }, _proto.reset = function() {
@@ -7331,7 +7331,10 @@
             }, filterChangedSidxMappings = function(master, oldSidxMapping) {
                 var mediaGroupSidx = compareSidxEntry(master.playlists, oldSidxMapping);
                 return forEachMediaGroup(master, function(properties, mediaType, groupKey, labelKey) {
-                    properties.playlists && properties.playlists.length && (mediaGroupSidx = mergeOptions(mediaGroupSidx, compareSidxEntry(properties.playlists, oldSidxMapping)));
+                    if (properties.playlists && properties.playlists.length) {
+                        var playlists = properties.playlists;
+                        mediaGroupSidx = mergeOptions(mediaGroupSidx, compareSidxEntry(playlists, oldSidxMapping));
+                    }
                 }), mediaGroupSidx;
             }, DashPlaylistLoader = function(_EventTarget) {
                 function DashPlaylistLoader(srcUrlOrPlaylist, vhs, options, masterPlaylistLoader) {
@@ -8962,7 +8965,7 @@
                     Object.keys(captionServices).forEach(function(serviceName) {
                         serviceProps = captionServices[serviceName], /^SERVICE/.test(serviceName) && (captionServiceEncodings[serviceName] = serviceProps.encoding);
                     }), this.serviceEncodings = captionServiceEncodings, this.current708Packet = null, this.services = {}, this.push = function(packet) {
-                        3 === packet.type ? (self1.new708Packet(), self1.add708Bytes(packet)) : (null === self1.current708Packet && self1.new708Packet(), self1.add708Bytes(packet));
+                        3 === packet.type ? self1.new708Packet() : null === self1.current708Packet && self1.new708Packet(), self1.add708Bytes(packet);
                     };
                 };
                 Cea708Stream.prototype = new Stream(), Cea708Stream.prototype.new708Packet = function() {
@@ -9616,7 +9619,7 @@
                         workingBytes.set(workingData.subarray(position, position + availableBytes)), workingWord = new DataView(workingBytes.buffer).getUint32(0), workingBitsAvailable = 8 * availableBytes, workingBytesAvailable -= availableBytes;
                     }, this.skipBits = function(count) {
                         var skipBytes;
-                        workingBitsAvailable > count ? (workingWord <<= count, workingBitsAvailable -= count) : (count -= workingBitsAvailable, skipBytes = Math.floor(count / 8), count -= 8 * skipBytes, workingBytesAvailable -= skipBytes, this.loadWord(), workingWord <<= count, workingBitsAvailable -= count);
+                        workingBitsAvailable > count || (count -= workingBitsAvailable, skipBytes = Math.floor(count / 8), count -= 8 * skipBytes, workingBytesAvailable -= skipBytes, this.loadWord()), workingWord <<= count, workingBitsAvailable -= count;
                     }, this.readBits = function(size) {
                         var bits = Math.min(workingBitsAvailable, size), valu = workingWord >>> 32 - bits;
                         return ((workingBitsAvailable -= bits) > 0 ? workingWord <<= bits : workingBytesAvailable > 0 && this.loadWord(), (bits = size - bits) > 0) ? valu << bits | this.readBits(bits) : valu;
@@ -10233,12 +10236,7 @@
                     };
                 }).prototype = new Stream();
                 var transmuxer = {
-                    Transmuxer: _Transmuxer,
-                    VideoSegmentStream: _VideoSegmentStream,
-                    AudioSegmentStream: _AudioSegmentStream,
-                    AUDIO_PROPERTIES: audioProperties,
-                    VIDEO_PROPERTIES: videoProperties,
-                    generateSegmentTimingInfo: generateSegmentTimingInfo
+                    Transmuxer: _Transmuxer
                 }, bin = {
                     toUnsigned: function(value) {
                         return value >>> 0;
@@ -11405,27 +11403,27 @@
                         segment.key
                     ];
                     segment.map && !segment.map.bytes && segment.map.key && segment.map.key.resolvedUri === segment.key.resolvedUri && objects.push(segment.map.key);
-                    var keyRequestOptions = videojs.mergeOptions(xhrOptions, {
+                    var keyXhr = xhr(videojs.mergeOptions(xhrOptions, {
                         uri: segment.key.resolvedUri,
                         responseType: "arraybuffer"
-                    }), keyXhr = xhr(keyRequestOptions, handleKeyResponse(segment, objects, finishProcessingFn));
+                    }), handleKeyResponse(segment, objects, finishProcessingFn));
                     activeXhrs.push(keyXhr);
                 }
                 if (segment.map && !segment.map.bytes) {
                     if (segment.map.key && (!segment.key || segment.key.resolvedUri !== segment.map.key.resolvedUri)) {
-                        var mapKeyRequestOptions = videojs.mergeOptions(xhrOptions, {
+                        var mapKeyXhr = xhr(videojs.mergeOptions(xhrOptions, {
                             uri: segment.map.key.resolvedUri,
                             responseType: "arraybuffer"
-                        }), mapKeyXhr = xhr(mapKeyRequestOptions, handleKeyResponse(segment, [
+                        }), handleKeyResponse(segment, [
                             segment.map.key
                         ], finishProcessingFn));
                         activeXhrs.push(mapKeyXhr);
                     }
-                    var initSegmentOptions = videojs.mergeOptions(xhrOptions, {
+                    var initSegmentXhr = xhr(videojs.mergeOptions(xhrOptions, {
                         uri: segment.map.resolvedUri,
                         responseType: "arraybuffer",
                         headers: segmentXhrHeaders(segment.map)
-                    }), initSegmentXhr = xhr(initSegmentOptions, handleInitSegmentResponse({
+                    }), handleInitSegmentResponse({
                         segment: segment,
                         finishProcessingFn: finishProcessingFn
                     }));

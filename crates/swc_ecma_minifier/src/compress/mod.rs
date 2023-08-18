@@ -29,7 +29,7 @@ use crate::{
     debug::{dump, AssertValid},
     mode::Mode,
     option::CompressOptions,
-    program_data::{analyze, ModuleInfo, ProgramData},
+    program_data::{analyze, ProgramData},
     util::{now, unit::CompileUnit},
 };
 
@@ -39,7 +39,6 @@ mod pure;
 mod util;
 
 pub(crate) fn compressor<'a, M>(
-    module_info: &'a ModuleInfo,
     marks: Marks,
     options: &'a CompressOptions,
     mode: &'a M,
@@ -50,7 +49,6 @@ where
     let compressor = Compressor {
         marks,
         options,
-        module_info,
         changed: false,
         pass: 1,
         dump_for_infinite_loop: Default::default(),
@@ -69,39 +67,29 @@ where
     )
 }
 
-struct Compressor<'a, M>
-where
-    M: Mode,
-{
+struct Compressor<'a> {
     marks: Marks,
     options: &'a CompressOptions,
-    module_info: &'a ModuleInfo,
     changed: bool,
     pass: usize,
 
     dump_for_infinite_loop: Vec<String>,
 
-    mode: &'a M,
+    mode: &'a dyn Mode,
 }
 
-impl<M> CompilerPass for Compressor<'_, M>
-where
-    M: Mode,
-{
+impl CompilerPass for Compressor<'_> {
     fn name() -> Cow<'static, str> {
         "compressor".into()
     }
 }
 
-impl<M> Compressor<'_, M>
-where
-    M: Mode,
-{
+impl Compressor<'_> {
     fn optimize_unit_repeatedly<N>(&mut self, n: &mut N)
     where
         N: CompileUnit
             + VisitWith<UsageAnalyzer<ProgramData>>
-            + for<'aa> VisitMutWith<Compressor<'aa, M>>
+            + for<'aa> VisitMutWith<Compressor<'aa>>
             + VisitWith<AssertValid>,
     {
         trace_op!(
@@ -110,7 +98,7 @@ where
         );
 
         if self.options.hoist_vars || self.options.hoist_fns {
-            let data = analyze(&*n, self.module_info, Some(self.marks));
+            let data = analyze(&*n, Some(self.marks));
 
             let mut v = decl_hoister(
                 DeclHoisterConfig {
@@ -148,7 +136,7 @@ where
     where
         N: CompileUnit
             + VisitWith<UsageAnalyzer<ProgramData>>
-            + for<'aa> VisitMutWith<Compressor<'aa, M>>
+            + for<'aa> VisitMutWith<Compressor<'aa>>
             + VisitWith<AssertValid>,
     {
         let _timer = timer!("optimize", pass = self.pass);
@@ -245,7 +233,7 @@ where
                 self.marks,
                 PureOptimizerConfig {
                     enable_join_vars: self.pass > 1,
-                    force_str_for_tpl: M::force_str_for_tpl(),
+                    force_str_for_tpl: self.mode.force_str_for_tpl(),
                     #[cfg(feature = "debug")]
                     debug_infinite_loop: self.pass >= 20,
                 },
@@ -272,7 +260,7 @@ where
         {
             let _timer = timer!("apply full optimizer");
 
-            let mut data = analyze(&*n, self.module_info, Some(self.marks));
+            let mut data = analyze(&*n, Some(self.marks));
 
             // TODO: reset_opt_flags
             //
@@ -281,7 +269,6 @@ where
             let mut visitor = optimizer(
                 self.marks,
                 self.options,
-                self.module_info,
                 &mut data,
                 self.mode,
                 !self.dump_for_infinite_loop.is_empty(),
@@ -330,10 +317,7 @@ where
     }
 }
 
-impl<M> VisitMut for Compressor<'_, M>
-where
-    M: Mode,
-{
+impl VisitMut for Compressor<'_> {
     noop_visit_mut_type!();
 
     fn visit_mut_script(&mut self, n: &mut Script) {

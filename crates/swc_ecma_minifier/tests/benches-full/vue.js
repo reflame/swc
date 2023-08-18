@@ -362,7 +362,7 @@
         if ((isUndef(target) || isPrimitive(target)) && warn("Cannot set reactive property on undefined, null, or primitive value: " + target), Array.isArray(target) && isValidArrayIndex(key)) return target.length = Math.max(target.length, key), target.splice(key, 1, val), val;
         if (key in target && !(key in Object.prototype)) return target[key] = val, val;
         var ob = target.__ob__;
-        return target._isVue || ob && ob.vmCount ? (warn("Avoid adding reactive properties to a Vue instance or its root $data at runtime - declare it upfront in the data option."), val) : ob ? (defineReactive$$1(ob.value, key, val), ob.dep.notify(), val) : (target[key] = val, val);
+        return target._isVue || ob && ob.vmCount ? warn("Avoid adding reactive properties to a Vue instance or its root $data at runtime - declare it upfront in the data option.") : ob ? (defineReactive$$1(ob.value, key, val), ob.dep.notify()) : target[key] = val, val;
     }
     function del(target, key) {
         if ((isUndef(target) || isPrimitive(target)) && warn("Cannot delete reactive property on undefined, null, or primitive value: " + target), Array.isArray(target) && isValidArrayIndex(key)) {
@@ -1299,8 +1299,8 @@
     function resolveConstructorOptions(Ctor) {
         var options = Ctor.options;
         if (Ctor.super) {
-            var superOptions = resolveConstructorOptions(Ctor.super), cachedSuperOptions = Ctor.superOptions;
-            if (superOptions !== cachedSuperOptions) {
+            var superOptions = resolveConstructorOptions(Ctor.super);
+            if (superOptions !== Ctor.superOptions) {
                 Ctor.superOptions = superOptions;
                 var modifiedOptions = function(Ctor) {
                     var modified, latest = Ctor.options, sealed = Ctor.sealedOptions;
@@ -1532,7 +1532,7 @@
             }
         }
     };
-    Vue = Vue1, configDef = {}, configDef.get = function() {
+    Vue = Vue1, (configDef = {}).get = function() {
         return config;
     }, configDef.set = function() {
         warn('Do not replace the Vue.config object, set individual fields instead.');
@@ -2257,7 +2257,7 @@
                 }
             }(vnode, insertedVnodeQueue, parentElm, refElm)) {
                 var data = vnode.data, children = vnode.children, tag = vnode.tag;
-                isDef(tag) ? (data && data.pre && creatingElmInVPre++, isUnknownElement$$1(vnode, creatingElmInVPre) && warn('Unknown custom element: <' + tag + '> - did you register the component correctly? For recursive components, make sure to provide the "name" option.', vnode.context), vnode.elm = vnode.ns ? nodeOps.createElementNS(vnode.ns, tag) : nodeOps.createElement(tag, vnode), setScope(vnode), createChildren(vnode, children, insertedVnodeQueue), isDef(data) && invokeCreateHooks(vnode, insertedVnodeQueue), insert(parentElm, vnode.elm, refElm), data && data.pre && creatingElmInVPre--) : isTrue(vnode.isComment) ? (vnode.elm = nodeOps.createComment(vnode.text), insert(parentElm, vnode.elm, refElm)) : (vnode.elm = nodeOps.createTextNode(vnode.text), insert(parentElm, vnode.elm, refElm));
+                isDef(tag) ? (data && data.pre && creatingElmInVPre++, isUnknownElement$$1(vnode, creatingElmInVPre) && warn('Unknown custom element: <' + tag + '> - did you register the component correctly? For recursive components, make sure to provide the "name" option.', vnode.context), vnode.elm = vnode.ns ? nodeOps.createElementNS(vnode.ns, tag) : nodeOps.createElement(tag, vnode), setScope(vnode), createChildren(vnode, children, insertedVnodeQueue), isDef(data) && invokeCreateHooks(vnode, insertedVnodeQueue), insert(parentElm, vnode.elm, refElm), data && data.pre && creatingElmInVPre--) : (isTrue(vnode.isComment) ? vnode.elm = nodeOps.createComment(vnode.text) : vnode.elm = nodeOps.createTextNode(vnode.text), insert(parentElm, vnode.elm, refElm));
             }
         }
         function initComponent(vnode, insertedVnodeQueue) {
@@ -2385,7 +2385,7 @@
                         }
                         isUndef(vnode.text) ? isDef(oldCh) && isDef(ch) ? oldCh !== ch && function(parentElm, oldCh, newCh, insertedVnodeQueue, removeOnly) {
                             var oldKeyToIdx, idxInOld, vnodeToMove, oldStartIdx = 0, newStartIdx = 0, oldEndIdx = oldCh.length - 1, oldStartVnode = oldCh[0], oldEndVnode = oldCh[oldEndIdx], newEndIdx = newCh.length - 1, newStartVnode = newCh[0], newEndVnode = newCh[newEndIdx], canMove = !removeOnly;
-                            for(checkDuplicateKeys(newCh); oldStartIdx <= oldEndIdx && newStartIdx <= newEndIdx;)isUndef(oldStartVnode) ? oldStartVnode = oldCh[++oldStartIdx] : isUndef(oldEndVnode) ? oldEndVnode = oldCh[--oldEndIdx] : sameVnode(oldStartVnode, newStartVnode) ? (patchVnode(oldStartVnode, newStartVnode, insertedVnodeQueue, newCh, newStartIdx), oldStartVnode = oldCh[++oldStartIdx], newStartVnode = newCh[++newStartIdx]) : sameVnode(oldEndVnode, newEndVnode) ? (patchVnode(oldEndVnode, newEndVnode, insertedVnodeQueue, newCh, newEndIdx), oldEndVnode = oldCh[--oldEndIdx], newEndVnode = newCh[--newEndIdx]) : sameVnode(oldStartVnode, newEndVnode) ? (patchVnode(oldStartVnode, newEndVnode, insertedVnodeQueue, newCh, newEndIdx), canMove && nodeOps.insertBefore(parentElm, oldStartVnode.elm, nodeOps.nextSibling(oldEndVnode.elm)), oldStartVnode = oldCh[++oldStartIdx], newEndVnode = newCh[--newEndIdx]) : sameVnode(oldEndVnode, newStartVnode) ? (patchVnode(oldEndVnode, newStartVnode, insertedVnodeQueue, newCh, newStartIdx), canMove && nodeOps.insertBefore(parentElm, oldEndVnode.elm, oldStartVnode.elm), oldEndVnode = oldCh[--oldEndIdx], newStartVnode = newCh[++newStartIdx]) : (isUndef(oldKeyToIdx) && (oldKeyToIdx = function(children, beginIdx, endIdx) {
+                            for(checkDuplicateKeys(newCh); oldStartIdx <= oldEndIdx && newStartIdx <= newEndIdx;)isUndef(oldStartVnode) ? oldStartVnode = oldCh[++oldStartIdx] : isUndef(oldEndVnode) ? oldEndVnode = oldCh[--oldEndIdx] : sameVnode(oldStartVnode, newStartVnode) ? (patchVnode(oldStartVnode, newStartVnode, insertedVnodeQueue, newCh, newStartIdx), oldStartVnode = oldCh[++oldStartIdx], newStartVnode = newCh[++newStartIdx]) : sameVnode(oldEndVnode, newEndVnode) ? (patchVnode(oldEndVnode, newEndVnode, insertedVnodeQueue, newCh, newEndIdx), oldEndVnode = oldCh[--oldEndIdx], newEndVnode = newCh[--newEndIdx]) : sameVnode(oldStartVnode, newEndVnode) ? (patchVnode(oldStartVnode, newEndVnode, insertedVnodeQueue, newCh, newEndIdx), canMove && nodeOps.insertBefore(parentElm, oldStartVnode.elm, nodeOps.nextSibling(oldEndVnode.elm)), oldStartVnode = oldCh[++oldStartIdx], newEndVnode = newCh[--newEndIdx]) : (sameVnode(oldEndVnode, newStartVnode) ? (patchVnode(oldEndVnode, newStartVnode, insertedVnodeQueue, newCh, newStartIdx), canMove && nodeOps.insertBefore(parentElm, oldEndVnode.elm, oldStartVnode.elm), oldEndVnode = oldCh[--oldEndIdx]) : (isUndef(oldKeyToIdx) && (oldKeyToIdx = function(children, beginIdx, endIdx) {
                                 var i, key, map = {};
                                 for(i = beginIdx; i <= endIdx; ++i)isDef(key = children[i].key) && (map[key] = i);
                                 return map;
@@ -2394,7 +2394,7 @@
                                     var c = oldCh[i];
                                     if (isDef(c) && sameVnode(node, c)) return i;
                                 }
-                            }(newStartVnode, oldCh, oldStartIdx, oldEndIdx)) ? createElm(newStartVnode, insertedVnodeQueue, parentElm, oldStartVnode.elm, !1, newCh, newStartIdx) : sameVnode(vnodeToMove = oldCh[idxInOld], newStartVnode) ? (patchVnode(vnodeToMove, newStartVnode, insertedVnodeQueue, newCh, newStartIdx), oldCh[idxInOld] = void 0, canMove && nodeOps.insertBefore(parentElm, vnodeToMove.elm, oldStartVnode.elm)) : createElm(newStartVnode, insertedVnodeQueue, parentElm, oldStartVnode.elm, !1, newCh, newStartIdx), newStartVnode = newCh[++newStartIdx]);
+                            }(newStartVnode, oldCh, oldStartIdx, oldEndIdx)) ? createElm(newStartVnode, insertedVnodeQueue, parentElm, oldStartVnode.elm, !1, newCh, newStartIdx) : sameVnode(vnodeToMove = oldCh[idxInOld], newStartVnode) ? (patchVnode(vnodeToMove, newStartVnode, insertedVnodeQueue, newCh, newStartIdx), oldCh[idxInOld] = void 0, canMove && nodeOps.insertBefore(parentElm, vnodeToMove.elm, oldStartVnode.elm)) : createElm(newStartVnode, insertedVnodeQueue, parentElm, oldStartVnode.elm, !1, newCh, newStartIdx)), newStartVnode = newCh[++newStartIdx]);
                             oldStartIdx > oldEndIdx ? addVnodes(parentElm, isUndef(newCh[newEndIdx + 1]) ? null : newCh[newEndIdx + 1].elm, newCh, newStartIdx, newEndIdx, insertedVnodeQueue) : newStartIdx > newEndIdx && removeVnodes(oldCh, oldStartIdx, oldEndIdx);
                         }(elm, oldCh, ch, insertedVnodeQueue, removeOnly) : isDef(ch) ? (checkDuplicateKeys(ch), isDef(oldVnode.text) && nodeOps.setTextContent(elm, ''), addVnodes(elm, null, ch, 0, ch.length - 1, insertedVnodeQueue)) : isDef(oldCh) ? removeVnodes(oldCh, 0, oldCh.length - 1) : isDef(oldVnode.text) && nodeOps.setTextContent(elm, '') : oldVnode.text !== vnode.text && nodeOps.setTextContent(elm, vnode.text), isDef(data) && isDef(i = data.hook) && isDef(i = i.postpatch) && i(oldVnode, vnode);
                     }
@@ -2658,8 +2658,8 @@
                     if (c.tag) {
                         if (null != c.key && 0 !== String(c.key).indexOf('__vlist')) children.push(c), map[c.key] = c, (c.data || (c.data = {})).transition = transitionData;
                         else {
-                            var opts = c.componentOptions;
-                            warn("<transition-group> children must be keyed: <" + (opts ? opts.Ctor.options.name || opts.tag || '' : c.tag) + ">");
+                            var opts = c.componentOptions, name = opts ? opts.Ctor.options.name || opts.tag || '' : c.tag;
+                            warn("<transition-group> children must be keyed: <" + name + ">");
                         }
                     }
                 }
@@ -2921,9 +2921,9 @@
                 warn$1 = _warn;
                 var code, number, valueBinding, trueValueBinding, falseValueBinding, number1, valueBinding1, value = dir.value, modifiers = dir.modifiers, tag = el.tag, type = el.attrsMap.type;
                 if ('input' === tag && 'file' === type && warn$1("<" + el.tag + " v-model=\"" + value + '" type="file">:\nFile inputs are read only. Use a v-on:change listener instead.', el.rawAttrsMap['v-model']), el.component) return genComponentModel(el, value, modifiers), !1;
-                if ('select' === tag) addHandler(el, 'change', code = (code = 'var $$selectedVal = Array.prototype.filter.call($event.target.options,function(o){return o.selected}).map(function(o){var val = "_value" in o ? o._value : o.value;return ' + (modifiers && modifiers.number ? '_n(val)' : 'val') + "});") + " " + genAssignmentCode(value, '$event.target.multiple ? $$selectedVal : $$selectedVal[0]'), null, !0);
+                if ('select' === tag) addHandler(el, 'change', 'var $$selectedVal = Array.prototype.filter.call($event.target.options,function(o){return o.selected}).map(function(o){var val = "_value" in o ? o._value : o.value;return ' + (modifiers && modifiers.number ? '_n(val)' : 'val') + "}); " + genAssignmentCode(value, '$event.target.multiple ? $$selectedVal : $$selectedVal[0]'), null, !0);
                 else if ('input' === tag && 'checkbox' === type) number = modifiers && modifiers.number, valueBinding = getBindingAttr(el, 'value') || 'null', trueValueBinding = getBindingAttr(el, 'true-value') || 'true', falseValueBinding = getBindingAttr(el, 'false-value') || 'false', addProp(el, 'checked', "Array.isArray(" + value + ")?_i(" + value + "," + valueBinding + ")>-1" + ('true' === trueValueBinding ? ":(" + value + ")" : ":_q(" + value + "," + trueValueBinding + ")")), addHandler(el, 'change', "var $$a=" + value + ",$$el=$event.target,$$c=$$el.checked?(" + trueValueBinding + "):(" + falseValueBinding + ");if(Array.isArray($$a)){var $$v=" + (number ? '_n(' + valueBinding + ')' : valueBinding) + ",$$i=_i($$a,$$v);if($$el.checked){$$i<0&&(" + genAssignmentCode(value, '$$a.concat([$$v])') + ")}else{$$i>-1&&(" + genAssignmentCode(value, '$$a.slice(0,$$i).concat($$a.slice($$i+1))') + ")}}else{" + genAssignmentCode(value, '$$c') + "}", null, !0);
-                else if ('input' === tag && 'radio' === type) number1 = modifiers && modifiers.number, valueBinding1 = getBindingAttr(el, 'value') || 'null', valueBinding1 = number1 ? "_n(" + valueBinding1 + ")" : valueBinding1, addProp(el, 'checked', "_q(" + value + "," + valueBinding1 + ")"), addHandler(el, 'change', genAssignmentCode(value, valueBinding1), null, !0);
+                else if ('input' === tag && 'radio' === type) number1 = modifiers && modifiers.number, valueBinding1 = getBindingAttr(el, 'value') || 'null', addProp(el, 'checked', "_q(" + value + "," + (valueBinding1 = number1 ? "_n(" + valueBinding1 + ")" : valueBinding1) + ")"), addHandler(el, 'change', genAssignmentCode(value, valueBinding1), null, !0);
                 else if ('input' === tag || 'textarea' === tag) !function(el, value, modifiers) {
                     var type = el.attrsMap.type, value$1 = el.attrsMap['v-bind:value'] || el.attrsMap[':value'], typeBinding = el.attrsMap['v-bind:type'] || el.attrsMap[':type'];
                     if (value$1 && !typeBinding) {
@@ -3091,7 +3091,7 @@
         if (el.for && !el.forProcessed) return genFor(el, state);
         if (el.if && !el.ifProcessed) return genIf(el, state);
         if ('template' === el.tag && !el.slotTarget && !state.pre) return genChildren(el, state) || 'void 0';
-        if ('slot' === el.tag) return slotName = el.slotName || '"default"', res = "_t(" + slotName + ((children = genChildren(el, state)) ? "," + children : ''), attrs = el.attrs || el.dynamicAttrs ? genProps((el.attrs || []).concat(el.dynamicAttrs || []).map(function(attr) {
+        if ('slot' === el.tag) return res = "_t(" + (el.slotName || '"default"') + ((children = genChildren(el, state)) ? "," + children : ''), attrs = el.attrs || el.dynamicAttrs ? genProps((el.attrs || []).concat(el.dynamicAttrs || []).map(function(attr) {
             return {
                 name: camelize(attr.name),
                 value: attr.value,
@@ -3101,7 +3101,7 @@
         if (el.component) componentName = el.component, children1 = el.inlineTemplate ? null : genChildren(el, state, !0), code = "_c(" + componentName + "," + genData$2(el, state) + (children1 ? "," + children1 : '') + ")";
         else {
             (!el.plain || el.pre && state.maybeComponent(el)) && (data = genData$2(el, state));
-            var slotName, children, res, attrs, bind$$1, code, componentName, children1, data, children2 = el.inlineTemplate ? null : genChildren(el, state, !0);
+            var children, res, attrs, bind$$1, code, componentName, children1, data, children2 = el.inlineTemplate ? null : genChildren(el, state, !0);
             code = "_c('" + el.tag + "'" + (data ? "," + data : '') + (children2 ? "," + children2 : '') + ")";
         }
         for(var i = 0; i < state.transforms.length; i++)code = state.transforms[i](el, code);
