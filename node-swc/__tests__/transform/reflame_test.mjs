@@ -4,6 +4,8 @@ it("should support refreshSetup option", async () => {
   const { code } = await swc.transform(
       `import '../blah.ts'
 
+export const test_test = 1234
+
 export const Test = () => {
   return <div>Test</div>
 }
@@ -51,12 +53,13 @@ self.$RefreshReg$ = (type, id)=>{
 };
 self.$RefreshSig$ = self.$reflame.reactRefreshRuntime.createSignatureFunctionForTransform;
 import '../blah.ts';
+export const test_test = 1234;
 export const Test = ()=>{
     return /*#__PURE__*/ _jsxDEV("div", {
         children: "Test"
     }, void 0, false, {
         fileName: "index.tsx",
-        lineNumber: 4,
+        lineNumber: 6,
         columnNumber: 10
     }, this);
 };
@@ -67,7 +70,7 @@ self.$RefreshReg$ = $reflamePreviousRefreshReg;
 self.$RefreshSig$ = $reflamePreviousRefreshSig;
 self.$reflame.registerAcceptCallback({
     pathname: $reflamePathname,
-    callback: ({ pathname , id  })=>{
+    callback: ({ pathname, id })=>{
         if (id) {
             console.debug("accepting", pathname, "to", id);
         } else {
@@ -76,4 +79,56 @@ self.$reflame.registerAcceptCallback({
         self.$reflame.performReactRefresh();
     }
 });\n`);
+});
+
+it("should support removeTestExports option", async () => {
+  const { code } = await swc.transform(
+      `import '../blah.ts'
+
+export const test_test = 1234
+
+export const Test = () => {
+  return <div>Test</div>
+}
+`,
+      {
+          module: {
+            type: 'es6'
+          },
+          filename: 'index.tsx',
+          jsc: {
+            target: "es2022",
+            parser: {
+              syntax: 'typescript',
+              tsx: true,
+              dynamicImport: true,
+            },
+            transform: {
+              react: {
+                runtime: 'automatic',
+                throwIfNamespace: true,
+                development: true,
+                useBuiltins: true,
+                removeTestExports: true,
+                // refresh: {
+                //   // refreshReg: String;
+                //   // refreshSig: String;
+                //   // emitFullSignatures: boolean;
+                // },
+              },
+            }
+          }
+      }
+  );
+  expect(code).toEqual(`import { jsxDEV as _jsxDEV } from "react/jsx-dev-runtime";
+import '../blah.ts';
+export const Test = ()=>{
+    return /*#__PURE__*/ _jsxDEV("div", {
+        children: "Test"
+    }, void 0, false, {
+        fileName: "index.tsx",
+        lineNumber: 6,
+        columnNumber: 10
+    }, this);
+};\n`);
 });

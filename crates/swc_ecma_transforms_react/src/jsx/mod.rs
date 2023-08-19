@@ -100,6 +100,9 @@ pub struct Options {
     #[serde(default, deserialize_with = "deserialize_refresh_setup")]
     // default to disabled since this is still considered as experimental by now
     pub refresh_setup: Option<RefreshSetupOptions>,
+
+    #[serde(default)]
+    pub remove_test_exports: Option<bool>,
 }
 
 pub fn default_import_source() -> String {

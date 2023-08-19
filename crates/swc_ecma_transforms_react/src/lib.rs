@@ -13,6 +13,7 @@ pub use self::{
     refresh::{options::RefreshOptions, refresh},
     refresh_setup::{refresh_setup, RefreshSetupOptions},
 };
+use crate::remove_test_exports::remove_test_exports;
 
 mod display_name;
 mod jsx;
@@ -21,6 +22,7 @@ mod jsx_src;
 mod pure_annotations;
 mod refresh;
 mod refresh_setup;
+mod remove_test_exports;
 
 /// `@babel/preset-react`
 ///
@@ -50,8 +52,10 @@ where
 
     let refresh_options = options.refresh.take();
     let refresh_setup_options = options.refresh_setup.take();
+    let remove_test_exports_options = options.remove_test_exports.take();
 
     chain!(
+        remove_test_exports(development, remove_test_exports_options),
         jsx_src(development, cm.clone()),
         jsx_self(development),
         refresh(

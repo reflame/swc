@@ -114,7 +114,6 @@ switch (platform) {
         nativeBinding = require('./swc.darwin-universal.node')
       } else {
         nativeBinding = require('@lewisl9029/swc-core-darwin-universal')
-        nativeBinding = require('@swc/core-darwin-universal')
       }
       break
     } catch {}
