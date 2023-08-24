@@ -78,7 +78,6 @@ impl VisitMut for RemoveTestExports {
                 !var.decls.is_empty()
             }
             ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(NamedExport { specifiers, .. })) => {
-                println!("here: {:?}", specifiers);
                 specifiers.retain_mut(|specifier| match specifier {
                     ExportSpecifier::Named(ExportNamedSpecifier { orig, exported, .. }) => {
                         let has_test_postfix = match exported {
