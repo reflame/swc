@@ -55,7 +55,7 @@ where
     let remove_test_exports_options = options.remove_test_exports.take();
 
     chain!(
-        remove_test_exports(development, remove_test_exports_options),
+        remove_test_exports(remove_test_exports_options),
         jsx_src(development, cm.clone()),
         jsx_self(development),
         refresh(

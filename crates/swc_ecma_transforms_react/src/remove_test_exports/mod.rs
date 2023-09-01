@@ -6,9 +6,9 @@ use swc_ecma_visit::{as_folder, Fold, VisitMut, VisitMutWith};
 #[cfg(test)]
 mod tests;
 
-pub fn remove_test_exports(dev: bool, options: Option<bool>) -> impl Fold + VisitMut {
+pub fn remove_test_exports(options: Option<bool>) -> impl Fold + VisitMut {
     as_folder(RemoveTestExports {
-        enable: dev && matches!(options, Some(true)),
+        enable: matches!(options, Some(true)),
     })
 }
 

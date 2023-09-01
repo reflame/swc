@@ -132,3 +132,51 @@ export const Test = ()=>{
     }, this);
 };\n`);
 });
+
+it("should support removeTestExports option in production mode", async () => {
+  const { code } = await swc.transform(
+      `import '../blah.ts'
+
+export const test_test = 1234
+
+export const Test = () => {
+  return <div>Test</div>
+}
+`,
+      {
+          module: {
+            type: 'es6'
+          },
+          filename: 'index.tsx',
+          jsc: {
+            target: "es2022",
+            parser: {
+              syntax: 'typescript',
+              tsx: true,
+              dynamicImport: true,
+            },
+            transform: {
+              react: {
+                runtime: 'automatic',
+                throwIfNamespace: true,
+                development: false,
+                useBuiltins: true,
+                removeTestExports: true,
+                // refresh: {
+                //   // refreshReg: String;
+                //   // refreshSig: String;
+                //   // emitFullSignatures: boolean;
+                // },
+              },
+            }
+          }
+      }
+  );
+  expect(code).toEqual(`import { jsx as _jsx } from "react/jsx-runtime";
+import '../blah.ts';
+export const Test = ()=>{
+    return /*#__PURE__*/ _jsx("div", {
+        children: "Test"
+    });
+};\n`);
+});

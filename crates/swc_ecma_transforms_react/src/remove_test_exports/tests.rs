@@ -7,7 +7,7 @@ test!(
         jsx: true,
         ..Default::default()
     }),
-    |_| remove_test_exports(true, Some(true),),
+    |_| remove_test_exports(Some(true),),
     basic_sample,
     // Input codes
     r#"
