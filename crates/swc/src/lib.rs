@@ -193,7 +193,7 @@ pub mod resolver {
         preserve_symlinks: bool,
     ) -> CachingResolver<TsConfigResolver<NodeModulesResolver>> {
         let r = TsConfigResolver::new(
-            NodeModulesResolver::new(target_env, alias, preserve_symlinks),
+            NodeModulesResolver::without_node_modules(target_env, alias, preserve_symlinks),
             base_url,
             paths,
         );
@@ -681,10 +681,10 @@ impl SourceMapGenConfig for SwcSourceMapConfig<'_> {
     }
 
     fn skip(&self, f: &FileName) -> bool {
-        if let FileName::Custom(s) = f {
-            s.starts_with('<')
-        } else {
-            false
+        match f {
+            FileName::Internal(..) => true,
+            FileName::Custom(s) => s.starts_with('<'),
+            _ => false,
         }
     }
 }
@@ -733,7 +733,7 @@ impl Compiler {
         }
     }
 
-    #[tracing::instrument(level = "info", skip_all)]
+    #[tracing::instrument(skip_all)]
     pub fn read_config(&self, opts: &Options, name: &FileName) -> Result<Option<Config>, Error> {
         static CUR_DIR: Lazy<PathBuf> = Lazy::new(|| {
             if cfg!(target_arch = "wasm32") {
@@ -845,7 +845,7 @@ impl Compiler {
     /// This method handles merging of config.
     ///
     /// This method does **not** parse module.
-    #[tracing::instrument(level = "info", skip_all)]
+    #[tracing::instrument(skip_all)]
     pub fn parse_js_as_input<'a, P>(
         &'a self,
         fm: Lrc<SourceFile>,
@@ -908,7 +908,7 @@ impl Compiler {
         })
     }
 
-    #[tracing::instrument(level = "info", skip_all)]
+    #[tracing::instrument(skip_all)]
     pub fn transform(
         &self,
         handler: &Handler,
@@ -936,7 +936,7 @@ impl Compiler {
     ///
     /// This means, you can use `noop_visit_type`, `noop_fold_type` and
     /// `noop_visit_mut_type` in your visitor to reduce the binary size.
-    #[tracing::instrument(level = "info", skip_all)]
+    #[tracing::instrument(skip_all)]
     pub fn process_js_with_custom_pass<P1, P2>(
         &self,
         fm: Arc<SourceFile>,
@@ -997,11 +997,11 @@ impl Compiler {
                 None
             };
 
-            self.process_js_inner(handler, orig.as_ref(), config)
+            self.apply_transforms(handler, orig.as_ref(), config)
         })
     }
 
-    #[tracing::instrument(level = "info", skip(self, handler, opts))]
+    #[tracing::instrument(skip(self, handler, opts))]
     pub fn process_js_file(
         &self,
         fm: Arc<SourceFile>,
@@ -1019,7 +1019,7 @@ impl Compiler {
         )
     }
 
-    #[tracing::instrument(level = "info", skip_all)]
+    #[tracing::instrument(skip_all)]
     pub fn minify(
         &self,
         fm: Arc<SourceFile>,
@@ -1110,7 +1110,7 @@ impl Compiler {
                         jsx: true,
                         decorators: true,
                         decorators_before_export: true,
-                        import_assertions: true,
+                        import_attributes: true,
                         ..Default::default()
                     }),
                     IsModule::Bool(true),
@@ -1186,7 +1186,7 @@ impl Compiler {
     /// You can use custom pass with this method.
     ///
     /// There exists a [PassBuilder] to help building custom passes.
-    #[tracing::instrument(level = "info", skip_all)]
+    #[tracing::instrument(skip_all)]
     pub fn process_js(
         &self,
         handler: &Handler,
@@ -1207,8 +1207,8 @@ impl Compiler {
         )
     }
 
-    #[tracing::instrument(level = "info", skip_all)]
-    fn process_js_inner(
+    #[tracing::instrument(name = "swc::Compiler::apply_transforms", skip_all)]
+    fn apply_transforms(
         &self,
         handler: &Handler,
         orig: Option<&sourcemap::SourceMap>,
@@ -1281,7 +1281,7 @@ fn find_swcrc(path: &Path, root: &Path, root_mode: RootMode) -> Option<PathBuf> 
     None
 }
 
-#[tracing::instrument(level = "info", skip_all)]
+#[tracing::instrument(skip_all)]
 fn load_swcrc(path: &Path) -> Result<Rc, Error> {
     let content = read_to_string(path).context("failed to read config (.swcrc) file")?;
 

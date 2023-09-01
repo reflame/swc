@@ -5,16 +5,115 @@
 
 
 
+- **(common)** Fix logic for excluding `FileName` from source maps (#7900) ([aa64955](https://github.com/swc-project/swc/commit/aa6495519b9271cb21d380c0c5a35fe79d31ee14))
+
+
+- **(es/module)** Make `jsc.paths` fully resolve TypeScript files (#7901) ([c714dd2](https://github.com/swc-project/swc/commit/c714dd20dedfab60ac75de613d13c0f3af60a6c7))
+
+
+- **(es/resolver)** Correctly resolve global value (#7893) ([2db10e9](https://github.com/swc-project/swc/commit/2db10e9fd1913b69cb088aaded2d587872e9f2bb))
+
+## [1.3.81] - 2023-08-30
+
+### Bug Fixes
+
+
+
+- **(es/codegen)** Fix placing of comments of yield arguments (#7858) ([122d14c](https://github.com/swc-project/swc/commit/122d14c0d306d7c437f1ef0f6f375634ff5d7d1a))
+
+
+- **(es/compat)** Apply transforms for explicit resource management (#7881) ([3180e68](https://github.com/swc-project/swc/commit/3180e68bf27fb95ff00bd24677ae7e96b3aa6c62))
+
+
+- **(es/compat)** Make `SwitchCase` handler of `block-scoping` stateless (#7888) ([4b33d41](https://github.com/swc-project/swc/commit/4b33d41fabf841dfc31c6f44d94e4651239ab667))
+
+
+- **(es/dep-graph)** Analyze import type children (#7883) ([057bd5f](https://github.com/swc-project/swc/commit/057bd5f3efe55077a5a8e7f627e80175c8af2bd0))
+
+
+- **(es/minifier)** Report `is_fn_local` even if var is hoisted (#7876) ([87a47bf](https://github.com/swc-project/swc/commit/87a47bfb2c602f2ce7eb33f78612197e290518b8))
+
+
+- **(es/module)** Don't create absolute paths for `jsc.paths` on Windows (#7892) ([5fbc251](https://github.com/swc-project/swc/commit/5fbc251db1cc1f7973ba780a6c4fc1cdce5ef40d))
+
+
+- **(swc-info)** Use correct path while getting local package versions (#7872) ([67afaf1](https://github.com/swc-project/swc/commit/67afaf1f2db087518ac990c71de896c8e5e2a051))
+
+### Features
+
+
+
+- **(es)** Add an option to disable builtin transforms (#7873) ([71d01ec](https://github.com/swc-project/swc/commit/71d01ec12772c2854a47947deceb6d1cab141289))
+
+
+- **(es/ast)** Support import attributes proposal (#7868) ([4d3fcb8](https://github.com/swc-project/swc/commit/4d3fcb86e4843cf323a471537cc1ab3a26d054b1))
+
+
+- **(es/preset-env)** Update data (#7882) ([a97d8b4](https://github.com/swc-project/swc/commit/a97d8b42b1f85c1f76ffadcabf6e9c85f0458d8d))
+
+
+- **(swc-info)** Add a CLI to help issue reporting (#7871) ([d6952ea](https://github.com/swc-project/swc/commit/d6952ea687beb5b9aff1eae26076fa98ac94818b))
+
+### Miscellaneous Tasks
+
+
+
+- **(deps)** Update `memchr` (#7891) ([01cbd6e](https://github.com/swc-project/swc/commit/01cbd6edbd37c95ece7ca20ad2f6c85d6c1b6e35))- **general**: Use `textarea` for `swc-info` ([eed2903](https://github.com/swc-project/swc/commit/eed290319e4a8128948ce07e76d11a01d2096a8b))
+
+### Performance
+
+
+
+- **(es/transforms)** Remove wrong parallelism (#7889) ([a505012](https://github.com/swc-project/swc/commit/a50501255d2a91f2bbc1ce9767689dc4fad540cc))
+
+### Refactor
+
+
+
+- **(es/minifier)** Remove `mutated` and `mutation_by_call_count` (#7890) ([8db968a](https://github.com/swc-project/swc/commit/8db968a25d508a0d28d15d556ad121951f39ae0d))
+
+## [1.3.80] - 2023-08-25
+
+### Bug Fixes
+
+
+
+- **(es/module)** Fix logic for exact matches in `jsc.paths` (#7860) ([52a1ee7](https://github.com/swc-project/swc/commit/52a1ee78da87da760f9923cd8cdb420da855417f))
+
+
+- **(es/module)** Don't resolve as `node_modules` from `TscResolver` (#7866) ([11ebae1](https://github.com/swc-project/swc/commit/11ebae1bdd2fbd05d908fa560b81b830dddb3c56))
+
+### Miscellaneous Tasks
+- **general**: Remove unused files ([e47f1c2](https://github.com/swc-project/swc/commit/e47f1c2bf7e1dc9fedf5a364884a40a5e7735973))
+
+## [1.3.79] - 2023-08-25
+
+### Bug Fixes
+
+
+
 - **(es)** Fix default value of `jsc.minify.format.comments` (#7853) ([64e51d3](https://github.com/swc-project/swc/commit/64e51d3a28052734d2eaf9992bc8ba578dd5630b))
 
 
 - **(es/minifier)** Don't inline properties if the var is not `fn-local` (#7839) ([7fe01e6](https://github.com/swc-project/swc/commit/7fe01e64dd9917d375a4f1cf9661ffaca822c5b3))
+
+
+- **(es/minifier)** Don't remove exports (#7856) ([ae8cd94](https://github.com/swc-project/swc/commit/ae8cd9430dd1ec0d857ac7f87ffa4b76258be92c))
+
+
+- **(es/module)** Make `jsc.paths` work for a nest.js app (#7852) ([d33a973](https://github.com/swc-project/swc/commit/d33a97303ceeee4069321ef21027ff99fe973a79))
 
 ### Features
 
 
 
 - **(css/ast)** Support `@scope` at-rule (#7837) ([a34f359](https://github.com/swc-project/swc/commit/a34f3592b3fd2731b63a5c58c5022e12a403850b))
+
+### Miscellaneous Tasks
+
+
+
+- **(ci)** Fix CI (#7857) ([854e2e7](https://github.com/swc-project/swc/commit/854e2e78b38699fd09c65074a38a21d1d9836002))
 
 ### Refactor
 
