@@ -2224,9 +2224,9 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@lewisl9029/core@workspace:.":
+"@lewisl9029/swc-core@workspace:.":
   version: 0.0.0-use.local
-  resolution: "@lewisl9029/core@workspace:."
+  resolution: "@lewisl9029/swc-core@workspace:."
   dependencies:
     "@babel/compat-data": ^7.23.2
     "@babel/core": ^7.13.16
