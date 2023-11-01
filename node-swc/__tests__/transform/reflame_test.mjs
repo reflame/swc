@@ -85,11 +85,12 @@ it("should support removeTestExports option", async () => {
   const { code } = await swc.transform(
       `import '../blah.ts'
 
-export const test_test = 1234
-
 export const Test = () => {
   return <div>Test</div>
 }
+
+export const Test_test = <Test />
+Test_test.run = () => console.log('test')
 `,
       {
           module: {
@@ -127,7 +128,7 @@ export const Test = ()=>{
         children: "Test"
     }, void 0, false, {
         fileName: "index.tsx",
-        lineNumber: 6,
+        lineNumber: 4,
         columnNumber: 10
     }, this);
 };\n`);
@@ -137,11 +138,12 @@ it("should support removeTestExports option in production mode", async () => {
   const { code } = await swc.transform(
       `import '../blah.ts'
 
-export const test_test = 1234
-
 export const Test = () => {
   return <div>Test</div>
 }
+
+export const Test_test = <Test />
+Test_test.run = () => console.log('test')
 `,
       {
           module: {
@@ -179,4 +181,55 @@ export const Test = ()=>{
         children: "Test"
     });
 };\n`);
+});
+
+it("should preserve tests when removeTestExports is off", async () => {
+  const { code } = await swc.transform(
+      `import '../blah.ts'
+
+export const Test = () => {
+  return <div>Test</div>
+}
+
+export const Test_test = <Test />
+Test_test.run = () => console.log('test')
+`,
+      {
+          module: {
+            type: 'es6'
+          },
+          filename: 'index.tsx',
+          jsc: {
+            target: "es2022",
+            parser: {
+              syntax: 'typescript',
+              tsx: true,
+              dynamicImport: true,
+            },
+            transform: {
+              react: {
+                runtime: 'automatic',
+                throwIfNamespace: true,
+                development: false,
+                useBuiltins: true,
+                removeTestExports: false,
+                // refresh: {
+                //   // refreshReg: String;
+                //   // refreshSig: String;
+                //   // emitFullSignatures: boolean;
+                // },
+              },
+            }
+          }
+      }
+  );
+  expect(code).toEqual(`import { jsx as _jsx } from "react/jsx-runtime";
+import '../blah.ts';
+export const Test = ()=>{
+    return /*#__PURE__*/ _jsx("div", {
+        children: "Test"
+    });
+};
+export const Test_test = /*#__PURE__*/ _jsx(Test, {});
+Test_test.run = ()=>console.log('test');\n`);
 });
