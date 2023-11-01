@@ -1,9 +1,7 @@
 {
     "name": "@lewisl9029/swc-helpers",
-    "version": "0.4.14",
-    "name": "@swc/helpers",
-    "packageManager": "yarn@3.5.0",
     "version": "0.5.3",
+    "packageManager": "yarn@3.5.0",
     "description": "External helpers for the swc project.",
     "module": "esm/index.js",
     "main": "cjs/index.cjs",
@@ -32,8 +30,6 @@
     "homepage": "https://swc.rs",
     "type": "module",
     "devDependencies": {
-        "@swc/cli": "^0.1.36",
-        "@lewisl9029/swc-core": "=1.3.19"
         "@ast-grep/napi": "^0.3.1",
         "dprint": "^0.35.3",
         "magic-string": "^0.30.0",
