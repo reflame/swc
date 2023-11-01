@@ -57,8 +57,26 @@ impl VisitMut for RemoveTestExports {
             return;
         }
 
-        // We do same thing here.
+        // FIXME: this indescriminately removes all top-level assignments to vars
+        // ending with _test, whether or not they're actually exported as tests
         module_items.retain_mut(|module_item| match module_item {
+            ModuleItem::Stmt(Stmt::Expr(ExprStmt { expr, .. })) => match &**expr {
+                Expr::Assign(AssignExpr {
+                    op: AssignOp::Assign,
+                    left: PatOrExpr::Pat(pat),
+                    ..
+                }) => match &**pat {
+                    Pat::Expr(expr) => match &**expr {
+                        Expr::Member(MemberExpr { obj, .. }) => match &**obj {
+                            Expr::Ident(Ident { sym, .. }) => !sym.ends_with("_test"),
+                            _ => true,
+                        },
+                        _ => true,
+                    },
+                    _ => true,
+                },
+                _ => true,
+            },
             ModuleItem::ModuleDecl(ModuleDecl::ExportDecl(ExportDecl {
                 decl: Decl::Var(var),
                 ..
