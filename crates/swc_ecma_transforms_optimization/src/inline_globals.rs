@@ -1,4 +1,4 @@
-use swc_atoms::{js_word, JsWord};
+use swc_atoms::JsWord;
 use swc_common::{
     collections::{AHashMap, AHashSet},
     sync::Lrc,
@@ -137,22 +137,13 @@ impl VisitMut for InlineGlobals {
                 }
             }
 
-            Expr::Member(MemberExpr { obj, prop, .. }) => {
-                if let Expr::Member(MemberExpr {
+            Expr::Member(MemberExpr { obj, prop, .. }) => match &**obj {
+                Expr::Member(MemberExpr {
                     obj: first_obj,
-                    prop:
-                        MemberProp::Ident(Ident {
-                            sym: js_word!("env"),
-                            ..
-                        }),
+                    prop: inner_prop,
                     ..
-                }) = &**obj
-                {
-                    if let Expr::Ident(Ident {
-                        sym: js_word!("process"),
-                        ..
-                    }) = &**first_obj
-                    {
+                }) if inner_prop.is_ident_with("env") => {
+                    if first_obj.is_ident_ref_to("process") {
                         match prop {
                             MemberProp::Computed(ComputedPropName { expr: c, .. }) => {
                                 if let Expr::Lit(Lit::Str(Str { value: sym, .. })) = &**c {
@@ -171,7 +162,8 @@ impl VisitMut for InlineGlobals {
                         }
                     }
                 }
-            }
+                _ => (),
+            },
             _ => {}
         }
     }
@@ -280,7 +272,6 @@ mod tests {
         ::swc_ecma_parser::Syntax::default(),
         |tester| inline_globals(envs(tester, &[]), globals(tester, &[]), Default::default(),),
         issue_215,
-        r#"if (process.env.x === 'development') {}"#,
         r#"if (process.env.x === 'development') {}"#
     );
 
@@ -292,8 +283,7 @@ mod tests {
             Default::default(),
         ),
         node_env,
-        r#"if (process.env.NODE_ENV === 'development') {}"#,
-        r#"if ('development' === 'development') {}"#
+        r#"if (process.env.NODE_ENV === 'development') {}"#
     );
 
     test!(
@@ -304,8 +294,7 @@ mod tests {
             Default::default(),
         ),
         globals_simple,
-        r#"if (__DEBUG__) {}"#,
-        r#"if (true) {}"#
+        r#"if (__DEBUG__) {}"#
     );
 
     test!(
@@ -316,7 +305,6 @@ mod tests {
             Default::default(),
         ),
         non_global,
-        r#"if (foo.debug) {}"#,
         r#"if (foo.debug) {}"#
     );
 
@@ -324,7 +312,6 @@ mod tests {
         Default::default(),
         |tester| inline_globals(envs(tester, &[]), globals(tester, &[]), Default::default(),),
         issue_417_1,
-        "const test = process.env['x']",
         "const test = process.env['x']"
     );
 
@@ -336,8 +323,7 @@ mod tests {
             Default::default(),
         ),
         issue_417_2,
-        "const test = process.env['x']",
-        "const test = 'FOO'"
+        "const test = process.env['x']"
     );
 
     test!(
@@ -348,7 +334,6 @@ mod tests {
             Default::default(),
         ),
         issue_2499_1,
-        "process.env.x = 'foo'",
         "process.env.x = 'foo'"
     );
 }

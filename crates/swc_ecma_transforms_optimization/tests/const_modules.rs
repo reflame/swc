@@ -1,7 +1,7 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fs::read_to_string, path::PathBuf};
 
 use swc_ecma_transforms_optimization::const_modules;
-use swc_ecma_transforms_testing::{test, Tester};
+use swc_ecma_transforms_testing::{test, test_fixture, Tester};
 use swc_ecma_visit::Fold;
 
 fn tr(t: &mut Tester<'_>, sources: &[(&str, &[(&str, &str)])]) -> impl Fold {
@@ -26,10 +26,6 @@ test!(
     r#"import { DEBUG } from '@ember/env-flags';
         if (DEBUG) {
             console.log('Foo!');
-        }"#,
-    r#"
-        if (true) {
-            console.log('Foo!');
         }"#
 );
 
@@ -43,11 +39,7 @@ test!(
         }
         
         import { DEBUG } from '@ember/env-flags';
-        "#,
-    r#"
-        if (true) {
-            console.log('Foo!');
-        }"#
+        "#
 );
 
 test!(
@@ -76,18 +68,6 @@ if (FEATURE_A) {
 } else if (FEATURE_B) {
   woot = () => 'toow';
 }
-",
-    "
-if (true) {
-    console.log('Foo!');
-}
-
-let woot;
-if (false) {
-  woot = () => 'woot';
-} else if (true) {
-  woot = () => 'toow';
-}
 "
 );
 
@@ -98,9 +78,6 @@ test!(
     r#"
 import * as foo from 'foo';
 console.log(foo.bar)
-"#,
-    r#"
-console.log(true);
 "#
 );
 
@@ -111,9 +88,6 @@ test!(
     r#"
 import * as foo from 'foo';
 console.log(foo["bar"])
-"#,
-    r#"
-console.log(true);
 "#
 );
 
@@ -127,12 +101,7 @@ test!(
     r#"
     import { testMap } from "testModule";
     testMap['var'];
-"#,
-    r#"
-    ({
-        'var': 'value'
-    })['var'];
-    "#
+"#
 );
 
 test!(
@@ -142,9 +111,6 @@ test!(
     r#"
 import { bar } from 'foo';
 console.log({ bar });
-"#,
-    r#"
-console.log({ bar: true });
 "#
 );
 
@@ -155,8 +121,26 @@ test!(
     r#"
 import something from 'my-mod';
 console.log(something);
-"#,
-    r#"
-console.log(true);
 "#
 );
+
+#[testing::fixture("tests/const-modules/**/input.js")]
+fn const_modules_test(input: PathBuf) {
+    let globals = input.with_file_name("globals.json");
+    let output = input.with_file_name("output.js");
+
+    test_fixture(
+        ::swc_ecma_parser::Syntax::default(),
+        &|t| {
+            let globals = read_to_string(&globals)
+                .ok()
+                .and_then(|s| serde_json::from_str(&s).ok())
+                .unwrap_or_default();
+
+            const_modules(t.cm.clone(), globals)
+        },
+        &input,
+        &output,
+        Default::default(),
+    );
+}

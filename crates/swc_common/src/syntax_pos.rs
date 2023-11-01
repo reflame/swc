@@ -49,6 +49,20 @@ pub struct Span {
     pub ctxt: SyntaxContext,
 }
 
+impl From<(BytePos, BytePos)> for Span {
+    #[inline]
+    fn from(sp: (BytePos, BytePos)) -> Self {
+        Span::new(sp.0, sp.1, Default::default())
+    }
+}
+
+impl From<Span> for (BytePos, BytePos) {
+    #[inline]
+    fn from(sp: Span) -> Self {
+        (sp.lo, sp.hi)
+    }
+}
+
 #[cfg(feature = "arbitrary")]
 #[cfg_attr(docsrs, doc(cfg(feature = "arbitrary")))]
 impl<'a> arbitrary::Arbitrary<'a> for Span {
@@ -1125,10 +1139,16 @@ impl BytePos {
         self.0 >= Self::MIN_RESERVED.0 && self.0 != u32::MAX
     }
 
-    /// Returns true if this is synthesized and has no relevant input source
+    /// Returns `true`` if this is synthesized and has no relevant input source
     /// code.
     pub const fn is_dummy(self) -> bool {
         self.0 == 0
+    }
+
+    /// Returns `true`` if this is explicitly synthesized or has relevant input
+    /// source so can have a comment.
+    pub const fn can_have_comment(self) -> bool {
+        self.0 != 0
     }
 }
 

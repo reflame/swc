@@ -1,6 +1,5 @@
 use std::mem::take;
 
-use swc_atoms::js_word;
 use swc_common::{util::take::Take, Spanned, SyntaxContext, DUMMY_SP};
 use swc_ecma_ast::*;
 use swc_ecma_usage_analyzer::{
@@ -1207,6 +1206,13 @@ impl Optimizer<'_> {
 
             Expr::Yield(..) | Expr::Await(..) => false,
 
+            Expr::Tpl(t) => t.exprs.iter().all(|e| self.is_skippable_for_seq(a, e)),
+
+            Expr::TaggedTpl(t) => {
+                self.is_skippable_for_seq(a, &t.tag)
+                    && t.tpl.exprs.iter().all(|e| self.is_skippable_for_seq(a, e))
+            }
+
             Expr::Unary(UnaryExpr {
                 op: op!("!") | op!("void") | op!("typeof") | op!(unary, "-") | op!(unary, "+"),
                 arg,
@@ -1378,13 +1384,11 @@ impl Optimizer<'_> {
                 exprs.iter().all(|e| self.is_skippable_for_seq(a, e))
             }
 
-            Expr::TaggedTpl(..) | Expr::New(..) => {
+            Expr::New(..) => {
                 // TODO(kdy1): We can optimize some known calls.
 
                 false
             }
-
-            Expr::Tpl(Tpl { exprs, .. }) => exprs.iter().all(|e| self.is_skippable_for_seq(a, e)),
 
             // Expressions without any effects
             Expr::This(_)
@@ -1523,7 +1527,9 @@ impl Optimizer<'_> {
             | Expr::Class(..)
             | Expr::Lit(..)
             | Expr::Await(..)
-            | Expr::Yield(..) => true,
+            | Expr::Yield(..)
+            | Expr::Tpl(..)
+            | Expr::TaggedTpl(..) => true,
             Expr::Unary(UnaryExpr {
                 op: op!("delete"), ..
             }) => true,
@@ -1849,11 +1855,31 @@ impl Optimizer<'_> {
             }
 
             Expr::New(NewExpr {
-                callee: b_callee, ..
+                callee: b_callee,
+                args: b_args,
+                ..
             }) => {
                 trace_op!("seq: Try callee of new");
                 if self.merge_sequential_expr(a, b_callee)? {
                     return Ok(true);
+                }
+
+                if !self.is_skippable_for_seq(Some(a), b_callee) {
+                    return Ok(false);
+                }
+
+                if let Some(b_args) = b_args {
+                    for arg in b_args {
+                        trace_op!("seq: Try arg of new exp");
+
+                        if self.merge_sequential_expr(a, &mut arg.expr)? {
+                            return Ok(true);
+                        }
+
+                        if !self.is_skippable_for_seq(Some(a), &arg.expr) {
+                            return Ok(false);
+                        }
+                    }
                 }
 
                 return Ok(false);
@@ -1887,12 +1913,29 @@ impl Optimizer<'_> {
                         }
                         PropOrSpread::Prop(prop) => {
                             // Inline into key
-                            let key = match &mut **prop {
+                            let computed = match &mut **prop {
+                                Prop::Shorthand(_) | Prop::Assign(_) => None,
+                                Prop::KeyValue(prop) => prop.key.as_mut_computed(),
+                                Prop::Getter(prop) => prop.key.as_mut_computed(),
+                                Prop::Setter(prop) => prop.key.as_mut_computed(),
+                                Prop::Method(prop) => prop.key.as_mut_computed(),
+                            };
+
+                            if let Some(computed) = computed {
+                                if self.merge_sequential_expr(a, &mut computed.expr)? {
+                                    return Ok(true);
+                                }
+
+                                if !self.is_skippable_for_seq(Some(a), &computed.expr) {
+                                    return Ok(false);
+                                }
+                            }
+
+                            match &mut **prop {
                                 Prop::Shorthand(shorthand) => {
                                     // We can't ignore shorthand properties
                                     //
                                     // https://github.com/swc-project/swc/issues/6914
-
                                     let mut new_b = Box::new(Expr::Ident(shorthand.clone()));
                                     if self.merge_sequential_expr(a, &mut new_b)? {
                                         *prop = Box::new(Prop::KeyValue(KeyValueProp {
@@ -1901,40 +1944,15 @@ impl Optimizer<'_> {
                                                 shorthand.span.with_ctxt(SyntaxContext::empty()),
                                             )
                                             .into(),
-                                            value: new_b,
+                                            value: new_b.clone(),
                                         }));
                                     }
 
-                                    continue;
-                                }
-                                Prop::KeyValue(prop) => Some(&mut prop.key),
-                                Prop::Assign(_) => None,
-                                Prop::Getter(prop) => Some(&mut prop.key),
-                                Prop::Setter(prop) => Some(&mut prop.key),
-                                Prop::Method(prop) => Some(&mut prop.key),
-                            };
-
-                            if let Some(PropName::Computed(key)) = key {
-                                if self.merge_sequential_expr(a, &mut key.expr)? {
-                                    return Ok(true);
-                                }
-
-                                if !self.is_skippable_for_seq(Some(a), &key.expr) {
-                                    return Ok(false);
-                                }
-                            }
-
-                            match &mut **prop {
-                                Prop::KeyValue(prop) => {
-                                    if self.merge_sequential_expr(a, &mut prop.value)? {
-                                        return Ok(true);
-                                    }
-
-                                    if !self.is_skippable_for_seq(Some(a), &prop.value) {
+                                    if !self.is_skippable_for_seq(Some(a), &new_b) {
                                         return Ok(false);
                                     }
                                 }
-                                Prop::Assign(prop) => {
+                                Prop::KeyValue(prop) => {
                                     if self.merge_sequential_expr(a, &mut prop.value)? {
                                         return Ok(true);
                                     }
@@ -2293,15 +2311,7 @@ impl Optimizer<'_> {
         };
 
         if let Some(a_right) = a_right {
-            if a_right.is_this()
-                || matches!(
-                    &**a_right,
-                    Expr::Ident(Ident {
-                        sym: js_word!("arguments"),
-                        ..
-                    })
-                )
-            {
+            if a_right.is_this() || a_right.is_ident_ref_to("arguments") {
                 return Ok(false);
             }
             if contains_arguments(&**a_right) {
@@ -2317,8 +2327,7 @@ impl Optimizer<'_> {
                             if let Some(usage) = self.data.vars.get(&left_id.to_id()) {
                                 // We are eliminating one usage, so we use 1 instead of
                                 // 0
-                                if !$force_drop && usage.usage_count == 1 && usage.assign_count == 0
-                                {
+                                if !$force_drop && usage.usage_count == 1 && !usage.reassigned {
                                     report_change!("sequences: Dropping inlined variable");
                                     a.name.take();
                                 }
@@ -2479,6 +2488,10 @@ impl Optimizer<'_> {
     /// 1, arr[i]`
     //
     fn should_not_check_rhs_of_assign(&self, a: &Mergable, b: &mut AssignExpr) -> Result<bool, ()> {
+        if b.op.may_short_circuit() {
+            return Ok(true);
+        }
+
         if let Some(a_id) = a.id() {
             match a {
                 Mergable::Expr(Expr::Assign(AssignExpr { op: op!("="), .. })) => {}

@@ -1,7 +1,6 @@
 use std::{collections::HashMap, mem::swap};
 
 use rustc_hash::FxHashMap;
-use swc_atoms::js_word;
 use swc_common::{pass::Either, util::take::Take, Mark, Spanned, SyntaxContext, DUMMY_SP};
 use swc_ecma_ast::*;
 use swc_ecma_utils::{
@@ -760,13 +759,9 @@ impl Optimizer<'_> {
             {
                 if var.decls.iter().any(|decl| match &decl.name {
                     Pat::Ident(BindingIdent {
-                        id:
-                            Ident {
-                                sym: js_word!("arguments"),
-                                ..
-                            },
+                        id: Ident { sym, .. },
                         ..
-                    }) => true,
+                    }) if &**sym == "arguments" => true,
                     Pat::Ident(id) => {
                         if self.vars.has_pending_inline_for(&id.to_id()) {
                             log_abort!(
@@ -907,7 +902,7 @@ impl Optimizer<'_> {
                 if let Some(usage) = self.data.vars.get(&orig_params[idx].to_id()) {
                     if usage.ref_count == 1
                         && !usage.reassigned
-                        && !usage.has_property_mutation
+                        && usage.property_mutation_count == 0
                         && matches!(
                             &*arg,
                             Expr::Lit(

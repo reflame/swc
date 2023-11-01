@@ -11,7 +11,6 @@ use std::{
 };
 
 use anyhow::Error;
-use swc_atoms::js_word;
 use swc_bundler::{Bundle, Bundler, Load, ModuleData, ModuleRecord};
 use swc_common::{
     errors::{ColorConfig, Handler},
@@ -42,10 +41,7 @@ fn print_bundles(cm: Lrc<SourceMap>, modules: Vec<Bundle>, minify: bool) {
             {
                 let wr = JsWriter::new(cm.clone(), "\n", &mut buf, None);
                 let mut emitter = Emitter {
-                    cfg: swc_ecma_codegen::Config {
-                        minify,
-                        ..Default::default()
-                    },
+                    cfg: swc_ecma_codegen::Config::default().with_minify(true),
                     cm: cm.clone(),
                     comments: None,
                     wr: if minify {
@@ -194,7 +190,7 @@ impl swc_bundler::Hook for Hook {
 
         Ok(vec![
             KeyValueProp {
-                key: PropName::Ident(Ident::new(js_word!("url"), span)),
+                key: PropName::Ident(Ident::new("url".into(), span)),
                 value: Box::new(Expr::Lit(Lit::Str(Str {
                     span,
                     raw: None,
@@ -202,7 +198,7 @@ impl swc_bundler::Hook for Hook {
                 }))),
             },
             KeyValueProp {
-                key: PropName::Ident(Ident::new(js_word!("main"), span)),
+                key: PropName::Ident(Ident::new("main".into(), span)),
                 value: Box::new(if module_record.is_entry {
                     Expr::Member(MemberExpr {
                         span,
@@ -210,7 +206,7 @@ impl swc_bundler::Hook for Hook {
                             span,
                             kind: MetaPropKind::ImportMeta,
                         })),
-                        prop: MemberProp::Ident(Ident::new(js_word!("main"), span)),
+                        prop: MemberProp::Ident(Ident::new("main".into(), span)),
                     })
                 } else {
                     Expr::Lit(Lit::Bool(Bool { span, value: false }))

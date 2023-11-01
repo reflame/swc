@@ -1,37 +1,29 @@
-var _initClass, _initClass1;
+var _initClass, _initClass1, _Bar;
 const dec1 = ()=>{};
 const dec2 = ()=>{};
-let _Bar;
+let _Bar1;
 class Bar {
 }
 var __ = {
     writable: true,
-    value: (()=>{
-        ({ c: [_Bar, _initClass]  } = _apply_decs_2203_r(Bar, [], [
-            dec1
-        ]));
-    })()
+    value: { c: [_Bar1, _initClass] } = _apply_decs_2203_r(Bar, [], [
+        dec1
+    ])
 };
-var __1 = {
-    writable: true,
-    value: (()=>{
-        _initClass();
-    })()
-};
-let _Foo;
-class Foo extends _Bar {
-}
 var __2 = {
     writable: true,
-    value: (()=>{
-        ({ c: [_Foo, _initClass1]  } = _apply_decs_2203_r(Foo, [], [
-            dec2
-        ]));
-    })()
+    value: _initClass()
 };
-var __11 = {
+let _Foo;
+class Foo extends (_Bar = _Bar1) {
+}
+var __1 = {
     writable: true,
-    value: (()=>{
-        _initClass1();
-    })()
+    value: { c: [_Foo, _initClass1] } = _apply_decs_2203_r(Foo, [], [
+        dec2
+    ], _Bar)
+};
+var __21 = {
+    writable: true,
+    value: _initClass1()
 };

@@ -1,4 +1,3 @@
-use swc_atoms::js_word;
 use swc_common::{util::take::Take, EqIgnoreSpan, Spanned};
 use swc_ecma_ast::*;
 use swc_ecma_transforms_optimization::simplify::expr_simplifier;
@@ -40,7 +39,7 @@ impl Optimizer<'_> {
         }
 
         // We will inline if possible.
-        if ident.sym == js_word!("arguments") {
+        if ident.sym == "arguments" {
             return;
         }
 
@@ -154,10 +153,10 @@ impl Optimizer<'_> {
             if !usage.reassigned {
                 match init {
                     Expr::Fn(..) | Expr::Arrow(..) => {
-                        self.typeofs.insert(ident.to_id(), js_word!("function"));
+                        self.typeofs.insert(ident.to_id(), "function".into());
                     }
                     Expr::Array(..) | Expr::Object(..) => {
-                        self.typeofs.insert(ident.to_id(), js_word!("object"));
+                        self.typeofs.insert(ident.to_id(), "object".into());
                     }
                     _ => {}
                 }
@@ -175,13 +174,11 @@ impl Optimizer<'_> {
             // new variant is added for multi inline, think carefully
             if is_inline_enabled
                 && usage.declared_count == 1
-                && usage.assign_count == 0
-                && (!usage.has_property_mutation || !usage.reassigned)
+                && usage.assign_count == 1
+                && !usage.reassigned
+                && (usage.property_mutation_count == 0 || !usage.reassigned)
                 && match init {
-                    Expr::Ident(Ident {
-                        sym: js_word!("eval"),
-                        ..
-                    }) => false,
+                    Expr::Ident(Ident { sym, .. }) if &**sym == "eval" => false,
 
                     Expr::Ident(id) if !id.eq_ignore_span(ident) => {
                         if !usage.assigned_fn_local {
@@ -205,6 +202,14 @@ impl Optimizer<'_> {
                                     u.var_kind,
                                     Some(VarDeclKind::Let | VarDeclKind::Const)
                                 )
+                            }
+
+                            if u.declared_as_fn_decl || u.declared_as_fn_expr {
+                                if self.options.keep_fnames
+                                    || self.mangle_options.map_or(false, |v| v.keep_fn_names)
+                                {
+                                    should_inline = false
+                                }
                             }
 
                             should_inline
@@ -234,7 +239,7 @@ impl Optimizer<'_> {
                     Expr::This(..) => usage.is_fn_local,
                     Expr::Arrow(arr) => {
                         is_arrow_simple_enough_for_copy(arr)
-                            && !(usage.has_property_mutation
+                            && !(usage.property_mutation_count > 0
                                 || usage.executed_multiple_time
                                 || usage.used_as_arg && ref_count > 1)
                             && ref_count - 1 <= usage.callee_count
@@ -250,7 +255,7 @@ impl Optimizer<'_> {
                     indexed_with_dynamic_key,
                     usage_count,
                     has_property_access,
-                    has_property_mutation,
+                    property_mutation_count,
                     used_above_decl,
                     executed_multiple_time,
                     used_in_cond,
@@ -265,7 +270,7 @@ impl Optimizer<'_> {
                             u.used_as_ref |= used_as_ref;
                             u.indexed_with_dynamic_key |= indexed_with_dynamic_key;
                             u.has_property_access |= has_property_access;
-                            u.has_property_mutation |= has_property_mutation;
+                            u.property_mutation_count += property_mutation_count;
                             u.used_above_decl |= used_above_decl;
                             u.executed_multiple_time |= executed_multiple_time;
                             u.used_in_cond |= used_in_cond;
@@ -322,7 +327,7 @@ impl Optimizer<'_> {
                 && usage.declared
                 && may_remove
                 && !usage.reassigned
-                && usage.assign_count == 0
+                && usage.assign_count == 1
                 && ref_count == 1
             {
                 match init {
@@ -415,13 +420,24 @@ impl Optimizer<'_> {
                             if init_usage.reassigned || !init_usage.declared {
                                 return;
                             }
+
+                            if init_usage.declared_as_fn_decl || init_usage.declared_as_fn_expr {
+                                if self.options.keep_fnames
+                                    || self.mangle_options.map_or(false, |v| v.keep_fn_names)
+                                {
+                                    return;
+                                }
+                            }
                         }
                     }
 
                     _ => {
                         for id in idents_used_by(init) {
                             if let Some(v_usage) = self.data.vars.get(&id) {
-                                if v_usage.reassigned || v_usage.has_property_mutation {
+                                if v_usage.reassigned
+                                    || v_usage.property_mutation_count
+                                        > usage.property_mutation_count
+                                {
                                     return;
                                 }
                             }
@@ -537,10 +553,10 @@ impl Optimizer<'_> {
                 trace_op!("typeofs: Storing typeof `{}{:?}`", i.sym, i.span.ctxt);
                 match &*decl {
                     Decl::Fn(..) => {
-                        self.typeofs.insert(i.to_id(), js_word!("function"));
+                        self.typeofs.insert(i.to_id(), "function".into());
                     }
                     Decl::Class(..) => {
-                        self.typeofs.insert(i.to_id(), js_word!("object"));
+                        self.typeofs.insert(i.to_id(), "object".into());
                     }
                     _ => {}
                 }
@@ -680,8 +696,7 @@ impl Optimizer<'_> {
             //
             if (self.options.reduce_vars || self.options.collapse_vars || self.options.inline != 0)
                 && usage.ref_count == 1
-                && (usage.can_inline_fn_once())
-                && !usage.inline_prevented
+                && usage.can_inline_fn_once()
                 && (match decl {
                     Decl::Class(..) => !usage.used_above_decl,
                     Decl::Fn(..) => true,
@@ -694,10 +709,17 @@ impl Optimizer<'_> {
                     }
                 }
 
-                self.changed = true;
-                #[cfg(feature = "debug")]
+                #[allow(unused)]
                 match &decl {
                     Decl::Class(c) => {
+                        if self.options.keep_classnames
+                            || self.mangle_options.map_or(false, |v| v.keep_class_names)
+                        {
+                            log_abort!("inline: [x] Keep fn names");
+                            return;
+                        }
+
+                        self.changed = true;
                         report_change!(
                             "inline: Decided to inline class `{}{:?}` as it's used only once",
                             c.ident.sym,
@@ -705,6 +727,14 @@ impl Optimizer<'_> {
                         );
                     }
                     Decl::Fn(f) => {
+                        if self.options.keep_fnames
+                            || self.mangle_options.map_or(false, |v| v.keep_fn_names)
+                        {
+                            log_abort!("inline: [x] Keep fn names");
+                            return;
+                        }
+
+                        self.changed = true;
                         report_change!(
                             "inline: Decided to inline function `{}{:?}` as it's used only once",
                             f.ident.sym,

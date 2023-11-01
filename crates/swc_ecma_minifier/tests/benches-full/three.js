@@ -581,12 +581,11 @@
             var s = Math.sqrt(1 - q.w * q.w);
             return s < 0.0001 ? (this.x = 1, this.y = 0, this.z = 0) : (this.x = q.x / s, this.y = q.y / s, this.z = q.z / s), this;
         }, _proto.setAxisAngleFromRotationMatrix = function(m) {
-            var angle, x, y, z, te = m.elements, m11 = te[0], m12 = te[4], m13 = te[8], m21 = te[1], m22 = te[5], m23 = te[9], m31 = te[2], m32 = te[6], m33 = te[10];
+            var x, y, z, te = m.elements, m11 = te[0], m12 = te[4], m13 = te[8], m21 = te[1], m22 = te[5], m23 = te[9], m31 = te[2], m32 = te[6], m33 = te[10];
             if (0.01 > Math.abs(m12 - m21) && 0.01 > Math.abs(m13 - m31) && 0.01 > Math.abs(m23 - m32)) {
                 if (0.1 > Math.abs(m12 + m21) && 0.1 > Math.abs(m13 + m31) && 0.1 > Math.abs(m23 + m32) && 0.1 > Math.abs(m11 + m22 + m33 - 3)) return this.set(1, 0, 0, 0), this;
-                angle = Math.PI;
                 var xx = (m11 + 1) / 2, yy = (m22 + 1) / 2, zz = (m33 + 1) / 2, xy = (m12 + m21) / 4, xz = (m13 + m31) / 4, yz = (m23 + m32) / 4;
-                return xx > yy && xx > zz ? xx < 0.01 ? (x = 0, y = 0.707106781, z = 0.707106781) : (y = xy / (x = Math.sqrt(xx)), z = xz / x) : yy > zz ? yy < 0.01 ? (x = 0.707106781, y = 0, z = 0.707106781) : (x = xy / (y = Math.sqrt(yy)), z = yz / y) : zz < 0.01 ? (x = 0.707106781, y = 0.707106781, z = 0) : (x = xz / (z = Math.sqrt(zz)), y = yz / z), this.set(x, y, z, angle), this;
+                return xx > yy && xx > zz ? xx < 0.01 ? (x = 0, y = 0.707106781, z = 0.707106781) : (y = xy / (x = Math.sqrt(xx)), z = xz / x) : yy > zz ? yy < 0.01 ? (x = 0.707106781, y = 0, z = 0.707106781) : (x = xy / (y = Math.sqrt(yy)), z = yz / y) : zz < 0.01 ? (x = 0.707106781, y = 0.707106781, z = 0) : (x = xz / (z = Math.sqrt(zz)), y = yz / z), this.set(x, y, z, Math.PI), this;
             }
             var s = Math.sqrt((m32 - m23) * (m32 - m23) + (m13 - m31) * (m13 - m31) + (m21 - m12) * (m21 - m12));
             return 0.001 > Math.abs(s) && (s = 1), this.x = (m32 - m23) / s, this.y = (m13 - m31) / s, this.z = (m21 - m12) / s, this.w = Math.acos((m11 + m22 + m33 - 1) / 2), this;
@@ -774,9 +773,7 @@
             return 2 * Math.acos(Math.abs(MathUtils.clamp(this.dot(q), -1, 1)));
         }, _proto.rotateTowards = function(q, step) {
             var angle = this.angleTo(q);
-            if (0 === angle) return this;
-            var t = Math.min(1, step / angle);
-            return this.slerp(q, t), this;
+            return 0 === angle || this.slerp(q, Math.min(1, step / angle)), this;
         }, _proto.identity = function() {
             return this.set(0, 0, 0, 1);
         }, _proto.invert = function() {
@@ -6673,8 +6670,8 @@
                 cameraLPos.setFromMatrixPosition(cameraL.matrixWorld), cameraRPos.setFromMatrixPosition(cameraR.matrixWorld);
                 var ipd = cameraLPos.distanceTo(cameraRPos), projL = cameraL.projectionMatrix.elements, projR = cameraR.projectionMatrix.elements, near = projL[14] / (projL[10] - 1), far = projL[14] / (projL[10] + 1), topFov = (projL[9] + 1) / projL[5], bottomFov = (projL[9] - 1) / projL[5], leftFov = (projL[8] - 1) / projL[0], rightFov = (projR[8] + 1) / projR[0], zOffset = ipd / (-leftFov + rightFov), xOffset = -(zOffset * leftFov);
                 cameraL.matrixWorld.decompose(camera.position, camera.quaternion, camera.scale), camera.translateX(xOffset), camera.translateZ(zOffset), camera.matrixWorld.compose(camera.position, camera.quaternion, camera.scale), camera.matrixWorldInverse.copy(camera.matrixWorld).invert();
-                var near2 = near + zOffset, far2 = far + zOffset, left2 = near * leftFov - xOffset, right2 = near * rightFov + (ipd - xOffset), top2 = topFov * far / far2 * near2, bottom2 = bottomFov * far / far2 * near2;
-                camera.projectionMatrix.makePerspective(left2, right2, top2, bottom2, near2, far2);
+                var near2 = near + zOffset, far2 = far + zOffset;
+                camera.projectionMatrix.makePerspective(near * leftFov - xOffset, near * rightFov + (ipd - xOffset), topFov * far / far2 * near2, bottomFov * far / far2 * near2, near2, far2);
             }(cameraVR, cameraL, cameraR) : cameraVR.projectionMatrix.copy(cameraL.projectionMatrix), cameraVR;
         };
         var onAnimationFrameCallback = null, animation = new WebGLAnimation();
@@ -7232,7 +7229,7 @@
         },
         clone: function(data) {
             void 0 === data.arrayBuffers && (data.arrayBuffers = {}), void 0 === this.array.buffer._uuid && (this.array.buffer._uuid = MathUtils.generateUUID()), void 0 === data.arrayBuffers[this.array.buffer._uuid] && (data.arrayBuffers[this.array.buffer._uuid] = this.array.slice(0).buffer);
-            var array = new this.array.constructor(data.arrayBuffers[this.array.buffer._uuid]), ib = new InterleavedBuffer(array, this.stride);
+            var ib = new InterleavedBuffer(new this.array.constructor(data.arrayBuffers[this.array.buffer._uuid]), this.stride);
             return ib.setUsage(this.usage), ib;
         },
         onUpload: function(callback) {
@@ -7339,7 +7336,7 @@
     function Sprite(material) {
         if (Object3D.call(this), this.type = 'Sprite', void 0 === _geometry) {
             _geometry = new BufferGeometry();
-            var float32Array = new Float32Array([
+            var interleavedBuffer = new InterleavedBuffer(new Float32Array([
                 -0.5,
                 -0.5,
                 0,
@@ -7360,7 +7357,7 @@
                 0,
                 0,
                 1
-            ]), interleavedBuffer = new InterleavedBuffer(float32Array, 5);
+            ]), 5);
             _geometry.setIndex([
                 0,
                 1,
@@ -8391,7 +8388,8 @@
     }(BufferGeometry), DodecahedronBufferGeometry = function(_PolyhedronBufferGeom) {
         function DodecahedronBufferGeometry(radius, detail) {
             void 0 === radius && (radius = 1), void 0 === detail && (detail = 0);
-            var _this, t = (1 + Math.sqrt(5)) / 2, r = 1 / t, vertices = [
+            var _this, t = (1 + Math.sqrt(5)) / 2, r = 1 / t;
+            return (_this = _PolyhedronBufferGeom.call(this, [
                 -1,
                 -1,
                 -1,
@@ -8452,8 +8450,7 @@
                 t,
                 0,
                 r
-            ];
-            return (_this = _PolyhedronBufferGeom.call(this, vertices, [
+            ], [
                 3,
                 11,
                 7,
@@ -9038,7 +9035,8 @@
     }(Geometry), IcosahedronBufferGeometry = function(_PolyhedronBufferGeom) {
         function IcosahedronBufferGeometry(radius, detail) {
             void 0 === radius && (radius = 1), void 0 === detail && (detail = 0);
-            var _this, t = (1 + Math.sqrt(5)) / 2, vertices = [
+            var _this, t = (1 + Math.sqrt(5)) / 2;
+            return (_this = _PolyhedronBufferGeom.call(this, [
                 -1,
                 t,
                 0,
@@ -9075,8 +9073,7 @@
                 -t,
                 0,
                 1
-            ];
-            return (_this = _PolyhedronBufferGeom.call(this, vertices, [
+            ], [
                 0,
                 11,
                 5,
@@ -11148,9 +11145,9 @@
             return this.curves.push(curve), this.currentPoint.set(aX, aY), this;
         },
         splineThru: function(pts) {
-            var npts = [
+            var curve = new SplineCurve([
                 this.currentPoint.clone()
-            ].concat(pts), curve = new SplineCurve(npts);
+            ].concat(pts));
             return this.curves.push(curve), this.currentPoint.copy(pts[pts.length - 1]), this;
         },
         arc: function(aX, aY, aRadius, aStartAngle, aEndAngle, aClockwise) {
@@ -11550,7 +11547,7 @@
                     if (void 0 !== arrayBufferMap[uuid]) return arrayBufferMap[uuid];
                     var arrayBuffer = json.arrayBuffers[uuid], ab = new Uint32Array(arrayBuffer).buffer;
                     return arrayBufferMap[uuid] = ab, ab;
-                }(json, interleavedBuffer.buffer), array = getTypedArray(interleavedBuffer.type, buffer), ib = new InterleavedBuffer(array, interleavedBuffer.stride);
+                }(json, interleavedBuffer.buffer), ib = new InterleavedBuffer(getTypedArray(interleavedBuffer.type, buffer), interleavedBuffer.stride);
                 return ib.uuid = interleavedBuffer.uuid, interleavedBufferMap[uuid] = ib, ib;
             }
             var geometry = json.isInstancedBufferGeometry ? new InstancedBufferGeometry() : new BufferGeometry(), index = json.data.index;
@@ -11561,10 +11558,8 @@
             var attributes = json.data.attributes;
             for(var key in attributes){
                 var attribute = attributes[key], bufferAttribute = void 0;
-                if (attribute.isInterleavedBufferAttribute) {
-                    var interleavedBuffer = getInterleavedBuffer(json.data, attribute.data);
-                    bufferAttribute = new InterleavedBufferAttribute(interleavedBuffer, attribute.itemSize, attribute.offset, attribute.normalized);
-                } else {
+                if (attribute.isInterleavedBufferAttribute) bufferAttribute = new InterleavedBufferAttribute(getInterleavedBuffer(json.data, attribute.data), attribute.itemSize, attribute.offset, attribute.normalized);
+                else {
                     var _typedArray = getTypedArray(attribute.type, attribute.array);
                     bufferAttribute = new (attribute.isInstancedBufferAttribute ? InstancedBufferAttribute : BufferAttribute)(_typedArray, attribute.itemSize, attribute.normalized);
                 }
@@ -11574,14 +11569,7 @@
             if (morphAttributes) for(var _key in morphAttributes){
                 for(var attributeArray = morphAttributes[_key], array = [], i = 0, il = attributeArray.length; i < il; i++){
                     var _attribute = attributeArray[i], _bufferAttribute = void 0;
-                    if (_attribute.isInterleavedBufferAttribute) {
-                        var _interleavedBuffer = getInterleavedBuffer(json.data, _attribute.data);
-                        _bufferAttribute = new InterleavedBufferAttribute(_interleavedBuffer, _attribute.itemSize, _attribute.offset, _attribute.normalized);
-                    } else {
-                        var _typedArray2 = getTypedArray(_attribute.type, _attribute.array);
-                        _bufferAttribute = new BufferAttribute(_typedArray2, _attribute.itemSize, _attribute.normalized);
-                    }
-                    void 0 !== _attribute.name && (_bufferAttribute.name = _attribute.name), array.push(_bufferAttribute);
+                    _bufferAttribute = _attribute.isInterleavedBufferAttribute ? new InterleavedBufferAttribute(getInterleavedBuffer(json.data, _attribute.data), _attribute.itemSize, _attribute.offset, _attribute.normalized) : new BufferAttribute(getTypedArray(_attribute.type, _attribute.array), _attribute.itemSize, _attribute.normalized), void 0 !== _attribute.name && (_bufferAttribute.name = _attribute.name), array.push(_bufferAttribute);
                 }
                 geometry.morphAttributes[_key] = array;
             }
@@ -11792,8 +11780,7 @@
                 } : null;
             }
             if (void 0 !== json && json.length > 0) {
-                var manager = new LoadingManager(onLoad);
-                (loader = new ImageLoader(manager)).setCrossOrigin(this.crossOrigin);
+                (loader = new ImageLoader(new LoadingManager(onLoad))).setCrossOrigin(this.crossOrigin);
                 for(var i = 0, il = json.length; i < il; i++){
                     var image = json[i], url = image.url;
                     if (Array.isArray(url)) {
@@ -11869,10 +11856,10 @@
                     object = new LightProbe().fromJSON(data);
                     break;
                 case 'SkinnedMesh':
-                    geometry = getGeometry(data.geometry), material = getMaterial(data.material), object = new SkinnedMesh(geometry, material), void 0 !== data.bindMode && (object.bindMode = data.bindMode), void 0 !== data.bindMatrix && object.bindMatrix.fromArray(data.bindMatrix), void 0 !== data.skeleton && (object.skeleton = data.skeleton);
+                    object = new SkinnedMesh(geometry = getGeometry(data.geometry), material = getMaterial(data.material)), void 0 !== data.bindMode && (object.bindMode = data.bindMode), void 0 !== data.bindMatrix && object.bindMatrix.fromArray(data.bindMatrix), void 0 !== data.skeleton && (object.skeleton = data.skeleton);
                     break;
                 case 'Mesh':
-                    geometry = getGeometry(data.geometry), material = getMaterial(data.material), object = new Mesh(geometry, material);
+                    object = new Mesh(geometry = getGeometry(data.geometry), material = getMaterial(data.material));
                     break;
                 case 'InstancedMesh':
                     geometry = getGeometry(data.geometry), material = getMaterial(data.material);
@@ -12137,8 +12124,8 @@
     }
     function HemisphereLightProbe(skyColor, groundColor, intensity) {
         LightProbe.call(this, void 0, intensity);
-        var color1 = new Color().set(skyColor), color2 = new Color().set(groundColor), sky = new Vector3(color1.r, color1.g, color1.b), ground = new Vector3(color2.r, color2.g, color2.b), c0 = Math.sqrt(Math.PI), c1 = c0 * Math.sqrt(0.75);
-        this.sh.coefficients[0].copy(sky).add(ground).multiplyScalar(c0), this.sh.coefficients[1].copy(sky).sub(ground).multiplyScalar(c1);
+        var color1 = new Color().set(skyColor), color2 = new Color().set(groundColor), sky = new Vector3(color1.r, color1.g, color1.b), ground = new Vector3(color2.r, color2.g, color2.b), c0 = Math.sqrt(Math.PI);
+        this.sh.coefficients[0].copy(sky).add(ground).multiplyScalar(c0), this.sh.coefficients[1].copy(sky).sub(ground).multiplyScalar(c0 * Math.sqrt(0.75));
     }
     function AmbientLightProbe(color, intensity) {
         LightProbe.call(this, void 0, intensity);
@@ -13972,8 +13959,7 @@
         new Vector3(-PHI, INV_PHI, 0)
     ], PMREMGenerator = function() {
         function PMREMGenerator(renderer) {
-            var weights, poleAxis;
-            this._renderer = renderer, this._pingPongRenderTarget = null, this._blurMaterial = (weights = new Float32Array(20), poleAxis = new Vector3(0, 1, 0), new RawShaderMaterial({
+            this._renderer = renderer, this._pingPongRenderTarget = null, this._blurMaterial = new RawShaderMaterial({
                 name: 'SphericalGaussianBlur',
                 defines: {
                     n: 20
@@ -13986,7 +13972,7 @@
                         value: 1
                     },
                     weights: {
-                        value: weights
+                        value: new Float32Array(20)
                     },
                     latitudinal: {
                         value: !1
@@ -13998,7 +13984,7 @@
                         value: 0
                     },
                     poleAxis: {
-                        value: poleAxis
+                        value: new Vector3(0, 1, 0)
                     },
                     inputEncoding: {
                         value: ENCODINGS[3000]
@@ -14012,7 +13998,7 @@
                 blending: 0,
                 depthTest: !1,
                 depthWrite: !1
-            })), this._equirectShader = null, this._cubemapShader = null, this._compileMaterial(this._blurMaterial);
+            }), this._equirectShader = null, this._cubemapShader = null, this._compileMaterial(this._blurMaterial);
         }
         var _proto = PMREMGenerator.prototype;
         return _proto.fromScene = function(scene, sigma, near, far) {
@@ -14119,7 +14105,6 @@
         target.viewport.set(x, y, width, height), target.scissor.set(x, y, width, height);
     }
     function _getEquirectShader() {
-        var texelSize = new Vector2(1, 1);
         return new RawShaderMaterial({
             name: 'EquirectangularToCubeUV',
             uniforms: {
@@ -14127,7 +14112,7 @@
                     value: null
                 },
                 texelSize: {
-                    value: texelSize
+                    value: new Vector2(1, 1)
                 },
                 inputEncoding: {
                     value: ENCODINGS[3000]

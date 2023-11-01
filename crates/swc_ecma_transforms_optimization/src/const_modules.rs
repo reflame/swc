@@ -6,7 +6,7 @@ use std::{
 use dashmap::DashMap;
 use once_cell::sync::Lazy;
 use rustc_hash::FxHashMap;
-use swc_atoms::{js_word, JsWord};
+use swc_atoms::{atom, JsWord};
 use swc_common::{
     collections::ARandomState,
     errors::HANDLER,
@@ -125,7 +125,7 @@ impl VisitMut for ConstModules {
                             }
                             ImportSpecifier::Default(ref s) => {
                                 let imported = &s.local.sym;
-                                let default_import_key = js_word!("default");
+                                let default_import_key = atom!("default");
                                 let value =
                                     entry.get(&default_import_key).cloned().unwrap_or_else(|| {
                                         panic!(
@@ -151,11 +151,7 @@ impl VisitMut for ConstModules {
             return;
         }
 
-        n.iter_mut().for_each(|item| {
-            if let ModuleItem::Stmt(stmt) = item {
-                stmt.visit_mut_with(self);
-            }
-        });
+        n.visit_mut_children_with(self);
     }
 
     fn visit_mut_expr(&mut self, n: &mut Expr) {

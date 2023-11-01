@@ -1294,7 +1294,7 @@
         return a <= 0 && (r = g = b = NaN), new Rgb(r, g, b, a);
     }
     function rgbConvert(o) {
-        return (o instanceof Color || (o = color(o)), o) ? (o = o.rgb(), new Rgb(o.r, o.g, o.b, o.opacity)) : new Rgb;
+        return (o instanceof Color || (o = color(o)), o) ? new Rgb((o = o.rgb()).r, o.g, o.b, o.opacity) : new Rgb;
     }
     function rgb(r, g, b, opacity) {
         return 1 == arguments.length ? rgbConvert(r) : new Rgb(r, g, b, null == opacity ? 1 : opacity);
@@ -1433,7 +1433,7 @@
         },
         rgb: function() {
             var y = (this.l + 16) / 116, x = isNaN(this.a) ? y : y + this.a / 500, z = isNaN(this.b) ? y : y - this.b / 200;
-            return x = 0.96422 * lab2xyz(x), y = 1 * lab2xyz(y), z = 0.82521 * lab2xyz(z), new Rgb(lrgb2rgb(3.1338561 * x - 1.6168667 * y - 0.4906146 * z), lrgb2rgb(-0.9787684 * x + 1.9161415 * y + 0.0334540 * z), lrgb2rgb(0.0719453 * x - 0.2289914 * y + 1.4052427 * z), this.opacity);
+            return new Rgb(lrgb2rgb(3.1338561 * (x = 0.96422 * lab2xyz(x)) - 1.6168667 * (y = 1 * lab2xyz(y)) - 0.4906146 * (z = 0.82521 * lab2xyz(z))), lrgb2rgb(-0.9787684 * x + 1.9161415 * y + 0.0334540 * z), lrgb2rgb(0.0719453 * x - 0.2289914 * y + 1.4052427 * z), this.opacity);
         }
     })), define1(Hcl, hcl, extend(Color, {
         brighter: function(k) {
@@ -1683,8 +1683,8 @@
             return i.duration = 1000 * S * rho / Math.SQRT2, i;
         }
         return zoom.rho = function(_) {
-            var _1 = Math.max(1e-3, +_), _2 = _1 * _1, _4 = _2 * _2;
-            return zoomRho(_1, _2, _4);
+            var _1 = Math.max(1e-3, +_), _2 = _1 * _1;
+            return zoomRho(_1, _2, _2 * _2);
         }, zoom;
     }(Math.SQRT2, 2, 4);
     function hsl$1(hue) {
@@ -4901,16 +4901,16 @@
                 0
             ], n2 = cartesianCross(pa, pb), n2n2 = cartesianDot(n2, n2), n1n2 = n2[0], determinant = n2n2 - n1n2 * n1n2;
             if (!determinant) return !two && a;
-            var c1 = cr * n2n2 / determinant, c2 = -cr * n1n2 / determinant, n1xn2 = cartesianCross(n1, n2), A = cartesianScale(n1, c1);
-            cartesianAddInPlace(A, cartesianScale(n2, c2));
+            var n1xn2 = cartesianCross(n1, n2), A = cartesianScale(n1, cr * n2n2 / determinant);
+            cartesianAddInPlace(A, cartesianScale(n2, -cr * n1n2 / determinant));
             var w = cartesianDot(A, n1xn2), uu = cartesianDot(n1xn2, n1xn2), t2 = w * w - uu * (cartesianDot(A, A) - 1);
             if (!(t2 < 0)) {
                 var t = sqrt(t2), q = cartesianScale(n1xn2, (-w - t) / uu);
                 if (cartesianAddInPlace(q, A), q = spherical(q), !two) return q;
                 var z, lambda0 = a[0], lambda1 = b[0], phi0 = a[1], phi1 = b[1];
                 lambda1 < lambda0 && (z = lambda0, lambda0 = lambda1, lambda1 = z);
-                var delta = lambda1 - lambda0, polar = 1e-6 > abs$2(delta - pi$3), meridian = polar || delta < 1e-6;
-                if (!polar && phi1 < phi0 && (z = phi0, phi0 = phi1, phi1 = z), meridian ? polar ? phi0 + phi1 > 0 ^ q[1] < (1e-6 > abs$2(q[0] - lambda0) ? phi0 : phi1) : phi0 <= q[1] && q[1] <= phi1 : delta > pi$3 ^ (lambda0 <= q[0] && q[0] <= lambda1)) {
+                var delta = lambda1 - lambda0, polar = 1e-6 > abs$2(delta - pi$3);
+                if (!polar && phi1 < phi0 && (z = phi0, phi0 = phi1, phi1 = z), polar || delta < 1e-6 ? polar ? phi0 + phi1 > 0 ^ q[1] < (1e-6 > abs$2(q[0] - lambda0) ? phi0 : phi1) : phi0 <= q[1] && q[1] <= phi1 : delta > pi$3 ^ (lambda0 <= q[0] && q[0] <= lambda1)) {
                     var q1 = cartesianScale(n1xn2, (-w + t) / uu);
                     return cartesianAddInPlace(q1, A), [
                         q,

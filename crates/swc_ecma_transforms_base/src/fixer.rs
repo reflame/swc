@@ -2,7 +2,6 @@ use std::{hash::BuildHasherDefault, ops::RangeFull};
 
 use indexmap::IndexMap;
 use rustc_hash::FxHasher;
-use swc_atoms::js_word;
 use swc_common::{comments::Comments, util::take::Take, Span, Spanned};
 use swc_ecma_ast::*;
 use swc_ecma_visit::{as_folder, noop_visit_mut_type, Fold, VisitMut, VisitMutWith};
@@ -101,18 +100,16 @@ impl Fixer<'_> {
     }
 
     fn wrap_callee(&mut self, e: &mut Expr) {
-        if match e {
-            Expr::Lit(Lit::Num(..) | Lit::Str(..)) => false,
+        match e {
+            Expr::Lit(Lit::Num(..) | Lit::Str(..)) => (),
             Expr::Cond(..)
             | Expr::Bin(..)
             | Expr::Lit(..)
             | Expr::Unary(..)
             | Expr::Object(..)
             | Expr::Await(..)
-            | Expr::Yield(..) => true,
-            _ => false,
-        } {
-            self.wrap(e)
+            | Expr::Yield(..) => self.wrap(e),
+            _ => (),
         }
     }
 }
@@ -400,7 +397,11 @@ impl VisitMut for Fixer<'_> {
     fn visit_mut_call_expr(&mut self, node: &mut CallExpr) {
         let old = self.visit_call(&mut node.args, &mut node.callee);
         if let Callee::Expr(e) = &mut node.callee {
-            self.wrap_callee(e)
+            if let Expr::OptChain(_) = &**e {
+                self.wrap(e)
+            } else {
+                self.wrap_callee(e)
+            }
         }
 
         self.ctx = old;
@@ -499,16 +500,10 @@ impl VisitMut for Fixer<'_> {
         if !s.is_await {
             match &s.left {
                 ForHead::Pat(p)
-                    if matches!(
-                        &**p,
-                        Pat::Ident(BindingIdent {
-                            id: Ident {
-                                sym: js_word!("async"),
-                                ..
-                            },
+                    if matches!(&**p, Pat::Ident(BindingIdent {
+                            id: Ident { sym, .. },
                             ..
-                        })
-                    ) =>
+                        }) if &**sym == "async") =>
                 {
                     let expr = Expr::Ident(p.clone().expect_ident().id);
                     s.left = ForHead::Pat(Pat::Expr(Box::new(expr)).into());
@@ -518,11 +513,7 @@ impl VisitMut for Fixer<'_> {
 
             if let ForHead::Pat(e) = &mut s.left {
                 if let Pat::Expr(expr) = &mut **e {
-                    if let Expr::Ident(Ident {
-                        sym: js_word!("async"),
-                        ..
-                    }) = &**expr
-                    {
+                    if expr.is_ident_ref_to("async") {
                         self.wrap(&mut *expr);
                     }
                 }

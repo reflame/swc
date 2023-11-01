@@ -85,7 +85,9 @@ impl VisitMut for InfoMarker<'_> {
                 _ => false,
             }
         {
-            n.span = n.span.apply_mark(self.marks.pure);
+            if !n.span.is_dummy_ignoring_cmt() {
+                n.span = n.span.apply_mark(self.marks.pure);
+            }
         } else if let Some(pure_fns) = &self.pure_funcs {
             if let Callee::Expr(e) = &n.callee {
                 // Check for pure_funcs
@@ -305,24 +307,9 @@ where
 }
 
 fn has_flag(comments: Option<&dyn Comments>, span: Span, text: &'static str) -> bool {
-    find_comment(comments, span, |c| {
-        if c.kind == CommentKind::Block {
-            for line in c.text.lines() {
-                // jsdoc
-                let line = line.trim_start_matches(['*', ' ']);
-                let line = line.trim();
+    if span.is_dummy_ignoring_cmt() {
+        return false;
+    }
 
-                //
-                if line.len() == (text.len() + 5)
-                    && (line.starts_with("#__") || line.starts_with("@__"))
-                    && line.ends_with("__")
-                    && text == &line[3..line.len() - 2]
-                {
-                    return true;
-                }
-            }
-        }
-
-        false
-    })
+    comments.has_flag(span.lo, text)
 }

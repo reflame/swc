@@ -1,5 +1,5 @@
 use rustc_hash::FxHashSet;
-use swc_atoms::{js_word, JsWord};
+use swc_atoms::JsWord;
 use swc_common::{util::take::Take, DUMMY_SP};
 use swc_ecma_ast::*;
 use swc_ecma_usage_analyzer::util::is_global_var_with_pure_property_access;
@@ -151,7 +151,7 @@ impl Optimizer<'_> {
             if v.ref_count == 0
                 && v.usage_count == 0
                 && !v.reassigned
-                && !v.has_property_mutation
+                && v.property_mutation_count == 0
                 && !v.declared_as_catch_param
             {
                 self.changed = true;
@@ -404,7 +404,7 @@ impl Optimizer<'_> {
 
         match decl {
             Decl::Class(ClassDecl { ident, class, .. }) => {
-                if ident.sym == js_word!("arguments") {
+                if ident.sym == "arguments" {
                     return;
                 }
 
@@ -435,7 +435,7 @@ impl Optimizer<'_> {
                     .data
                     .vars
                     .get(&ident.to_id())
-                    .map(|v| v.usage_count == 0 && !v.has_property_mutation)
+                    .map(|v| v.usage_count == 0 && v.property_mutation_count == 0)
                     .unwrap_or(false)
                 {
                     self.changed = true;
@@ -466,7 +466,7 @@ impl Optimizer<'_> {
             }
             Decl::Fn(FnDecl { ident, .. }) => {
                 // We should skip if the name of decl is arguments.
-                if ident.sym == js_word!("arguments") {
+                if ident.sym == "arguments" {
                     return;
                 }
 
@@ -475,7 +475,7 @@ impl Optimizer<'_> {
                     .data
                     .vars
                     .get(&ident.to_id())
-                    .map(|v| v.usage_count == 0 && !v.has_property_mutation)
+                    .map(|v| v.usage_count == 0 && v.property_mutation_count == 0)
                     .unwrap_or(false)
                 {
                     self.changed = true;

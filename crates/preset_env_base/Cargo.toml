@@ -5,13 +5,13 @@ documentation = "https://rustdoc.swc.rs/preset_env_base/"
 edition       = "2021"
 license       = "Apache-2.0"
 name          = "preset_env_base"
-version       = "0.4.5"
+version       = "0.4.6"
 
 [lib]
 bench = false
 
 [dependencies]
-ahash           = "0.8.3"
+ahash           = "0.8.5"
 anyhow          = "1"
 browserslist-rs = "0.12.2"
 dashmap         = "5.4.0"
