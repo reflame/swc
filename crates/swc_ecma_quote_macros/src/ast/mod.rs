@@ -18,17 +18,10 @@ macro_rules! impl_enum_body {
     ($E:ident, $s:expr, $cx:expr,[ $($v:ident),* ]) => {
         match $s {
             $(
-                $E::$v(inner) => pmutil::q!(
-                    Vars {
-                        val: crate::ast::ToCode::to_code(inner, $cx),
-                    },
-                    { swc_ecma_ast::$E::$v(val) }
-                )
-                .parse(),
                 $E::$v(inner) => {
                     let val = crate::ast::ToCode::to_code(inner, $cx);
                     syn::parse_quote!(
-                        swc_core::ecma::ast::$E::$v(#val)
+                        swc_ecma_ast::$E::$v(#val)
                     )
                 },
             )*
@@ -132,8 +125,7 @@ impl_struct!(Invalid, [span]);
 
 impl ToCode for Span {
     fn to_code(&self, _: &Ctx) -> syn::Expr {
-        q!({ swc_common::DUMMY_SP }).parse()
-        parse_quote!(swc_core::common::DUMMY_SP)
+        parse_quote!(swc_common::DUMMY_SP)
     }
 }
 

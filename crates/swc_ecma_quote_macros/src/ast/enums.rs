@@ -7,13 +7,8 @@ macro_rules! impl_simple_enum {
             fn to_code(&self, _: &crate::ctxt::Ctx) -> syn::Expr {
                 match self {
                     $(
-                        $E::$v => q!(
-                            Vars {},
-                            { swc_ecma_ast::$E::$v }
-                        )
-                        .parse(),
                         $E::$v => parse_quote!(
-                             swc_core::ecma::ast::$E::$v
+                            swc_ecma_ast::$E::$v
                         ),
                     )*
                 }
