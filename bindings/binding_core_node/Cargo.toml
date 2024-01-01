@@ -64,4 +64,4 @@ swc_core = { version = "0.87.10", features = [
   "base_node",
   "base_concurrent",
 ], path = "../../crates/swc_core" }
-swc_malloc = "0.5.10"
+swc_malloc = { version = "0.5.10", path = "../../crates/swc_malloc" } 
