@@ -1,5 +1,3 @@
-#![feature(box_patterns)]
-
 use rustc_hash::FxHashMap;
 use swc_atoms::JsWord;
 use swc_common::{util::take::Take, Span};
@@ -275,10 +273,9 @@ where
                     // composes: name from 'foo.css'
                     if n.value.len() >= 3 {
                         match (&n.value[n.value.len() - 2], &n.value[n.value.len() - 1]) {
-                            (
-                                ComponentValue::Ident(box Ident { value, .. }),
-                                ComponentValue::Str(import_source),
-                            ) if &**value == "from" => {
+                            (ComponentValue::Ident(ident), ComponentValue::Str(import_source))
+                                if ident.value == "from" =>
+                            {
                                 for class_name in n.value.iter().take(n.value.len() - 2) {
                                     if let ComponentValue::Ident(value) = class_name {
                                         composes_for_current.push(CssClassName::Import {
@@ -290,10 +287,9 @@ where
 
                                 return;
                             }
-                            (
-                                ComponentValue::Ident(box Ident { value: from, .. }),
-                                ComponentValue::Ident(box Ident { value: global, .. }),
-                            ) if &**from == "from" && &**global == "global" => {
+                            (ComponentValue::Ident(from), ComponentValue::Ident(global))
+                                if from.value == "from" && global.value == "global" =>
+                            {
                                 for class_name in n.value.iter().take(n.value.len() - 2) {
                                     if let ComponentValue::Ident(value) = class_name {
                                         composes_for_current.push(CssClassName::Global {
@@ -307,13 +303,24 @@ where
                         }
                     }
 
-                    for class_name in n.value.iter() {
-                        if let ComponentValue::Ident(box Ident { span, value, .. }) = class_name {
-                            if let Some(value) = self.data.orig_to_renamed.get(value) {
+                    for class_name in n.value.iter_mut() {
+                        if let ComponentValue::Ident(ident) = class_name {
+                            let Ident { span, value, .. } = &mut **ident;
+                            let orig = value.clone();
+                            rename(
+                                *span,
+                                &mut self.config,
+                                &mut self.result,
+                                &mut self.data.orig_to_renamed,
+                                &mut self.data.renamed_to_orig,
+                                value,
+                            );
+
+                            if let Some(new_name) = self.data.orig_to_renamed.get(&orig) {
                                 composes_for_current.push(CssClassName::Local {
                                     name: Ident {
                                         span: *span,
-                                        value: value.clone(),
+                                        value: new_name.clone(),
                                         raw: None,
                                     },
                                 });
@@ -337,12 +344,14 @@ where
 
                     for v in &mut n.value {
                         match v {
-                            ComponentValue::Ident(box Ident {
-                                span, value, raw, ..
-                            }) => {
+                            ComponentValue::Ident(ident) => {
                                 if !can_change {
                                     continue;
                                 }
+
+                                let Ident {
+                                    span, value, raw, ..
+                                } = &mut **ident;
 
                                 match &**value {
                                     // iteration-count
@@ -437,10 +446,10 @@ where
                 }
                 "animation-name" => {
                     for v in &mut n.value {
-                        if let ComponentValue::Ident(box Ident {
-                            span, value, raw, ..
-                        }) = v
-                        {
+                        if let ComponentValue::Ident(ident) = v {
+                            let Ident {
+                                span, value, raw, ..
+                            } = &mut **ident;
                             *raw = None;
 
                             rename(
@@ -466,7 +475,7 @@ where
 
         'complex: for mut n in n.children.take() {
             if let ComplexSelectorChildren::CompoundSelector(selector) = &mut n {
-                for (sel_index, sel) in selector.subclass_selectors.iter_mut().enumerate() {
+                for sel in selector.subclass_selectors.iter_mut() {
                     match sel {
                         SubclassSelector::Class(..) | SubclassSelector::Id(..) => {
                             if !self.data.is_global_mode {
@@ -479,7 +488,14 @@ where
                                 );
                             }
                         }
-                        SubclassSelector::PseudoClass(class_sel) => match &*class_sel.name.value {
+
+                        _ => {}
+                    }
+                }
+
+                for (sel_index, sel) in selector.subclass_selectors.iter_mut().enumerate() {
+                    if let SubclassSelector::PseudoClass(class_sel) = sel {
+                        match &*class_sel.name.value {
                             "local" => {
                                 if let Some(children) = &mut class_sel.children {
                                     if let Some(PseudoClassSelectorChildren::ComplexSelector(
@@ -498,7 +514,8 @@ where
                                             complex_selector.children.clone();
                                         prepend_left_subclass_selectors(
                                             &mut complex_selector_children,
-                                            selector.subclass_selectors.split_at(sel_index),
+                                            &mut selector.subclass_selectors,
+                                            sel_index,
                                         );
                                         new_children.extend(complex_selector_children);
 
@@ -527,7 +544,8 @@ where
                                             complex_selector.children.clone();
                                         prepend_left_subclass_selectors(
                                             &mut complex_selector_children,
-                                            selector.subclass_selectors.split_at(sel_index),
+                                            &mut selector.subclass_selectors,
+                                            sel_index,
                                         );
                                         new_children.extend(complex_selector_children);
                                     }
@@ -544,8 +562,7 @@ where
                                 continue 'complex;
                             }
                             _ => {}
-                        },
-                        _ => {}
+                        }
                     }
                 }
             }
@@ -651,16 +668,22 @@ fn process_local<C>(
 
 fn prepend_left_subclass_selectors(
     complex_selector_children: &mut [ComplexSelectorChildren],
-    sels: (&[SubclassSelector], &[SubclassSelector]),
+    sels: &mut Vec<SubclassSelector>,
+    mut sel_index: usize,
 ) {
-    if let Some(ComplexSelectorChildren::CompoundSelector(first)) =
-        complex_selector_children.get_mut(0)
+    sels.remove(sel_index);
+
+    for c in complex_selector_children
+        .iter_mut()
+        .filter_map(|c| c.as_mut_compound_selector())
     {
-        first.subclass_selectors = [
-            sels.0.to_vec(),
-            first.subclass_selectors.take(),
-            sels.1[1..].to_vec(),
-        ]
-        .concat();
+        c.subclass_selectors.splice(0..0, sels.drain(..sel_index));
+
+        if sels.len() > sel_index {
+            c.subclass_selectors
+                .extend(sels[..sel_index + 1].iter().cloned());
+        }
+
+        sel_index = 0;
     }
 }

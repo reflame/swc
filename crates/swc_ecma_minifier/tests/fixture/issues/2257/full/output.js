@@ -4122,7 +4122,7 @@
             var sign = __webpack_require__(62381), abs = Math.abs, pow = Math.pow, EPSILON = pow(2, -52), EPSILON32 = pow(2, -23), MAX32 = pow(2, 127) * (2 - EPSILON32), MIN32 = pow(2, -126);
             module.exports = Math.fround || function(x) {
                 var a, result, $abs = abs(x), $sign = sign(x);
-                return $abs < MIN32 ? $sign * ($abs / MIN32 / EPSILON32 + 1 / EPSILON - 1 / EPSILON) * MIN32 * EPSILON32 : (result = (a = (1 + EPSILON32 / EPSILON) * $abs) - (a - $abs)) > MAX32 || result != result ? $sign * (1 / 0) : $sign * result;
+                return $abs < MIN32 ? $sign * ($abs / MIN32 / EPSILON32 + 1 / EPSILON - 1 / EPSILON) * MIN32 * EPSILON32 : (result = (a = (1 + EPSILON32 / EPSILON) * $abs) - (a - $abs)) > MAX32 || result != result ? 1 / 0 * $sign : $sign * result;
             };
         },
         41571: function(module) {
@@ -4994,7 +4994,7 @@
             };
         },
         88443: function(module) {
-            module.exports = "	\n\v\f\r \xa0              　\u2028\u2029\uFEFF";
+            module.exports = "	\n\v\f\r                　\u2028\u2029\uFEFF";
         },
         23895: function(__unused_webpack_module, __unused_webpack_exports, __webpack_require__) {
             "use strict";
@@ -5749,7 +5749,7 @@
             }, {
                 cosh: function(x) {
                     var t = expm1(abs(x) - 1) + 1;
-                    return (t + 1 / (t * E * E)) * (E / 2);
+                    return E / 2 * (t + 1 / (t * E * E));
                 }
             });
         },
@@ -10230,8 +10230,7 @@
                 return -1 !== hashStart && (input = input.slice(0, hashStart)), input;
             }
             function extract(input) {
-                input = removeHash(input);
-                const queryStart = input.indexOf("?");
+                const queryStart = (input = removeHash(input)).indexOf("?");
                 return -1 === queryStart ? "" : input.slice(queryStart + 1);
             }
             function parseValue(value, options) {
@@ -10407,9 +10406,9 @@
                     encode: !0,
                     strict: !0
                 }, options);
-                const url = removeHash(object.url).split("?")[0] || "", queryFromUrl = exports.extract(object.url), parsedQueryFromUrl = exports.parse(queryFromUrl, {
+                const url = removeHash(object.url).split("?")[0] || "", queryFromUrl = exports.extract(object.url), query = Object.assign(exports.parse(queryFromUrl, {
                     sort: !1
-                }), query = Object.assign(parsedQueryFromUrl, object.query);
+                }), object.query);
                 let queryString = exports.stringify(query, options);
                 queryString && (queryString = `?${queryString}`);
                 let hash = function(url) {

@@ -267,6 +267,7 @@ impl Vars {
     {
         let mut changed = false;
         if !self.simple_functions.is_empty()
+            || !self.lits.is_empty()
             || !self.lits_for_cmp.is_empty()
             || !self.lits_for_array_access.is_empty()
             || !self.removed.is_empty()
@@ -275,6 +276,7 @@ impl Vars {
                 simple_functions: &self.simple_functions,
                 lits_for_cmp: &self.lits_for_cmp,
                 lits_for_array_access: &self.lits_for_array_access,
+                lits: &self.lits,
                 vars_to_remove: &self.removed,
                 changed: false,
             };
@@ -698,6 +700,16 @@ impl Optimizer<'_> {
             }
 
             Expr::Class(cls) => {
+                if cls
+                    .class
+                    .body
+                    .iter()
+                    .any(|m| m.as_static_block().iter().any(|s| !s.body.is_empty()))
+                {
+                    // there's nothing we can do about it
+                    return Some(Expr::Class(cls.take()));
+                }
+
                 let exprs: Vec<Box<Expr>> =
                     extract_class_side_effect(&self.expr_ctx, *cls.class.take())
                         .into_iter()

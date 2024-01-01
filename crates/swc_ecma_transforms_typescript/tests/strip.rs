@@ -13,7 +13,7 @@ use swc_ecma_transforms_compat::{
 use swc_ecma_transforms_proposal::decorators;
 use swc_ecma_transforms_testing::{test, test_exec, test_fixture, Tester};
 use swc_ecma_transforms_typescript::{
-    typescript, ImportsNotUsedAsValues, TsImportExportAssignConfig,
+    tsx, typescript, ImportsNotUsedAsValues, TsImportExportAssignConfig, TsxConfig,
 };
 use swc_ecma_visit::Fold;
 
@@ -45,17 +45,49 @@ fn tr_config(
     )
 }
 
-fn properties(t: &Tester, loose: bool) -> impl Fold {
-    let mark = Mark::new();
+fn tsxr(t: &Tester) -> impl Fold {
+    let unresolved_mark = Mark::new();
+    let top_level_mark = Mark::new();
+
     chain!(
-        static_blocks(mark),
+        resolver(unresolved_mark, top_level_mark, false),
+        tsx(
+            t.cm.clone(),
+            typescript::Config {
+                no_empty_export: true,
+                import_not_used_as_values: ImportsNotUsedAsValues::Remove,
+                ..Default::default()
+            },
+            TsxConfig::default(),
+            t.comments.clone(),
+            top_level_mark,
+        ),
+        swc_ecma_transforms_react::jsx(
+            t.cm.clone(),
+            Some(t.comments.clone()),
+            swc_ecma_transforms_react::Options::default(),
+            top_level_mark,
+            unresolved_mark
+        ),
+    )
+}
+
+fn properties(t: &Tester, loose: bool) -> impl Fold {
+    let static_blocks_mark = Mark::new();
+    let unresolved_mark = Mark::new();
+    let top_level_mark = Mark::new();
+
+    chain!(
+        resolver(unresolved_mark, top_level_mark, false),
+        static_blocks(static_blocks_mark),
         class_properties(
             Some(t.comments.clone()),
             class_properties::Config {
-                static_blocks_mark: mark,
+                static_blocks_mark,
                 set_public_fields: loose,
                 ..Default::default()
             },
+            unresolved_mark
         )
     )
 }
@@ -1757,6 +1789,41 @@ test!(
     import { a } from './foo';
     import { Type } from './types';
     "
+);
+
+test!(
+    Syntax::Typescript(TsConfig {
+        tsx: true,
+        ..Default::default()
+    }),
+    |t| tsxr(t),
+    imports_not_used_as_values_jsx_prag,
+    r#"/** @jsx h */
+import html, { h } from "example";
+serve((_req) =>
+  html({
+    body: <div>Hello World!</div>,
+  })
+);
+"#
+);
+
+test!(
+    Syntax::Typescript(TsConfig {
+        tsx: true,
+        ..Default::default()
+    }),
+    |t| tsxr(t),
+    imports_not_used_as_values_shebang_jsx_prag,
+    r#"#!/usr/bin/env -S deno run -A
+/** @jsx h */
+import html, { h } from "example";
+serve((_req) =>
+  html({
+    body: <div>Hello World!</div>,
+  })
+);
+"#
 );
 
 test!(

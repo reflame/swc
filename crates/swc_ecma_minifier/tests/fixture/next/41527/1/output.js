@@ -92,31 +92,25 @@ function addControls(container, groups) {
             if ('string' == typeof control) addButton(group, control);
             else {
                 const format = Object.keys(control)[0], value = control[format];
-                Array.isArray(value) ? addSelect(group, format, value) : addButton(group, format, value);
+                Array.isArray(value) ? function(container, format, values) {
+                    const input = document.createElement('select');
+                    input.classList.add(`ql-${format}`), values.forEach((value)=>{
+                        const option = document.createElement('option');
+                        !1 !== value ? option.setAttribute('value', value) : option.setAttribute('selected', 'selected'), input.appendChild(option);
+                    }), container.appendChild(input);
+                }(group, format, value) : addButton(group, format, value);
             }
         }), container.appendChild(group);
     });
-}
-function addSelect(container, format, values) {
-    const input = document.createElement('select');
-    input.classList.add(`ql-${format}`), values.forEach((value)=>{
-        const option = document.createElement('option');
-        !1 !== value ? option.setAttribute('value', value) : option.setAttribute('selected', 'selected'), input.appendChild(option);
-    }), container.appendChild(input);
 }
 Toolbar.DEFAULTS = {}, Toolbar.DEFAULTS = {
     container: null,
     handlers: {
         clean () {
             const range = this.quill.getSelection();
-            if (null != range) {
-                if (0 === range.length) {
-                    const formats = this.quill.getFormat();
-                    Object.keys(formats).forEach((name)=>{
-                        null != this.quill.scroll.query(name, Scope.INLINE) && this.quill.format(name, !1, Quill.sources.USER);
-                    });
-                } else this.quill.removeFormat(range, Quill.sources.USER);
-            }
+            null != range && (0 === range.length ? Object.keys(this.quill.getFormat()).forEach((name)=>{
+                null != this.quill.scroll.query(name, Scope.INLINE) && this.quill.format(name, !1, Quill.sources.USER);
+            }) : this.quill.removeFormat(range, Quill.sources.USER));
         },
         direction (value) {
             const { align } = this.quill.getFormat();

@@ -5,7 +5,7 @@ impl Context {
     pub(crate) fn is_reserved(self, word: &Word) -> bool {
         match *word {
             Word::Keyword(Keyword::Let) => self.strict,
-            Word::Keyword(Keyword::Await) => self.in_async || self.strict,
+            Word::Keyword(Keyword::Await) => self.in_async || self.in_static_block || self.strict,
             Word::Keyword(Keyword::Yield) => self.in_generator || self.strict,
 
             Word::Null
@@ -60,8 +60,8 @@ impl Context {
         }
     }
 
-    pub fn is_reserved_word(self, word: &str) -> bool {
-        match word {
+    pub fn is_reserved_word(self, word: &Atom) -> bool {
+        match &**word {
             "let" => self.strict,
             // SyntaxError in the module only, not in the strict.
             // ```JavaScript
@@ -70,7 +70,7 @@ impl Context {
             //     let await = 1;
             // }
             // ```
-            "await" => self.in_async || self.module,
+            "await" => self.in_async || self.in_static_block || self.module,
             "yield" => self.in_generator || self.strict,
 
             "null" | "true" | "false" | "break" | "case" | "catch" | "continue" | "debugger"

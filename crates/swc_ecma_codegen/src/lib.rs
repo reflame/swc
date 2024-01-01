@@ -75,6 +75,38 @@ where
     pub wr: W,
 }
 
+fn replace_close_inline_script(raw: &str) -> Cow<str> {
+    let chars = raw.as_bytes();
+    let pattern_len = 8; // </script>
+
+    let mut matched_indexes = chars
+        .iter()
+        .enumerate()
+        .filter(|(index, byte)| {
+            byte == &&b'<'
+                && index + pattern_len < chars.len()
+                && chars[index + 1..index + pattern_len].eq_ignore_ascii_case(b"/script")
+                && matches!(
+                    chars[index + pattern_len],
+                    b'>' | b' ' | b'\t' | b'\n' | b'\x0C' | b'\r'
+                )
+        })
+        .map(|(index, _)| index)
+        .peekable();
+
+    if matched_indexes.peek().is_none() {
+        return Cow::Borrowed(raw);
+    }
+
+    let mut result = String::from(raw);
+
+    for (offset, i) in matched_indexes.enumerate() {
+        result.insert(i + 1 + offset, '\\');
+    }
+
+    Cow::Owned(result)
+}
+
 impl<'a, W, S: SourceMapper> Emitter<'a, W, S>
 where
     W: WriteJs,
@@ -383,6 +415,11 @@ where
 
         srcmap!(node, true);
 
+        if node.is_type_only {
+            keyword!("type");
+            space!();
+        }
+
         if let Some(exported) = &node.exported {
             emit!(node.orig);
             space!();
@@ -438,7 +475,12 @@ where
 
         keyword!("export");
 
+        if node.type_only {
+            space!();
+            keyword!("type");
+        }
         formatting_space!();
+
         if let Some(spec) = namespace_spec {
             emit!(spec);
             if has_named_specs {
@@ -489,7 +531,15 @@ where
         srcmap!(node, true);
 
         keyword!("export");
-        formatting_space!();
+
+        if node.type_only {
+            space!();
+            keyword!("type");
+            space!();
+        } else {
+            formatting_space!();
+        }
+
         punct!("*");
         formatting_space!();
         keyword!("from");
@@ -570,27 +620,24 @@ where
 
         let target = self.cfg.target;
 
-        if self.cfg.minify {
-            let value = get_quoted_utf16(&node.value, self.cfg.ascii_only, target);
-
-            self.wr.write_str_lit(DUMMY_SP, &value)?;
-        } else {
-            match &node.raw {
-                // TODO `es5_unicode` in `swc_ecma_transforms_compat` and avoid changing AST in
-                // codegen
-                Some(raw_value)
-                    if target > EsVersion::Es5
-                        && (!self.cfg.ascii_only || raw_value.is_ascii()) =>
-                {
-                    self.wr.write_str_lit(DUMMY_SP, raw_value)?;
-                }
-                _ => {
-                    let value = get_quoted_utf16(&node.value, self.cfg.ascii_only, target);
-
-                    self.wr.write_str_lit(DUMMY_SP, &value)?;
+        if target > EsVersion::Es5 && !self.cfg.minify {
+            if let Some(raw) = &node.raw {
+                if !self.cfg.ascii_only || raw.is_ascii() {
+                    self.wr.write_str_lit(DUMMY_SP, raw)?;
+                    return Ok(());
                 }
             }
         }
+
+        let mut value = get_quoted_utf16(&node.value, self.cfg.ascii_only, target);
+
+        if self.cfg.inline_script {
+            value = replace_close_inline_script(&value)
+                .replace("\x3c!--", "\\x3c!--")
+                .replace("/--\x3e/", "--\\x3e");
+        }
+
+        self.wr.write_str_lit(DUMMY_SP, &value)?;
 
         // srcmap!(node, false);
     }
@@ -1039,7 +1086,7 @@ where
 
         let parens = !self.cfg.minify
             || match node.params.as_slice() {
-                [Pat::Ident(_)] => false,
+                [Pat::Ident(i)] => self.has_trailing_comment(i.span),
                 _ => true,
             };
 
@@ -1419,6 +1466,12 @@ where
                 formatting_space!();
             }
         }
+
+        if n.is_override {
+            keyword!("override");
+            space!()
+        }
+
         match n.kind {
             MethodKind::Method => {
                 if n.function.is_async {
@@ -1497,6 +1550,11 @@ where
             space!();
         }
 
+        if n.is_override {
+            keyword!("override");
+            space!()
+        }
+
         if n.readonly {
             keyword!("readonly");
             space!();
@@ -1504,6 +1562,12 @@ where
 
         emit!(n.key);
         if let Some(type_ann) = &n.type_ann {
+            if n.is_optional {
+                punct!("?");
+            }
+            if n.definite {
+                punct!("!");
+            }
             punct!(":");
             space!();
             emit!(type_ann);
@@ -1537,13 +1601,16 @@ where
             emit!(dec)
         }
 
-        if n.accessibility != Some(Accessibility::Public) {
-            self.emit_accessibility(n.accessibility)?;
-        }
+        self.emit_accessibility(n.accessibility)?;
 
         if n.is_static {
             keyword!("static");
             space!();
+        }
+
+        if n.is_override {
+            keyword!("override");
+            space!()
         }
 
         if n.readonly {
@@ -1554,6 +1621,9 @@ where
         emit!(n.key);
 
         if let Some(ty) = &n.type_ann {
+            if n.definite {
+                punct!("!");
+            }
             punct!(":");
             space!();
             emit!(ty);
@@ -1628,20 +1698,6 @@ where
     fn emit_prop_name(&mut self, node: &PropName) -> Result {
         match node {
             PropName::Ident(ident) => {
-                if self.cfg.ascii_only && !ident.sym.is_ascii() {
-                    punct!("\"");
-                    self.wr.write_symbol(
-                        DUMMY_SP,
-                        &get_ascii_only_ident(
-                            &handle_invalid_unicodes(&ident.sym),
-                            self.cfg.target,
-                        ),
-                    )?;
-                    punct!("\"");
-
-                    return Ok(());
-                }
-
                 emit!(ident)
             }
             PropName::Str(ref n) => emit!(n),
@@ -2179,10 +2235,17 @@ where
         // TODO: span
 
         if self.cfg.ascii_only {
-            self.wr.write_symbol(
-                DUMMY_SP,
-                &get_ascii_only_ident(&handle_invalid_unicodes(&ident.sym), self.cfg.target),
-            )?;
+            if self.wr.can_ignore_invalid_unicodes() {
+                self.wr
+                    .write_symbol(DUMMY_SP, &get_ascii_only_ident(&ident.sym, self.cfg.target))?;
+            } else {
+                self.wr.write_symbol(
+                    DUMMY_SP,
+                    &get_ascii_only_ident(&handle_invalid_unicodes(&ident.sym), self.cfg.target),
+                )?;
+            }
+        } else if self.wr.can_ignore_invalid_unicodes() {
+            self.wr.write_symbol(DUMMY_SP, &ident.sym)?;
         } else {
             self.wr
                 .write_symbol(DUMMY_SP, &handle_invalid_unicodes(&ident.sym))?;
@@ -2850,10 +2913,20 @@ where
         emit!(node.body);
     }
 
-    fn has_leading_comment(&self, arg: &Expr) -> bool {
+    fn has_trailing_comment(&self, span: Span) -> bool {
         if let Some(cmt) = self.comments {
-            let span = arg.span();
+            let hi = span.hi;
 
+            if cmt.has_trailing(hi) {
+                return true;
+            }
+        }
+
+        false
+    }
+
+    fn has_leading_comment(&self, arg: &Expr) -> bool {
+        fn span_has_leading_comment(cmt: &dyn Comments, span: Span) -> bool {
             let lo = span.lo;
 
             // see #415
@@ -2869,36 +2942,32 @@ where
                     return true;
                 }
             }
-        } else {
-            return false;
+
+            false
         }
 
+        let cmt = if let Some(cmt) = self.comments {
+            if span_has_leading_comment(cmt, arg.span()) {
+                return true;
+            }
+
+            cmt
+        } else {
+            return false;
+        };
+
         match arg {
-            Expr::Call(c) => match &c.callee {
-                Callee::Super(callee) => {
-                    if let Some(cmt) = self.comments {
-                        let lo = callee.span.lo;
+            Expr::Call(c) => {
+                let has_leading = match &c.callee {
+                    Callee::Super(callee) => span_has_leading_comment(cmt, callee.span),
+                    Callee::Import(callee) => span_has_leading_comment(cmt, callee.span),
+                    Callee::Expr(callee) => self.has_leading_comment(callee),
+                };
 
-                        if cmt.has_leading(lo) {
-                            return true;
-                        }
-                    }
+                if has_leading {
+                    return true;
                 }
-                Callee::Import(callee) => {
-                    if let Some(cmt) = self.comments {
-                        let lo = callee.span.lo;
-
-                        if cmt.has_leading(lo) {
-                            return true;
-                        }
-                    }
-                }
-                Callee::Expr(callee) => {
-                    if self.has_leading_comment(callee) {
-                        return true;
-                    }
-                }
-            },
+            }
 
             Expr::Member(m) => {
                 if self.has_leading_comment(&m.obj) {
@@ -2907,12 +2976,8 @@ where
             }
 
             Expr::SuperProp(m) => {
-                if let Some(cmt) = self.comments {
-                    let lo = m.span.lo;
-
-                    if cmt.has_leading(lo) {
-                        return true;
-                    }
+                if span_has_leading_comment(cmt, m.span) {
+                    return true;
                 }
             }
 
@@ -2937,18 +3002,29 @@ where
             }
 
             Expr::Assign(e) => {
-                if let Some(cmt) = self.comments {
-                    let lo = e.span.lo;
+                let lo = e.span.lo;
 
-                    if cmt.has_leading(lo) {
-                        return true;
-                    }
+                if cmt.has_leading(lo) {
+                    return true;
                 }
 
-                if let Some(e) = e.left.as_expr() {
-                    if self.has_leading_comment(e) {
-                        return true;
-                    }
+                let has_leading = match &e.left {
+                    PatOrExpr::Expr(e) => self.has_leading_comment(e),
+
+                    PatOrExpr::Pat(p) => match &**p {
+                        Pat::Expr(e) => self.has_leading_comment(e),
+                        Pat::Ident(i) => span_has_leading_comment(cmt, i.span),
+                        Pat::Array(a) => span_has_leading_comment(cmt, a.span),
+                        Pat::Object(o) => span_has_leading_comment(cmt, o.span),
+                        // TODO: remove after #8333
+                        Pat::Rest(r) => span_has_leading_comment(cmt, r.span),
+                        Pat::Assign(a) => span_has_leading_comment(cmt, a.span),
+                        Pat::Invalid(_) => false,
+                    },
+                };
+
+                if has_leading {
+                    return true;
                 }
             }
 
@@ -2981,7 +3057,7 @@ where
 
         keyword!("return");
 
-        if let Some(ref arg) = n.arg {
+        if let Some(arg) = n.arg.as_deref() {
             let need_paren = n
                 .arg
                 .as_deref()
@@ -3657,6 +3733,7 @@ fn get_ascii_only_ident(sym: &str, target: EsVersion) -> Cow<str> {
         return Cow::Borrowed(sym);
     }
 
+    let mut first = true;
     let mut buf = String::with_capacity(sym.len() + 8);
     let mut iter = sym.chars().peekable();
 
@@ -3750,16 +3827,16 @@ fn get_ascii_only_ident(sym: &str, target: EsVersion) -> Cow<str> {
             '"' => {
                 buf.push('"');
             }
-            '\x01'..='\x0f' => {
+            '\x01'..='\x0f' if !first => {
                 let _ = write!(buf, "\\x0{:x}", c as u8);
             }
-            '\x10'..='\x1f' => {
+            '\x10'..='\x1f' if !first => {
                 let _ = write!(buf, "\\x{:x}", c as u8);
             }
             '\x20'..='\x7e' => {
                 buf.push(c);
             }
-            '\u{7f}'..='\u{ff}' => {
+            '\u{7f}'..='\u{ff}' if !first => {
                 let _ = write!(buf, "\\x{:x}", c as u8);
             }
             '\u{2028}' => {
@@ -3785,7 +3862,7 @@ fn get_ascii_only_ident(sym: &str, target: EsVersion) -> Cow<str> {
                         let h = ((c as u32 - 0x10000) / 0x400) + 0xd800;
                         let l = (c as u32 - 0x10000) % 0x400 + 0xdc00;
 
-                        let _ = write!(buf, "\\u{:04X}\\u{:04X}", h, l);
+                        let _ = write!(buf, r#""\u{:04X}\u{:04X}""#, h, l);
                     } else {
                         let _ = write!(buf, "\\u{{{:04X}}}", c as u32);
                     }
@@ -3794,6 +3871,7 @@ fn get_ascii_only_ident(sym: &str, target: EsVersion) -> Cow<str> {
                 }
             }
         }
+        first = false;
     }
 
     Cow::Owned(buf)
@@ -3880,9 +3958,9 @@ fn get_quoted_utf16(v: &str, ascii_only: bool, target: EsVersion) -> String {
                                 2..6
                             };
 
-                            let val_str = &inner_buf[range];
-
                             if is_valid {
+                                let val_str = &inner_buf[range];
+
                                 let v = u32::from_str_radix(val_str, 16).unwrap_or_else(|err| {
                                     unreachable!(
                                         "failed to parse {} as a hex value: {:?}",
@@ -3903,6 +3981,8 @@ fn get_quoted_utf16(v: &str, ascii_only: bool, target: EsVersion) -> String {
                                 } else {
                                     buf.push_str("\\\\");
                                 }
+                            } else {
+                                buf.push_str("\\\\")
                             }
                         } else if is_curly {
                             buf.push_str("\\\\");
@@ -3933,7 +4013,11 @@ fn get_quoted_utf16(v: &str, ascii_only: bool, target: EsVersion) -> String {
                 buf.push(c);
             }
             '\u{7f}'..='\u{ff}' => {
-                let _ = write!(buf, "\\x{:x}", c as u8);
+                if ascii_only || target <= EsVersion::Es5 {
+                    let _ = write!(buf, "\\x{:x}", c as u8);
+                } else {
+                    buf.push(c);
+                }
             }
             '\u{2028}' => {
                 buf.push_str("\\u2028");

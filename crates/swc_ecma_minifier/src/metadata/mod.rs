@@ -58,32 +58,61 @@ struct InfoMarker<'a> {
     state: State,
 }
 
+impl InfoMarker<'_> {
+    fn is_pure_callee(&self, callee: &Expr) -> bool {
+        match callee {
+            Expr::Ident(callee) => {
+                if self.pure_callee.contains(&callee.to_id()) {
+                    return true;
+                }
+            }
+
+            Expr::Seq(callee) => {
+                if has_pure(self.comments, callee.span) {
+                    return true;
+                }
+            }
+            _ => (),
+        }
+
+        if let Some(pure_fns) = &self.pure_funcs {
+            if let Expr::Ident(..) = callee {
+                // Check for pure_funcs
+                if Ident::within_ignored_ctxt(|| {
+                    //
+                    pure_fns.contains(&NodeIgnoringSpan::borrowed(callee))
+                }) {
+                    return true;
+                }
+            }
+        }
+
+        has_pure(self.comments, callee.span())
+    }
+}
+
 impl VisitMut for InfoMarker<'_> {
     noop_visit_mut_type!();
 
     fn visit_mut_call_expr(&mut self, n: &mut CallExpr) {
         n.visit_mut_children_with(self);
 
-        if has_noinline(self.comments, n.span) {
+        // TODO: remove after we figure out how to move comments properly
+        if has_noinline(self.comments, n.span)
+            || match &n.callee {
+                Callee::Expr(e) => has_noinline(self.comments, e.span()),
+                _ => false,
+            }
+        {
             n.span = n.span.apply_mark(self.marks.noinline);
         }
 
         // We check callee in some cases because we move comments
         // See https://github.com/swc-project/swc/issues/7241
         if match &n.callee {
-            Callee::Expr(e) => match &**e {
-                Expr::Ident(callee) => self.pure_callee.contains(&callee.to_id()),
-                _ => false,
-            },
+            Callee::Expr(e) => self.is_pure_callee(e),
             _ => false,
         } || has_pure(self.comments, n.span)
-            || match &n.callee {
-                Callee::Expr(e) => match &**e {
-                    Expr::Seq(callee) => has_pure(self.comments, callee.span),
-                    _ => false,
-                },
-                _ => false,
-            }
         {
             if !n.span.is_dummy_ignoring_cmt() {
                 n.span = n.span.apply_mark(self.marks.pure);
@@ -182,6 +211,16 @@ impl VisitMut for InfoMarker<'_> {
             n.span = n.span.apply_mark(self.marks.bundle_of_standalone);
         } else {
             tracing::info!("Running minifier in the normal mode");
+        }
+    }
+
+    fn visit_mut_tagged_tpl(&mut self, n: &mut TaggedTpl) {
+        n.visit_mut_children_with(self);
+
+        if has_pure(self.comments, n.span) || self.is_pure_callee(&n.tag) {
+            if !n.span.is_dummy_ignoring_cmt() {
+                n.span = n.span.apply_mark(self.marks.pure);
+            }
         }
     }
 

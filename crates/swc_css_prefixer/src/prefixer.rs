@@ -5,7 +5,7 @@ use std::mem::take;
 
 use once_cell::sync::Lazy;
 use preset_env_base::{query::targets_to_versions, version::Version, BrowserData, Versions};
-use swc_atoms::{JsWord, StaticString};
+use swc_atoms::JsWord;
 use swc_common::{collections::AHashMap, EqIgnoreSpan, DUMMY_SP};
 use swc_css_ast::*;
 use swc_css_utils::{
@@ -16,9 +16,9 @@ use swc_css_visit::{VisitMut, VisitMutWith};
 
 use crate::options::Options;
 
-static PREFIXES_AND_BROWSERS: Lazy<AHashMap<StaticString, [BrowserData<Option<Version>>; 2]>> =
+static PREFIXES_AND_BROWSERS: Lazy<AHashMap<String, [BrowserData<Option<Version>>; 2]>> =
     Lazy::new(|| {
-        let map: AHashMap<StaticString, [BrowserData<Option<Version>>; 2]> =
+        let map: AHashMap<String, [BrowserData<Option<Version>>; 2]> =
             serde_json::from_str(include_str!("../data/prefixes_and_browsers.json"))
                 .expect("failed to parse json");
 
@@ -325,7 +325,7 @@ impl VisitMut for LinearGradientFunctionReplacerOnLegacyVariant<'_> {
                 }
             }
 
-            let first = n.value.get(0);
+            let first = n.value.first();
 
             match first {
                 Some(ComponentValue::Ident(ident))
@@ -343,17 +343,19 @@ impl VisitMut for LinearGradientFunctionReplacerOnLegacyVariant<'_> {
 
                     match (n.value.get(1), n.value.get(2)) {
                         (
-                            Some(ComponentValue::Ident(box Ident {
+                            Some(ComponentValue::Ident(first)),
+                            Some(ComponentValue::Ident(second)),
+                        ) => {
+                            let Ident {
                                 value: first_value,
                                 span: first_span,
                                 ..
-                            })),
-                            Some(ComponentValue::Ident(box Ident {
+                            } = &**first;
+                            let Ident {
                                 value: second_value,
                                 span: second_span,
                                 ..
-                            })),
-                        ) => {
+                            } = &**second;
                             if let (Some(new_first_direction), Some(new_second_direction)) = (
                                 get_old_direction(first_value),
                                 get_old_direction(second_value),
@@ -374,7 +376,8 @@ impl VisitMut for LinearGradientFunctionReplacerOnLegacyVariant<'_> {
                                 n.value.splice(0..3, new_value);
                             }
                         }
-                        (Some(ComponentValue::Ident(box Ident { value, span, .. })), Some(_)) => {
+                        (Some(ComponentValue::Ident(ident)), Some(_)) => {
+                            let Ident { value, span, .. } = &**ident;
                             if let Some(new_direction) = get_old_direction(value) {
                                 let new_value = vec![ComponentValue::Ident(Box::new(Ident {
                                     span: *span,
@@ -388,69 +391,71 @@ impl VisitMut for LinearGradientFunctionReplacerOnLegacyVariant<'_> {
                         _ => {}
                     }
                 }
-                Some(ComponentValue::Dimension(box Dimension::Angle(Angle {
-                    value,
-                    unit,
-                    span,
-                    ..
-                }))) => {
-                    let angle = match &*unit.value {
-                        "deg" => (value.value % 360.0 + 360.0) % 360.0,
-                        "grad" => value.value * 180.0 / 200.0,
-                        "rad" => value.value * 180.0 / PI,
-                        "turn" => value.value * 360.0,
-                        _ => {
-                            return;
+                Some(ComponentValue::Dimension(dimension)) => {
+                    if let Dimension::Angle(Angle {
+                        value, unit, span, ..
+                    }) = &**dimension
+                    {
+                        let angle = match &*unit.value {
+                            "deg" => (value.value % 360.0 + 360.0) % 360.0,
+                            "grad" => value.value * 180.0 / 200.0,
+                            "rad" => value.value * 180.0 / PI,
+                            "turn" => value.value * 360.0,
+                            _ => {
+                                return;
+                            }
+                        };
+
+                        if angle == 0.0 {
+                            n.value[0] = ComponentValue::Ident(Box::new(Ident {
+                                span: *span,
+                                value: "bottom".into(),
+                                raw: None,
+                            }));
+                        } else if angle == 90.0 {
+                            n.value[0] = ComponentValue::Ident(Box::new(Ident {
+                                span: *span,
+                                value: "left".into(),
+                                raw: None,
+                            }));
+                        } else if angle == 180.0 {
+                            n.value[0] = ComponentValue::Ident(Box::new(Ident {
+                                span: *span,
+                                value: "top".into(),
+                                raw: None,
+                            }));
+                        } else if angle == 270.0 {
+                            n.value[0] = ComponentValue::Ident(Box::new(Ident {
+                                span: *span,
+                                value: "right".into(),
+                                raw: None,
+                            }));
+                        } else {
+                            let new_value =
+                                ((450.0 - angle).abs() % 360.0 * 1000.0).round() / 1000.0;
+
+                            n.value[0] =
+                                ComponentValue::Dimension(Box::new(Dimension::Angle(Angle {
+                                    span: *span,
+                                    value: Number {
+                                        span: value.span,
+                                        value: new_value,
+                                        raw: None,
+                                    },
+                                    unit: Ident {
+                                        span: unit.span,
+                                        value: "deg".into(),
+                                        raw: None,
+                                    },
+                                })));
                         }
-                    };
-
-                    if angle == 0.0 {
-                        n.value[0] = ComponentValue::Ident(Box::new(Ident {
-                            span: *span,
-                            value: "bottom".into(),
-                            raw: None,
-                        }));
-                    } else if angle == 90.0 {
-                        n.value[0] = ComponentValue::Ident(Box::new(Ident {
-                            span: *span,
-                            value: "left".into(),
-                            raw: None,
-                        }));
-                    } else if angle == 180.0 {
-                        n.value[0] = ComponentValue::Ident(Box::new(Ident {
-                            span: *span,
-                            value: "top".into(),
-                            raw: None,
-                        }));
-                    } else if angle == 270.0 {
-                        n.value[0] = ComponentValue::Ident(Box::new(Ident {
-                            span: *span,
-                            value: "right".into(),
-                            raw: None,
-                        }));
-                    } else {
-                        let new_value = ((450.0 - angle).abs() % 360.0 * 1000.0).round() / 1000.0;
-
-                        n.value[0] = ComponentValue::Dimension(Box::new(Dimension::Angle(Angle {
-                            span: *span,
-                            value: Number {
-                                span: value.span,
-                                value: new_value,
-                                raw: None,
-                            },
-                            unit: Ident {
-                                span: unit.span,
-                                value: "deg".into(),
-                                raw: None,
-                            },
-                        })));
                     }
                 }
                 Some(_) | None => {}
             }
 
             if matches!(self.from, "radial-gradient" | "repeating-radial-gradient") {
-                let at_index = n.value.iter().position(|n| matches!(n, ComponentValue::Ident(box Ident { value, .. }) if value.as_ref().eq_ignore_ascii_case("at")));
+                let at_index = n.value.iter().position(|n| matches!(n, ComponentValue::Ident(ident) if ident.value.as_ref().eq_ignore_ascii_case("at")));
                 let first_comma_index = n.value.iter().position(|n| {
                     matches!(
                         n,
@@ -594,7 +599,7 @@ impl VisitMut for CalcReplacer<'_> {
 
         if let CalcValue::Function(function) = n {
             if matches_eq!(function.name, "calc", "-webkit-calc", "-moz-calc") {
-                let calc_sum = match function.value.get(0) {
+                let calc_sum = match function.value.first() {
                     Some(ComponentValue::CalcSum(calc_sum)) => *calc_sum.clone(),
                     _ => return,
                 };
@@ -632,7 +637,7 @@ impl VisitMut for FontFaceFormatOldSyntax {
             return;
         }
 
-        if let Some(ComponentValue::Ident(box ident)) = n.value.get(0) {
+        if let Some(ComponentValue::Ident(ident)) = n.value.first() {
             let new_value: JsWord = ident.value.to_ascii_lowercase();
             let new_value = match &*new_value {
                 "woff" | "truetype" | "opentype" | "woff2" | "embedded-opentype" | "collection"
@@ -689,7 +694,7 @@ impl VisitMut for ClampReplacer {
             return;
         };
 
-        if let (Some(left), Some(comma)) = (n.value.get(0), n.value.get(1)) {
+        if let (Some(left), Some(comma)) = (n.value.first(), n.value.get(1)) {
             *n = Function {
                 span: n.span,
                 name: FunctionName::Ident(Ident {
@@ -787,7 +792,7 @@ impl Prefixer {
     fn is_duplicate(&self, name: &str) -> bool {
         if let Some(simple_block) = &self.simple_block {
             for n in simple_block.value.iter() {
-                if let ComponentValue::Declaration(box declaration) = n {
+                if let ComponentValue::Declaration(declaration) = n {
                     if declaration.name == *name {
                         return true;
                     }
@@ -1003,7 +1008,7 @@ impl VisitMut for Prefixer {
             if let Some(supports) = import_conditions.supports.take() {
                 let mut conditions = Vec::with_capacity(1 + self.added_declarations.len());
 
-                if let Some(ComponentValue::Declaration(declaration)) = supports.value.get(0) {
+                if let Some(ComponentValue::Declaration(declaration)) = supports.value.first() {
                     conditions.push(SupportsConditionType::SupportsInParens(
                         SupportsInParens::Feature(SupportsFeature::Declaration(
                             declaration.clone(),
@@ -1938,7 +1943,7 @@ impl VisitMut for Prefixer {
                     if let (
                         Some(ComponentValue::Ident(first)),
                         Some(ComponentValue::Ident(second)),
-                    ) = (n.value.get(0), n.value.get(1))
+                    ) = (n.value.first(), n.value.get(1))
                     {
                         match (&*first.value, &*second.value) {
                             ("block", "flow") | ("flow", "block") => {
@@ -2087,7 +2092,7 @@ impl VisitMut for Prefixer {
                         Some(ComponentValue::Ident(first)),
                         Some(ComponentValue::Ident(second)),
                         Some(ComponentValue::Ident(third)),
-                    ) = (n.value.get(0), n.value.get(1), n.value.get(2))
+                    ) = (n.value.first(), n.value.get(1), n.value.get(2))
                     {
                         match (&*first.value, &*second.value, &*third.value) {
                             ("list-item", "block", "flow")
@@ -2123,7 +2128,7 @@ impl VisitMut for Prefixer {
             }
 
             "flex" => {
-                let spec_2009_value = match n.value.get(0) {
+                let spec_2009_value = match n.value.first() {
                     Some(ComponentValue::Ident(ident))
                         if ident.value.eq_ignore_ascii_case("none") =>
                     {
@@ -2175,15 +2180,15 @@ impl VisitMut for Prefixer {
                         Box::new(|| {
                             let mut value = ms_value.clone();
 
-                            if let Some(ComponentValue::Integer(box Integer {
-                                value: 0,
-                                span,
-                                ..
-                            })) = value.get(2)
+                            if let Some(span) = value
+                                .get(2)
+                                .and_then(|component_value| component_value.as_integer())
+                                .filter(|integer| integer.value == 0)
+                                .map(|integer| integer.span)
                             {
                                 value[2] = ComponentValue::Dimension(Box::new(Dimension::Length(
                                     Length {
-                                        span: *span,
+                                        span,
                                         value: Number {
                                             span: DUMMY_SP,
                                             value: 0.0,
@@ -2224,7 +2229,7 @@ impl VisitMut for Prefixer {
             }
 
             "flex-direction" => {
-                let old_values = match n.value.get(0) {
+                let old_values = match n.value.first() {
                     Some(ComponentValue::Ident(ident))
                         if ident.value.eq_ignore_ascii_case("row") =>
                     {
@@ -2285,9 +2290,9 @@ impl VisitMut for Prefixer {
             }
 
             "flex-flow" => {
-                let is_single_flex_wrap = matches!(n.value.get(0), Some(ComponentValue::Ident(box Ident { value, .. })) if n.value.len() == 1
+                let is_single_flex_wrap = matches!(n.value.first(), Some(ComponentValue::Ident(ident)) if n.value.len() == 1
                 && matches!(
-                   &* value.to_ascii_lowercase(),
+                   &* ident.value.to_ascii_lowercase(),
                     "wrap" | "nowrap" | "wrap-reverse"
                 ));
 
@@ -2355,8 +2360,8 @@ impl VisitMut for Prefixer {
 
             "justify-content" => {
                 let need_old_spec = !matches!(
-                    n.value.get(0),
-                    Some(ComponentValue::Ident(box Ident { value, .. })) if value.eq_ignore_ascii_case("space-around")
+                    n.value.first(),
+                    Some(ComponentValue::Ident(ident)) if ident.value.eq_ignore_ascii_case("space-around")
                 );
 
                 if need_old_spec {
@@ -2414,7 +2419,7 @@ impl VisitMut for Prefixer {
             }
 
             "opacity" if should_prefix("opacity", self.env, true) => {
-                let old_value = match n.value.get(0) {
+                let old_value = match n.value.first() {
                     Some(ComponentValue::Percentage(percentage)) => Some(percentage.value.value),
                     _ => None,
                 };
@@ -2432,7 +2437,7 @@ impl VisitMut for Prefixer {
             }
 
             "order" => {
-                let old_spec_num = match n.value.get(0) {
+                let old_spec_num = match n.value.first() {
                     Some(ComponentValue::Integer(integer)) => Some(integer.value + 1),
                     _ => None,
                 };
@@ -2589,7 +2594,7 @@ impl VisitMut for Prefixer {
                 }
             }
 
-            "filter" => match &n.value.get(0) {
+            "filter" => match &n.value.first() {
                 Some(ComponentValue::PreservedToken(_)) => {}
                 Some(ComponentValue::Function(function)) if function.name == "alpha" => {}
                 None => {}
@@ -2970,22 +2975,20 @@ impl VisitMut for Prefixer {
 
             "writing-mode" if n.value.len() == 1 => {
                 if let Some(simple_block) = &self.simple_block {
-                    let direction =
-                    match simple_block
-                        .value
-                        .iter()
-                        .rev()
-                        .find(|declaration| {
-                            matches!(declaration, ComponentValue::Declaration(box Declaration { name: DeclarationName::Ident(Ident { value, .. }), .. })
-                                if value.eq_ignore_ascii_case("direction"))
-                        }) {
-                        Some(ComponentValue::Declaration(box Declaration { value, .. })) => {
-                            match value.get(0) {
+                    let direction = match simple_block.value.iter().rev().find(|declaration| {
+                        declaration
+                            .as_declaration()
+                            .and_then(|declaration| declaration.name.as_ident())
+                            .filter(|ident| ident.value.eq_ignore_ascii_case("direction"))
+                            .is_some()
+                    }) {
+                        Some(ComponentValue::Declaration(declaration)) => {
+                            match declaration.value.first() {
                                 Some(ComponentValue::Ident(ident))
-                                if ident.value.eq_ignore_ascii_case("rtl") =>
-                                    {
-                                        Some("rtl")
-                                    }
+                                    if ident.value.eq_ignore_ascii_case("rtl") =>
+                                {
+                                    Some("rtl")
+                                }
                                 _ => Some("ltr"),
                             }
                         }
@@ -3321,9 +3324,9 @@ impl VisitMut for Prefixer {
 
             "overflow" if should_prefix("overflow", self.env, false) && n.value.len() == 2 => {
                 if let (
-                    Some(left @ ComponentValue::Ident(box first)),
-                    Some(right @ ComponentValue::Ident(box second)),
-                ) = (n.value.get(0), n.value.get(1))
+                    Some(left @ ComponentValue::Ident(first)),
+                    Some(right @ ComponentValue::Ident(second)),
+                ) = (n.value.first(), n.value.get(1))
                 {
                     if first.value.eq_ignore_ascii_case(&second.value) {
                         self.added_declarations.push(Box::new(Declaration {
@@ -3544,7 +3547,7 @@ impl VisitMut for Prefixer {
             }
 
             "place-content" if should_prefix("place-content", self.env, false) => {
-                match (n.value.get(0), n.value.get(1)) {
+                match (n.value.first(), n.value.get(1)) {
                     (Some(left), Some(right)) => {
                         add_declaration!(
                             "align-content",
@@ -3570,7 +3573,7 @@ impl VisitMut for Prefixer {
             }
 
             "place-items" if should_prefix("place-items", self.env, false) => {
-                match (n.value.get(0), n.value.get(1)) {
+                match (n.value.first(), n.value.get(1)) {
                     (Some(left), Some(right)) => {
                         add_declaration!("align-items", Some(Box::new(|| { vec![left.clone()] })));
                         add_declaration!(
@@ -3590,7 +3593,7 @@ impl VisitMut for Prefixer {
             }
 
             "place-self" if should_prefix("place-self", self.env, false) => {
-                match (n.value.get(0), n.value.get(1)) {
+                match (n.value.first(), n.value.get(1)) {
                     (Some(left), Some(right)) => {
                         add_declaration!("align-self", Some(Box::new(|| { vec![left.clone()] })));
                         add_declaration!(

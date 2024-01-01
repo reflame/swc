@@ -1,5 +1,5 @@
-use pmutil::q;
 use swc_ecma_ast::*;
+use syn::parse_quote;
 
 macro_rules! impl_simple_enum {
     ($E:ident, [ $($v:ident),* ]) => {
@@ -12,6 +12,9 @@ macro_rules! impl_simple_enum {
                             { swc_ecma_ast::$E::$v }
                         )
                         .parse(),
+                        $E::$v => parse_quote!(
+                             swc_core::ecma::ast::$E::$v
+                        ),
                     )*
                 }
             }
