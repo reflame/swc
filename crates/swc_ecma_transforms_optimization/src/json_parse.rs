@@ -1,5 +1,3 @@
-use std::usize;
-
 use serde_json::Value;
 use swc_common::{util::take::Take, Spanned, DUMMY_SP};
 use swc_ecma_ast::*;
@@ -54,7 +52,7 @@ impl Default for JsonParse {
 }
 
 impl VisitMut for JsonParse {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     /// Handles parent expressions before child expressions.
     fn visit_mut_expr(&mut self, expr: &mut Expr) {
@@ -71,17 +69,18 @@ impl VisitMut for JsonParse {
                             unreachable!("failed to serialize serde_json::Value as json: {}", err)
                         });
 
-                    *expr = Expr::Call(CallExpr {
+                    *expr = CallExpr {
                         span: expr.span(),
-                        callee: member_expr!(DUMMY_SP, JSON.parse).as_callee(),
+                        callee: member_expr!(Default::default(), DUMMY_SP, JSON.parse).as_callee(),
                         args: vec![Lit::Str(Str {
                             span: DUMMY_SP,
                             raw: None,
                             value: value.into(),
                         })
                         .as_arg()],
-                        type_args: Default::default(),
-                    });
+                        ..Default::default()
+                    }
+                    .into();
                     return;
                 }
 
@@ -141,10 +140,6 @@ mod tests {
     use swc_ecma_transforms_testing::test;
 
     use super::*;
-
-    struct Normalizer;
-
-    impl Fold for Normalizer {}
 
     test!(
         ::swc_ecma_parser::Syntax::default(),

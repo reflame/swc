@@ -16,7 +16,7 @@ struct EdgeDefaultParam {
 
 #[swc_trace]
 impl VisitMut for EdgeDefaultParam {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_arrow_expr(&mut self, n: &mut ArrowExpr) {
         self.in_arrow = true;
@@ -43,12 +43,13 @@ impl VisitMut for EdgeDefaultParam {
             }) = prop
             {
                 let prop = ObjectPatProp::KeyValue(KeyValuePatProp {
-                    key: PropName::Ident(key.clone()),
-                    value: Box::new(Pat::Assign(AssignPat {
+                    key: PropName::Ident(key.clone().into()),
+                    value: AssignPat {
                         span: *span,
                         left: key.clone().into(),
                         right: value.clone(),
-                    })),
+                    }
+                    .into(),
                 });
 
                 n.props[idx] = prop;

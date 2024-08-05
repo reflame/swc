@@ -3,16 +3,18 @@
 #![deny(unused)]
 #![allow(clippy::match_like_matches_macro)]
 #![allow(clippy::nonminimal_bool)]
+#![allow(non_local_definitions)]
 
 use std::{borrow::Cow, fmt::Write, io};
 
 use memchr::memmem::Finder;
 use once_cell::sync::Lazy;
+use swc_allocator::maybe::vec::Vec;
 use swc_atoms::Atom;
 use swc_common::{
     comments::{CommentKind, Comments},
     sync::Lrc,
-    BytePos, SourceMapper, Span, Spanned, DUMMY_SP,
+    BytePos, SourceMap, SourceMapper, Span, Spanned, DUMMY_SP,
 };
 use swc_ecma_ast::*;
 use swc_ecma_codegen_macros::emitter;
@@ -37,28 +39,58 @@ pub mod util;
 
 pub type Result = io::Result<()>;
 
+/// Generate a code from a syntax node using default options.
+pub fn to_code_default(
+    cm: Lrc<SourceMap>,
+    comments: Option<&dyn Comments>,
+    node: &impl Node,
+) -> String {
+    let mut buf = std::vec::Vec::new();
+    {
+        let mut emitter = Emitter {
+            cfg: Default::default(),
+            cm: cm.clone(),
+            comments,
+            wr: text_writer::JsWriter::new(cm, "\n", &mut buf, None),
+        };
+        node.emit_with(&mut emitter).unwrap();
+    }
+
+    String::from_utf8(buf).expect("codegen generated non-utf8 output")
+}
+
+/// Generate a code from a syntax node using default options.
+pub fn to_code_with_comments(comments: Option<&dyn Comments>, node: &impl Node) -> String {
+    to_code_default(Default::default(), comments, node)
+}
+
+/// Generate a code from a syntax node using default options.
+pub fn to_code(node: &impl Node) -> String {
+    to_code_with_comments(None, node)
+}
+
 pub trait Node: Spanned {
-    fn emit_with<W, S: SourceMapper>(&self, e: &mut Emitter<'_, W, S>) -> Result
+    fn emit_with<W, S>(&self, e: &mut Emitter<'_, W, S>) -> Result
     where
         W: WriteJs,
-        S: SourceMapperExt;
+        S: SourceMapper + SourceMapperExt;
 }
 impl<N: Node> Node for Box<N> {
     #[inline]
-    fn emit_with<W, S: SourceMapper>(&self, e: &mut Emitter<'_, W, S>) -> Result
+    fn emit_with<W, S>(&self, e: &mut Emitter<'_, W, S>) -> Result
     where
         W: WriteJs,
-        S: SourceMapperExt,
+        S: SourceMapper + SourceMapperExt,
     {
         (**self).emit_with(e)
     }
 }
 impl<'a, N: Node> Node for &'a N {
     #[inline]
-    fn emit_with<W, S: SourceMapper>(&self, e: &mut Emitter<'_, W, S>) -> Result
+    fn emit_with<W, S>(&self, e: &mut Emitter<'_, W, S>) -> Result
     where
         W: WriteJs,
-        S: SourceMapperExt,
+        S: SourceMapper + SourceMapperExt,
     {
         (**self).emit_with(e)
     }
@@ -278,6 +310,18 @@ where
             keyword!("type");
         }
 
+        match n.phase {
+            ImportPhase::Evaluation => {}
+            ImportPhase::Source => {
+                space!();
+                keyword!("source");
+            }
+            ImportPhase::Defer => {
+                space!();
+                keyword!("defer");
+            }
+        }
+
         let starts_with_ident = !n.specifiers.is_empty()
             && match &n.specifiers[0] {
                 ImportSpecifier::Default(_) => true,
@@ -289,7 +333,7 @@ where
             formatting_space!();
         }
 
-        let mut specifiers = vec![];
+        let mut specifiers = Vec::new();
         let mut emitted_default = false;
         let mut emitted_ns = false;
         for specifier in &n.specifiers {
@@ -454,7 +498,7 @@ where
                 has_namespace_spec: false,
                 namespace_spec: None,
                 has_named_specs: false,
-                named_specs: vec![],
+                named_specs: Vec::new(),
             },
             |mut result, s| match s {
                 ExportSpecifier::Namespace(spec) => {
@@ -620,7 +664,7 @@ where
 
         let target = self.cfg.target;
 
-        if target > EsVersion::Es5 && !self.cfg.minify {
+        if !self.cfg.minify {
             if let Some(raw) = &node.raw {
                 if !self.cfg.ascii_only || raw.is_ascii() {
                     self.wr.write_str_lit(DUMMY_SP, raw)?;
@@ -634,7 +678,7 @@ where
         if self.cfg.inline_script {
             value = replace_close_inline_script(&value)
                 .replace("\x3c!--", "\\x3c!--")
-                .replace("/--\x3e/", "--\\x3e");
+                .replace("--\x3e", "--\\x3e");
         }
 
         self.wr.write_str_lit(DUMMY_SP, &value)?;
@@ -660,7 +704,7 @@ where
         self.emit_leading_comments_of_span(num.span(), false)?;
 
         // Handle infinity
-        if num.value.is_infinite() {
+        if num.value.is_infinite() && num.raw.is_none() {
             if num.value.is_sign_negative() {
                 self.wr.write_str_lit(num.span, "-")?;
             }
@@ -675,8 +719,12 @@ where
         srcmap!(self, num, true);
 
         if self.cfg.minify {
-            value = minify_number(num.value);
-            self.wr.write_str_lit(DUMMY_SP, &value)?;
+            if num.value.is_infinite() && num.raw.is_some() {
+                self.wr.write_str_lit(DUMMY_SP, num.raw.as_ref().unwrap())?;
+            } else {
+                value = minify_number(num.value);
+                self.wr.write_str_lit(DUMMY_SP, &value)?;
+            }
         } else {
             match &num.raw {
                 Some(raw) => {
@@ -684,8 +732,12 @@ where
                         let slice = &raw.as_bytes()[..2];
                         slice == b"0b" || slice == b"0o" || slice == b"0B" || slice == b"0O"
                     } {
-                        value = num.value.to_string();
-                        self.wr.write_str_lit(DUMMY_SP, &value)?;
+                        if num.value.is_infinite() && num.raw.is_some() {
+                            self.wr.write_str_lit(DUMMY_SP, num.raw.as_ref().unwrap())?;
+                        } else {
+                            value = num.value.to_string();
+                            self.wr.write_str_lit(DUMMY_SP, &value)?;
+                        }
                     } else if raw.len() > 2
                         && self.cfg.target < EsVersion::Es2021
                         && raw.contains('_')
@@ -820,6 +872,17 @@ where
     #[emitter]
     fn emit_import_callee(&mut self, node: &Import) -> Result {
         keyword!(node.span, "import");
+        match node.phase {
+            ImportPhase::Source => {
+                punct!(".");
+                keyword!("source")
+            }
+            ImportPhase::Defer => {
+                punct!(".");
+                keyword!("defer")
+            }
+            _ => {}
+        }
     }
 
     #[emitter]
@@ -1228,7 +1291,7 @@ where
 
         {
             let mut left = Some(node);
-            let mut lefts = vec![];
+            let mut lefts = Vec::new();
             while let Some(l) = left {
                 lefts.push(l);
 
@@ -1277,6 +1340,11 @@ where
 
         for dec in &node.class.decorators {
             emit!(dec);
+        }
+
+        if node.class.is_abstract {
+            keyword!("abstract");
+            space!();
         }
 
         keyword!("class");
@@ -1353,8 +1421,20 @@ where
     fn emit_auto_accessor(&mut self, n: &AutoAccessor) -> Result {
         self.emit_list(n.span, Some(&n.decorators), ListFormat::Decorators)?;
 
+        self.emit_accessibility(n.accessibility)?;
+
         if n.is_static {
             keyword!("static");
+            space!();
+        }
+
+        if n.is_abstract {
+            keyword!("abstract");
+            space!();
+        }
+
+        if n.is_override {
+            keyword!("override");
             space!();
         }
 
@@ -1362,6 +1442,15 @@ where
         space!();
 
         emit!(n.key);
+
+        if let Some(type_ann) = &n.type_ann {
+            if n.definite {
+                punct!("!");
+            }
+            punct!(":");
+            space!();
+            emit!(type_ann);
+        }
 
         if let Some(init) = &n.value {
             formatting_space!();
@@ -1435,6 +1524,8 @@ where
     fn emit_class_method(&mut self, n: &ClassMethod) -> Result {
         self.emit_leading_comments_of_span(n.span(), false)?;
 
+        self.emit_leading_comments_of_span(n.key.span(), false)?;
+
         srcmap!(n, true);
 
         for d in &n.function.decorators {
@@ -1465,6 +1556,11 @@ where
             } else {
                 formatting_space!();
             }
+        }
+
+        if n.is_abstract {
+            keyword!("abstract");
+            space!()
         }
 
         if n.is_override {
@@ -1506,6 +1602,10 @@ where
 
                 emit!(n.key);
             }
+        }
+
+        if n.is_optional {
+            punct!("?");
         }
 
         if let Some(type_params) = &n.function.type_params {
@@ -1561,10 +1661,12 @@ where
         }
 
         emit!(n.key);
+
+        if n.is_optional {
+            punct!("?");
+        }
+
         if let Some(type_ann) = &n.type_ann {
-            if n.is_optional {
-                punct!("?");
-            }
             if n.definite {
                 punct!("!");
             }
@@ -1601,11 +1703,21 @@ where
             emit!(dec)
         }
 
+        if n.declare {
+            keyword!("declare");
+            space!();
+        }
+
         self.emit_accessibility(n.accessibility)?;
 
         if n.is_static {
             keyword!("static");
             space!();
+        }
+
+        if n.is_abstract {
+            keyword!("abstract");
+            space!()
         }
 
         if n.is_override {
@@ -1619,6 +1731,10 @@ where
         }
 
         emit!(n.key);
+
+        if n.is_optional {
+            punct!("?");
+        }
 
         if let Some(ty) = &n.type_ann {
             if n.definite {
@@ -1698,7 +1814,33 @@ where
     fn emit_prop_name(&mut self, node: &PropName) -> Result {
         match node {
             PropName::Ident(ident) => {
-                emit!(ident)
+                // TODO: Use write_symbol when ident is a symbol.
+                self.emit_leading_comments_of_span(ident.span, false)?;
+
+                // Source map
+                self.wr.commit_pending_semi()?;
+
+                srcmap!(ident, true);
+
+                if self.cfg.ascii_only {
+                    if self.wr.can_ignore_invalid_unicodes() {
+                        self.wr.write_symbol(
+                            DUMMY_SP,
+                            &get_ascii_only_ident(&ident.sym, true, self.cfg.target),
+                        )?;
+                    } else {
+                        self.wr.write_symbol(
+                            DUMMY_SP,
+                            &get_ascii_only_ident(
+                                &handle_invalid_unicodes(&ident.sym),
+                                true,
+                                self.cfg.target,
+                            ),
+                        )?;
+                    }
+                } else {
+                    emit!(ident);
+                }
             }
             PropName::Str(ref n) => emit!(n),
             PropName::Num(ref n) => emit!(n),
@@ -1839,11 +1981,12 @@ where
     fn emit_quasi(&mut self, node: &TplElement) -> Result {
         srcmap!(node, true);
 
+        let raw = node.raw.replace("\r\n", "\n").replace('\r', "\n");
         if self.cfg.minify || (self.cfg.ascii_only && !node.raw.is_ascii()) {
-            let v = get_template_element_from_raw(&node.raw, self.cfg.ascii_only);
+            let v = get_template_element_from_raw(&raw, self.cfg.ascii_only);
             self.wr.write_str_lit(DUMMY_SP, &v)?;
         } else {
-            self.wr.write_str_lit(DUMMY_SP, &node.raw)?;
+            self.wr.write_str_lit(DUMMY_SP, &raw)?;
         }
 
         srcmap!(node, false);
@@ -2153,7 +2296,15 @@ where
         formatting_space!();
 
         punct!("(");
+        if let Some(this) = &node.this_param {
+            emit!(this);
+            punct!(",");
+
+            formatting_space!();
+        }
+
         emit!(node.param);
+
         punct!(")");
 
         emit!(node.body);
@@ -2202,14 +2353,14 @@ where
         srcmap!(n, true);
 
         punct!("#");
-        emit!(n.id);
+        self.emit_ident_like(n.span, &n.name, false)?;
 
         srcmap!(n, false);
     }
 
     #[emitter]
     fn emit_binding_ident(&mut self, ident: &BindingIdent) -> Result {
-        emit!(ident.id);
+        self.emit_ident_like(ident.span, &ident.sym, ident.optional)?;
 
         if let Some(ty) = &ident.type_ann {
             punct!(":");
@@ -2225,40 +2376,51 @@ where
 
     #[emitter]
     fn emit_ident(&mut self, ident: &Ident) -> Result {
+        self.emit_ident_like(ident.span, &ident.sym, ident.optional)?;
+    }
+
+    #[emitter]
+    fn emit_ident_name(&mut self, ident: &IdentName) -> Result {
+        self.emit_ident_like(ident.span, &ident.sym, false)?;
+    }
+
+    fn emit_ident_like(&mut self, span: Span, sym: &Atom, optional: bool) -> Result {
         // TODO: Use write_symbol when ident is a symbol.
-        self.emit_leading_comments_of_span(ident.span, false)?;
+        self.emit_leading_comments_of_span(span, false)?;
 
         // Source map
         self.wr.commit_pending_semi()?;
 
-        srcmap!(ident, true);
+        srcmap!(self, span, true);
         // TODO: span
 
         if self.cfg.ascii_only {
             if self.wr.can_ignore_invalid_unicodes() {
                 self.wr
-                    .write_symbol(DUMMY_SP, &get_ascii_only_ident(&ident.sym, self.cfg.target))?;
+                    .write_symbol(DUMMY_SP, &get_ascii_only_ident(sym, false, self.cfg.target))?;
             } else {
                 self.wr.write_symbol(
                     DUMMY_SP,
-                    &get_ascii_only_ident(&handle_invalid_unicodes(&ident.sym), self.cfg.target),
+                    &get_ascii_only_ident(&handle_invalid_unicodes(sym), false, self.cfg.target),
                 )?;
             }
         } else if self.wr.can_ignore_invalid_unicodes() {
-            self.wr.write_symbol(DUMMY_SP, &ident.sym)?;
+            self.wr.write_symbol(DUMMY_SP, sym)?;
         } else {
             self.wr
-                .write_symbol(DUMMY_SP, &handle_invalid_unicodes(&ident.sym))?;
+                .write_symbol(DUMMY_SP, &handle_invalid_unicodes(sym))?;
         }
 
-        if ident.optional {
-            punct!("?");
+        if optional {
+            punct!(self, "?");
         }
 
         // Call emitList directly since it could be an array of
         // TypeParameterDeclarations _or_ type arguments
 
         // emitList(node, node.typeArguments, ListFormat::TypeParameters);
+
+        Ok(())
     }
 
     fn emit_list<N: Node>(
@@ -2666,10 +2828,36 @@ where
     }
 
     #[emitter]
-    fn emit_pat_or_expr(&mut self, node: &PatOrExpr) -> Result {
+    fn emit_assign_target(&mut self, node: &AssignTarget) -> Result {
         match *node {
-            PatOrExpr::Expr(ref n) => emit!(n),
-            PatOrExpr::Pat(ref n) => emit!(n),
+            AssignTarget::Simple(ref n) => emit!(n),
+            AssignTarget::Pat(ref n) => emit!(n),
+        }
+    }
+
+    #[emitter]
+    fn emit_simple_assign_target(&mut self, node: &SimpleAssignTarget) -> Result {
+        match node {
+            SimpleAssignTarget::Ident(n) => emit!(n),
+            SimpleAssignTarget::Member(n) => emit!(n),
+            SimpleAssignTarget::Invalid(n) => emit!(n),
+            SimpleAssignTarget::SuperProp(n) => emit!(n),
+            SimpleAssignTarget::Paren(n) => emit!(n),
+            SimpleAssignTarget::OptChain(n) => emit!(n),
+            SimpleAssignTarget::TsAs(n) => emit!(n),
+            SimpleAssignTarget::TsNonNull(n) => emit!(n),
+            SimpleAssignTarget::TsSatisfies(n) => emit!(n),
+            SimpleAssignTarget::TsTypeAssertion(n) => emit!(n),
+            SimpleAssignTarget::TsInstantiation(n) => emit!(n),
+        }
+    }
+
+    #[emitter]
+    fn emit_assign_target_pat(&mut self, node: &AssignTargetPat) -> Result {
+        match node {
+            AssignTargetPat::Array(n) => emit!(n),
+            AssignTargetPat::Object(n) => emit!(n),
+            AssignTargetPat::Invalid(n) => emit!(n),
         }
     }
 
@@ -2925,27 +3113,32 @@ where
         false
     }
 
-    fn has_leading_comment(&self, arg: &Expr) -> bool {
-        fn span_has_leading_comment(cmt: &dyn Comments, span: Span) -> bool {
-            let lo = span.lo;
-
-            // see #415
-            if let Some(cmt) = cmt.get_leading(lo) {
-                if cmt.iter().any(|cmt| {
-                    cmt.kind == CommentKind::Line
-                        || cmt
-                            .text
-                            .chars()
-                            // https://tc39.es/ecma262/#table-line-terminator-code-points
-                            .any(|c| c == '\n' || c == '\r' || c == '\u{2028}' || c == '\u{2029}')
-                }) {
+    fn simple_assign_target_has_leading_comment(&self, arg: &SimpleAssignTarget) -> bool {
+        match arg {
+            SimpleAssignTarget::Ident(i) => {
+                span_has_leading_comment(self.comments.as_ref().unwrap(), i.span)
+            }
+            SimpleAssignTarget::Member(m) => {
+                if self.has_leading_comment(&m.obj) {
                     return true;
                 }
+
+                false
             }
 
-            false
-        }
+            SimpleAssignTarget::SuperProp(m) => {
+                if span_has_leading_comment(self.comments.as_ref().unwrap(), m.span) {
+                    return true;
+                }
 
+                false
+            }
+
+            _ => false,
+        }
+    }
+
+    fn has_leading_comment(&self, arg: &Expr) -> bool {
         let cmt = if let Some(cmt) = self.comments {
             if span_has_leading_comment(cmt, arg.span()) {
                 return true;
@@ -3009,17 +3202,12 @@ where
                 }
 
                 let has_leading = match &e.left {
-                    PatOrExpr::Expr(e) => self.has_leading_comment(e),
+                    AssignTarget::Simple(e) => self.simple_assign_target_has_leading_comment(e),
 
-                    PatOrExpr::Pat(p) => match &**p {
-                        Pat::Expr(e) => self.has_leading_comment(e),
-                        Pat::Ident(i) => span_has_leading_comment(cmt, i.span),
-                        Pat::Array(a) => span_has_leading_comment(cmt, a.span),
-                        Pat::Object(o) => span_has_leading_comment(cmt, o.span),
-                        // TODO: remove after #8333
-                        Pat::Rest(r) => span_has_leading_comment(cmt, r.span),
-                        Pat::Assign(a) => span_has_leading_comment(cmt, a.span),
-                        Pat::Invalid(_) => false,
+                    AssignTarget::Pat(p) => match p {
+                        AssignTargetPat::Array(a) => span_has_leading_comment(cmt, a.span),
+                        AssignTargetPat::Object(o) => span_has_leading_comment(cmt, o.span),
+                        AssignTargetPat::Invalid(..) => false,
                     },
                 };
 
@@ -3545,10 +3733,10 @@ impl<N> Node for Option<N>
 where
     N: Node,
 {
-    fn emit_with<W, S: SourceMapper>(&self, e: &mut Emitter<'_, W, S>) -> Result
+    fn emit_with<W, S>(&self, e: &mut Emitter<'_, W, S>) -> Result
     where
         W: WriteJs,
-        S: SourceMapperExt,
+        S: SourceMapper + SourceMapperExt,
     {
         match *self {
             Some(ref n) => n.emit_with(e),
@@ -3728,19 +3916,25 @@ fn get_template_element_from_raw(s: &str, ascii_only: bool) -> String {
     buf
 }
 
-fn get_ascii_only_ident(sym: &str, target: EsVersion) -> Cow<str> {
-    if sym.chars().all(|c| c.is_ascii()) {
+fn get_ascii_only_ident(sym: &str, may_need_quote: bool, target: EsVersion) -> Cow<str> {
+    if sym.is_ascii() {
         return Cow::Borrowed(sym);
     }
 
     let mut first = true;
     let mut buf = String::with_capacity(sym.len() + 8);
     let mut iter = sym.chars().peekable();
+    let mut need_quote = false;
 
     while let Some(c) = iter.next() {
         match c {
             '\x00' => {
-                buf.push_str("\\x00");
+                if may_need_quote {
+                    need_quote = true;
+                    let _ = write!(buf, "\\x00");
+                } else {
+                    let _ = write!(buf, "\\u0000");
+                }
             }
             '\u{0008}' => buf.push_str("\\b"),
             '\u{000c}' => buf.push_str("\\f"),
@@ -3828,16 +4022,31 @@ fn get_ascii_only_ident(sym: &str, target: EsVersion) -> Cow<str> {
                 buf.push('"');
             }
             '\x01'..='\x0f' if !first => {
-                let _ = write!(buf, "\\x0{:x}", c as u8);
+                if may_need_quote {
+                    need_quote = true;
+                    let _ = write!(buf, "\\x{:x}", c as u8);
+                } else {
+                    let _ = write!(buf, "\\u00{:x}", c as u8);
+                }
             }
             '\x10'..='\x1f' if !first => {
-                let _ = write!(buf, "\\x{:x}", c as u8);
+                if may_need_quote {
+                    need_quote = true;
+                    let _ = write!(buf, "\\x{:x}", c as u8);
+                } else {
+                    let _ = write!(buf, "\\u00{:x}", c as u8);
+                }
             }
             '\x20'..='\x7e' => {
                 buf.push(c);
             }
-            '\u{7f}'..='\u{ff}' if !first => {
-                let _ = write!(buf, "\\x{:x}", c as u8);
+            '\u{7f}'..='\u{ff}' => {
+                if may_need_quote {
+                    need_quote = true;
+                    let _ = write!(buf, "\\x{:x}", c as u8);
+                } else {
+                    let _ = write!(buf, "\\u00{:x}", c as u8);
+                }
             }
             '\u{2028}' => {
                 buf.push_str("\\u2028");
@@ -3874,7 +4083,11 @@ fn get_ascii_only_ident(sym: &str, target: EsVersion) -> Cow<str> {
         first = false;
     }
 
-    Cow::Owned(buf)
+    if need_quote {
+        Cow::Owned(format!("\"{}\"", buf))
+    } else {
+        Cow::Owned(buf)
+    }
 }
 
 fn get_quoted_utf16(v: &str, ascii_only: bool, target: EsVersion) -> String {
@@ -3887,7 +4100,11 @@ fn get_quoted_utf16(v: &str, ascii_only: bool, target: EsVersion) -> String {
     while let Some(c) = iter.next() {
         match c {
             '\x00' => {
-                buf.push_str("\\x00");
+                if target < EsVersion::Es5 || matches!(iter.peek(), Some('0'..='9')) {
+                    buf.push_str("\\x00");
+                } else {
+                    buf.push_str("\\0");
+                }
             }
             '\u{0008}' => buf.push_str("\\b"),
             '\u{000c}' => buf.push_str("\\f"),
@@ -4175,4 +4392,24 @@ fn minify_number(num: f64) -> String {
     }
 
     printed
+}
+
+fn span_has_leading_comment(cmt: &dyn Comments, span: Span) -> bool {
+    let lo = span.lo;
+
+    // see #415
+    if let Some(cmt) = cmt.get_leading(lo) {
+        if cmt.iter().any(|cmt| {
+            cmt.kind == CommentKind::Line
+                || cmt
+                    .text
+                    .chars()
+                    // https://tc39.es/ecma262/#table-line-terminator-code-points
+                    .any(|c| c == '\n' || c == '\r' || c == '\u{2028}' || c == '\u{2029}')
+        }) {
+            return true;
+        }
+    }
+
+    false
 }

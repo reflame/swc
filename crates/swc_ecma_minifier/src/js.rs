@@ -1,7 +1,7 @@
 //! NOT A PUBLIC API
 
 use serde::{Deserialize, Serialize};
-use swc_config::config_types::BoolOrDataConfig;
+use swc_config::{config_types::BoolOrDataConfig, IsModule, SourceMapContent};
 
 use crate::option::{
     terser::{TerserCompressorOptions, TerserEcmaVersion},
@@ -33,14 +33,14 @@ pub struct JsMinifyOptions {
     #[serde(default, alias = "keep_fnames")]
     pub keep_fnames: bool,
 
-    #[serde(default)]
-    pub module: bool,
+    #[serde(default = "default_module")]
+    pub module: IsModule,
 
     #[serde(default)]
     pub safari10: bool,
 
-    #[serde(default = "true_by_default")]
-    pub toplevel: bool,
+    #[serde(default)]
+    pub toplevel: Option<bool>,
 
     #[serde(default)]
     pub source_map: BoolOrDataConfig<TerserSourceMapOption>,
@@ -59,6 +59,8 @@ fn true_by_default() -> bool {
     true
 }
 
+/// `sourceMap` of `minify()`.`
+///
 /// `jsc.minify.sourceMap`
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -73,7 +75,7 @@ pub struct TerserSourceMapOption {
     pub root: Option<String>,
 
     #[serde(default)]
-    pub content: Option<String>,
+    pub content: Option<SourceMapContent>,
 }
 
 /// Parser options for `minify()`, which should have the same API as terser.
@@ -200,16 +202,15 @@ fn default_comments() -> BoolOrDataConfig<JsMinifyCommentOption> {
     BoolOrDataConfig::from_obj(JsMinifyCommentOption::PreserveSomeComments)
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 pub enum JsMinifyCommentOption {
     #[serde(rename = "some")]
+    #[default]
     PreserveSomeComments,
     #[serde(rename = "all")]
     PreserveAllComments,
 }
 
-impl Default for JsMinifyCommentOption {
-    fn default() -> Self {
-        JsMinifyCommentOption::PreserveSomeComments
-    }
+fn default_module() -> IsModule {
+    IsModule::Bool(false)
 }

@@ -29,12 +29,12 @@ impl Operators {
         (
             ComputedPropName {
                 span: c.span,
-                expr: Expr::Assign(AssignExpr {
+                expr: AssignExpr {
                     span: DUMMY_SP,
-                    left: PatOrExpr::Pat(alias.clone().into()),
+                    left: alias.clone().into(),
                     op: op!("="),
                     right: c.expr,
-                })
+                }
                 .into(),
             },
             ComputedPropName {
@@ -58,7 +58,7 @@ impl Parallel for Operators {
 
 #[swc_trace]
 impl VisitMut for Operators {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_expr(&mut self, e: &mut Expr) {
         e.visit_mut_children_with(self);
@@ -66,12 +66,12 @@ impl VisitMut for Operators {
         if let Expr::Assign(AssignExpr {
             span,
             op: op @ (op!("&&=") | op!("||=") | op!("??=")),
-            left: PatOrExpr::Expr(left),
+            left: AssignTarget::Simple(left),
             right,
         }) = e
         {
-            let (left_expr, r_assign_target) = match &mut **left {
-                Expr::SuperProp(SuperPropExpr {
+            let (left_expr, r_assign_target) = match &mut *left {
+                SimpleAssignTarget::SuperProp(SuperPropExpr {
                     span,
                     obj,
                     prop: SuperProp::Computed(c),
@@ -97,7 +97,7 @@ impl VisitMut for Operators {
                         ),
                     )
                 }
-                Expr::Member(m) => {
+                SimpleAssignTarget::Member(m) => {
                     let (left_obj, right_obj) = match *m.obj.take() {
                         // TODO: local vars
                         obj @ Expr::This(_) => (obj.clone().into(), obj.into()),
@@ -111,13 +111,14 @@ impl VisitMut for Operators {
                             });
 
                             (
-                                Box::new(Expr::Assign(AssignExpr {
+                                AssignExpr {
                                     span: DUMMY_SP,
                                     op: op!("="),
-                                    left: PatOrExpr::Pat(alias.clone().into()),
+                                    left: alias.clone().into(),
                                     right: obj.into(),
-                                })),
-                                Box::new(Expr::Ident(alias)),
+                                }
+                                .into(),
+                                alias.into(),
                             )
                         }
                     };
@@ -131,30 +132,33 @@ impl VisitMut for Operators {
                     };
 
                     (
-                        Box::new(Expr::Member(MemberExpr {
+                        MemberExpr {
                             span: DUMMY_SP,
                             obj: left_obj,
                             prop: left_prop,
-                        })),
-                        Box::new(Expr::Member(MemberExpr {
+                        }
+                        .into(),
+                        MemberExpr {
                             span: DUMMY_SP,
                             obj: right_obj,
                             prop: right_prop,
-                        })),
+                        }
+                        .into(),
                     )
                 }
                 _ => {
-                    let expr = left.take();
+                    let expr: Box<Expr> = left.take().into();
                     (expr.clone(), expr)
                 }
             };
 
-            let right = Box::new(Expr::Assign(AssignExpr {
+            let right = AssignExpr {
                 span: DUMMY_SP,
                 op: op!("="),
-                left: PatOrExpr::Expr(r_assign_target),
+                left: r_assign_target.try_into().unwrap(),
                 right: right.take(),
-            }));
+            }
+            .into();
 
             let op = match *op {
                 op!("??=") => op!("??"),
@@ -163,12 +167,13 @@ impl VisitMut for Operators {
                 _ => unreachable!(),
             };
 
-            *e = Expr::Bin(BinExpr {
+            *e = BinExpr {
                 span: *span,
                 op,
                 left: left_expr,
                 right,
-            });
+            }
+            .into();
         }
     }
 
@@ -187,10 +192,9 @@ impl VisitMut for Operators {
             prepend_stmt(
                 n,
                 VarDecl {
-                    span: DUMMY_SP,
                     kind: VarDeclKind::Var,
-                    declare: false,
                     decls: vars,
+                    ..Default::default()
                 }
                 .into(),
             )
@@ -206,10 +210,9 @@ impl VisitMut for Operators {
             prepend_stmt(
                 n,
                 VarDecl {
-                    span: DUMMY_SP,
                     kind: VarDeclKind::Var,
-                    declare: false,
                     decls: vars,
+                    ..Default::default()
                 }
                 .into(),
             )

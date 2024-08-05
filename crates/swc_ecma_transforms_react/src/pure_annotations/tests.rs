@@ -1,3 +1,4 @@
+use swc_allocator::maybe::vec::Vec;
 use swc_common::{comments::SingleThreadedComments, sync::Lrc, FileName, Mark, SourceMap};
 use swc_ecma_codegen::{text_writer::JsWriter, Emitter};
 use swc_ecma_parser::{Parser, StringInput};
@@ -11,12 +12,12 @@ fn parse(
     tester: &mut Tester,
     src: &str,
 ) -> Result<(Module, Lrc<SourceMap>, Lrc<SingleThreadedComments>), ()> {
-    let syntax = ::swc_ecma_parser::Syntax::Es(::swc_ecma_parser::EsConfig {
+    let syntax = ::swc_ecma_parser::Syntax::Es(::swc_ecma_parser::EsSyntax {
         jsx: true,
         ..Default::default()
     });
     let source_map = Lrc::new(SourceMap::default());
-    let source_file = source_map.new_source_file(FileName::Anon, src.into());
+    let source_file = source_map.new_source_file(FileName::Anon.into(), src.into());
 
     let comments = Lrc::new(SingleThreadedComments::default());
     let module = {
@@ -40,8 +41,8 @@ fn emit(
     comments: Lrc<SingleThreadedComments>,
     program: &Module,
 ) -> String {
-    let mut src_map_buf = vec![];
-    let mut buf = vec![];
+    let mut src_map_buf = Vec::new();
+    let mut buf = std::vec::Vec::new();
     {
         let writer = Box::new(JsWriter::new(
             source_map.clone(),

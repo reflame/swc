@@ -1,4 +1,8 @@
-use std::{iter, mem, vec};
+use std::{
+    iter,
+    mem::{self, take},
+    vec,
+};
 
 use swc_atoms::JsWord;
 use swc_common::{
@@ -8,7 +12,8 @@ use swc_common::{
 use swc_ecma_ast::*;
 use swc_ecma_utils::{
     alias_ident_for, constructor::inject_after_super, find_pat_ids, is_literal, member_expr,
-    private_ident, quote_ident, quote_str, ExprFactory, QueryRef, RefRewriter,
+    private_ident, quote_ident, quote_str, stack_size::maybe_grow_default, ExprFactory, QueryRef,
+    RefRewriter,
 };
 use swc_ecma_visit::{as_folder, noop_visit_mut_type, Fold, VisitMut, VisitMutWith};
 
@@ -47,7 +52,8 @@ use crate::{
 /// [export and import require]: https://www.typescriptlang.org/docs/handbook/modules.html#export--and-import--require
 #[derive(Debug, Default)]
 pub(crate) struct Transform {
-    top_level_mark: Mark,
+    unresolved_mark: Mark,
+    unresolved_ctxt: SyntaxContext,
     top_level_ctxt: SyntaxContext,
 
     import_export_assign_config: TsImportExportAssignConfig,
@@ -63,13 +69,15 @@ pub(crate) struct Transform {
 }
 
 pub fn transform(
+    unresolved_mark: Mark,
     top_level_mark: Mark,
     import_export_assign_config: TsImportExportAssignConfig,
     ts_enum_is_mutable: bool,
     verbatim_module_syntax: bool,
 ) -> impl Fold + VisitMut {
     as_folder(Transform {
-        top_level_mark,
+        unresolved_mark,
+        unresolved_ctxt: SyntaxContext::empty().apply_mark(unresolved_mark),
         top_level_ctxt: SyntaxContext::empty().apply_mark(top_level_mark),
         import_export_assign_config,
         ts_enum_is_mutable,
@@ -108,6 +116,7 @@ impl VisitMut for Transform {
                         declare: false,
                         decls,
                         kind: VarDeclKind::Let,
+                        ..Default::default()
                     }
                     .into(),
                 );
@@ -148,12 +157,12 @@ impl VisitMut for Transform {
 
                     let (pat, expr, id) = match param {
                         TsParamPropParam::Ident(binding_ident) => {
-                            let id = binding_ident.id.to_id();
-                            let prop_name = PropName::Ident(binding_ident.id.clone());
-                            let value = binding_ident.id.clone().into();
+                            let id = binding_ident.to_id();
+                            let prop_name = PropName::Ident(IdentName::from(&*binding_ident));
+                            let value = Ident::from(&*binding_ident).into();
 
                             (
-                                Pat::Ident(binding_ident.clone()),
+                                binding_ident.clone().into(),
                                 assign_value_to_this_prop(prop_name, value),
                                 id,
                             )
@@ -166,11 +175,11 @@ impl VisitMut for Transform {
                             };
 
                             let id = binding_ident.id.to_id();
-                            let prop_name = PropName::Ident(binding_ident.id.clone());
+                            let prop_name = PropName::Ident(binding_ident.id.clone().into());
                             let value = binding_ident.id.clone().into();
 
                             (
-                                Pat::Assign(assign_pat.clone()),
+                                assign_pat.clone().into(),
                                 assign_value_to_this_prop(prop_name, value),
                                 id,
                             )
@@ -206,6 +215,7 @@ impl VisitMut for Transform {
                         declare: false,
                         decls,
                         kind: VarDeclKind::Let,
+                        ..Default::default()
                     }
                     .into(),
                 );
@@ -218,7 +228,7 @@ impl VisitMut for Transform {
 
     fn visit_mut_expr(&mut self, n: &mut Expr) {
         if !n.is_class() {
-            n.visit_mut_children_with(self);
+            maybe_grow_default(|| n.visit_mut_children_with(self));
             return;
         }
 
@@ -232,17 +242,18 @@ impl VisitMut for Transform {
                 .flat_map(|key| {
                     key.init.take().map(|init| {
                         let name = key.name.clone();
-                        init.make_assign_to(op!("="), name.into())
+                        init.make_assign_to(op!("="), name.try_into().unwrap())
                     })
                 })
                 .chain(iter::once(n.take()))
                 .map(Box::new)
                 .collect();
 
-            *n = Expr::Seq(SeqExpr {
+            *n = SeqExpr {
                 span: DUMMY_SP,
                 exprs,
-            });
+            }
+            .into();
 
             self.class_prop_decls.extend(decls);
         }
@@ -396,10 +407,11 @@ impl Transform {
         let expr =
             Self::wrap_enum_or_module_with_iife(&self.namespace_id, module_ident, body, is_export);
 
-        Stmt::Expr(ExprStmt {
+        ExprStmt {
             span,
             expr: expr.into(),
-        })
+        }
+        .into()
     }
 
     fn transform_ts_namespace_body(id: Id, body: TsNamespaceBody) -> BlockStmt {
@@ -430,11 +442,12 @@ impl Transform {
         BlockStmt {
             span,
             stmts: vec![expr.into_stmt()],
+            ..Default::default()
         }
     }
 
     fn transform_ts_module_block(id: Id, TsModuleBlock { span, body }: TsModuleBlock) -> BlockStmt {
-        let mut stmts = vec![];
+        let mut stmts = Vec::new();
         let mut mutable_export_ids = Default::default();
 
         for module_item in body {
@@ -460,7 +473,7 @@ impl Transform {
                             let stmt = if decl.is_export {
                                 // Foo.foo = bar.baz
                                 mutable_export_ids.insert(decl.id.to_id());
-                                let left = id.clone().make_member(decl.id.clone());
+                                let left = id.clone().make_member(decl.id.clone().into());
                                 let expr = init.make_assign_to(op!("="), left.into());
 
                                 ExprStmt {
@@ -475,7 +488,7 @@ impl Transform {
 
                                 var_decl.span = decl.span;
 
-                                Stmt::Decl(var_decl.into())
+                                var_decl.into()
                             };
 
                             stmts.push(stmt);
@@ -510,7 +523,11 @@ impl Transform {
             rewrite_export_bindings(&mut stmts, id, mutable_export_ids);
         }
 
-        BlockStmt { span, stmts }
+        BlockStmt {
+            span,
+            stmts,
+            ..Default::default()
+        }
     }
 }
 
@@ -527,7 +544,7 @@ impl Transform {
         debug_assert!(!declare);
 
         let mut default_init = 0.0.into();
-        let mut member_list = vec![];
+        let mut member_list = Vec::new();
         let mut local_record = if self.ts_enum_is_mutable && !is_const {
             Some(TsEnumRecord::default())
         } else {
@@ -544,7 +561,7 @@ impl Transform {
                 &id.to_id(),
                 &default_init,
                 record,
-                self.top_level_mark,
+                self.unresolved_mark,
             );
 
             default_init = value.inc();
@@ -587,14 +604,16 @@ impl Transform {
             BlockStmt {
                 span: DUMMY_SP,
                 stmts,
+                ..Default::default()
             },
             is_export,
         );
 
-        Stmt::Expr(ExprStmt {
+        ExprStmt {
             span,
             expr: expr.into(),
-        })
+        }
+        .into()
     }
 
     fn transform_ts_enum_member(
@@ -602,14 +621,14 @@ impl Transform {
         enum_id: &Id,
         default_init: &TsEnumRecordValue,
         record: &TsEnumRecord,
-        top_level_mark: Mark,
+        unresolved_mark: Mark,
     ) -> TsEnumRecordValue {
         member
             .init
             .map(|expr| {
                 EnumValueComputer {
                     enum_id,
-                    top_level_mark,
+                    unresolved_mark,
                     record,
                 }
                 .compute(expr)
@@ -657,7 +676,7 @@ impl Transform {
         match decl {
             Decl::Fn(FnDecl { ref ident, .. }) | Decl::Class(ClassDecl { ref ident, .. }) => {
                 let assign_stmt = Self::assign_prop(id, ident, span);
-                [Stmt::Decl(decl), assign_stmt].map(Option::Some)
+                [decl.into(), assign_stmt].map(Option::Some)
             }
             Decl::Var(var_decl) => [
                 Self::transform_export_var_decl_in_ts_module_block(
@@ -697,14 +716,14 @@ impl Transform {
         let expr = if expr_list.len() == 1 {
             expr_list[0].take()
         } else {
-            Expr::Seq(SeqExpr {
+            SeqExpr {
                 span: DUMMY_SP,
                 exprs: expr_list,
-            })
+            }
             .into()
         };
 
-        Some(Stmt::Expr(ExprStmt { span, expr }))
+        Some(ExprStmt { span, expr }.into())
     }
 }
 
@@ -746,11 +765,11 @@ impl Transform {
                                 definite: false,
                             });
 
-                            **expr = Expr::Ident(ident.clone());
+                            **expr = ident.clone().into();
 
                             PropName::Computed(ComputedPropName {
                                 span: *span,
-                                expr: Box::new(Expr::Ident(ident)),
+                                expr: ident.into(),
                             })
                         }
                         _ => key.clone(),
@@ -791,14 +810,14 @@ impl Transform {
             prop_list
                 .into_iter()
                 .map(Ident::from)
-                .map(PropName::Ident)
+                .map(PropName::from)
                 .map(|key| ClassProp {
                     span: DUMMY_SP,
                     key,
                     value: None,
                     type_ann: None,
                     is_static: false,
-                    decorators: vec![],
+                    decorators: Vec::new(),
                     accessibility: None,
                     is_abstract: false,
                     is_optional: false,
@@ -815,13 +834,15 @@ impl Transform {
 impl Transform {
     // Foo.x = x;
     fn assign_prop(id: &Id, prop: &Ident, span: Span) -> Stmt {
-        let expr = Expr::Ident(prop.clone())
-            .make_assign_to(op!("="), id.clone().make_member(prop.clone()).into());
+        let expr = prop
+            .clone()
+            .make_assign_to(op!("="), id.clone().make_member(prop.clone().into()).into());
 
-        Stmt::Expr(ExprStmt {
+        ExprStmt {
             span,
             expr: expr.into(),
-        })
+        }
+        .into()
     }
 
     fn add_var_for_enum_or_module_declaration(
@@ -849,6 +870,7 @@ impl Transform {
                 init: None,
                 definite: false,
             }],
+            ..Default::default()
         };
 
         Some(var_decl)
@@ -864,13 +886,13 @@ impl Transform {
         ident: Ident,
         is_export: bool,
     ) -> Expr {
-        let mut left: Expr = ident.clone().into();
-        let mut assign_left: Pat = ident.clone().into();
+        let mut left: SimpleAssignTarget = ident.clone().into();
+        let mut assign_left: SimpleAssignTarget = ident.clone().into();
 
         if is_export {
             if let Some(id) = container_name.clone() {
-                left = Ident::from(id).make_member(ident).into();
-                assign_left = Pat::Expr(Box::new(left.clone()))
+                left = Ident::from(id).make_member(ident.into()).into();
+                assign_left = left.clone();
             }
         }
 
@@ -886,7 +908,7 @@ impl Transform {
                     right: Box::new(
                         ObjectLit {
                             span: DUMMY_SP,
-                            props: vec![],
+                            props: Vec::new(),
                         }
                         .into(),
                     ),
@@ -910,7 +932,7 @@ impl Transform {
             init_arg = AssignExpr {
                 span: DUMMY_SP,
                 op: op!("="),
-                left: PatOrExpr::Pat(Box::new(Pat::Ident(ident.clone().into()))),
+                left: ident.clone().into(),
                 right: init_arg,
             }
             .into();
@@ -960,10 +982,10 @@ impl Transform {
         match n {
             TsEntityName::Ident(i) => i.into(),
             TsEntityName::TsQualifiedName(q) => {
-                let TsQualifiedName { left, right } = *q;
+                let TsQualifiedName { span, left, right } = *q;
 
                 MemberExpr {
-                    span: DUMMY_SP,
+                    span,
                     obj: Box::new(Self::ts_entity_name_to_expr(left)),
                     prop: MemberProp::Ident(right),
                 }
@@ -981,16 +1003,21 @@ impl Transform {
         // NOTE: This is not correct!
         // However, all unresolved_span are used in TsImportExportAssignConfig::Classic
         // which is deprecated and not used in real world.
-        let unresolved_span = DUMMY_SP.apply_mark(self.top_level_mark);
-        let cjs_require = quote_ident!(unresolved_span, "require");
-        let cjs_exports = quote_ident!(unresolved_span, "exports");
+        let unresolved_ctxt = self.unresolved_ctxt;
+        let cjs_require = quote_ident!(unresolved_ctxt, "require");
+        let cjs_exports = quote_ident!(unresolved_ctxt, "exports");
 
         let mut cjs_export_assign = None;
 
         for mut module_item in n.take() {
             match &mut module_item {
                 ModuleItem::ModuleDecl(ModuleDecl::TsImportEquals(decl)) if !decl.is_type_only => {
-                    debug_assert_eq!(decl.id.span.ctxt(), self.top_level_ctxt);
+                    debug_assert_ne!(
+                        decl.id.ctxt, self.unresolved_ctxt,
+                        "TsImportEquals has top-level context and it should not be identical to \
+                         the unresolved mark"
+                    );
+                    debug_assert_eq!(decl.id.ctxt, self.top_level_ctxt);
 
                     match &mut decl.module_ref {
                         // import foo = bar.baz
@@ -1001,14 +1028,14 @@ impl Transform {
                                 init.into_var_decl(VarDeclKind::Const, decl.id.take().into());
 
                             let module_item = if decl.is_export {
-                                ModuleDecl::ExportDecl(ExportDecl {
+                                ExportDecl {
                                     span: decl.span,
                                     decl: var_decl.into(),
-                                })
+                                }
                                 .into()
                             } else {
                                 var_decl.span = decl.span;
-                                ModuleItem::Stmt(var_decl.into())
+                                var_decl.into()
                             };
                             n.push(module_item);
                         }
@@ -1025,7 +1052,10 @@ impl Transform {
                                     if decl.is_export {
                                         init = init.make_assign_to(
                                             op!("="),
-                                            cjs_exports.clone().make_member(decl.id.clone()).into(),
+                                            cjs_exports
+                                                .clone()
+                                                .make_member(decl.id.clone().into())
+                                                .into(),
                                         )
                                     }
 
@@ -1035,7 +1065,7 @@ impl Transform {
                                         .into_var_decl(VarDeclKind::Const, decl.id.take().into());
                                     var_decl.span = decl.span;
 
-                                    n.push(ModuleItem::Stmt(var_decl.into()));
+                                    n.push(var_decl.into());
                                 }
                                 TsImportExportAssignConfig::Preserve => n.push(module_item),
                                 TsImportExportAssignConfig::NodeNext => {
@@ -1047,14 +1077,14 @@ impl Transform {
                                         .into_var_decl(VarDeclKind::Const, decl.id.take().into());
 
                                     let module_item = if decl.is_export {
-                                        ModuleDecl::ExportDecl(ExportDecl {
+                                        ExportDecl {
                                             span: decl.span,
                                             decl: var_decl.into(),
-                                        })
+                                        }
                                         .into()
                                     } else {
                                         var_decl.span = decl.span;
-                                        Stmt::Decl(var_decl.into()).into()
+                                        var_decl.into()
                                     };
                                     n.push(module_item);
                                 }
@@ -1089,7 +1119,7 @@ impl Transform {
         if should_inject {
             n.inject_after_directive([
                 // import { createRequire } from "module";
-                ModuleDecl::Import(ImportDecl {
+                ImportDecl {
                     span: DUMMY_SP,
                     specifiers: vec![ImportNamedSpecifier {
                         span: DUMMY_SP,
@@ -1101,24 +1131,22 @@ impl Transform {
                     src: Box::new(quote_str!("module")),
                     type_only: false,
                     with: None,
-                })
+                    phase: Default::default(),
+                }
                 .into(),
                 // const __require = _createRequire(import.meta.url);
-                Stmt::Decl(
-                    create_require
-                        .as_call(
-                            DUMMY_SP,
-                            vec![MetaPropExpr {
-                                span: DUMMY_SP,
-                                kind: MetaPropKind::ImportMeta,
-                            }
-                            .make_member(quote_ident!("url"))
-                            .as_arg()],
-                        )
-                        .into_var_decl(VarDeclKind::Const, require.clone().into())
-                        .into(),
-                )
-                .into(),
+                create_require
+                    .as_call(
+                        DUMMY_SP,
+                        vec![MetaPropExpr {
+                            span: DUMMY_SP,
+                            kind: MetaPropKind::ImportMeta,
+                        }
+                        .make_member(quote_ident!("url"))
+                        .as_arg()],
+                    )
+                    .into_var_decl(VarDeclKind::Const, require.clone().into())
+                    .into(),
             ]);
         }
 
@@ -1128,18 +1156,25 @@ impl Transform {
                     let TsExportAssignment { expr, span } = cjs_export_assign;
 
                     n.push(
-                        Stmt::Expr(ExprStmt {
+                        ExprStmt {
                             span,
-                            expr: Box::new(expr.make_assign_to(
-                                op!("="),
-                                member_expr!(unresolved_span, module.exports).into(),
-                            )),
-                        })
+                            expr: Box::new(
+                                expr.make_assign_to(
+                                    op!("="),
+                                    member_expr!(
+                                        unresolved_ctxt,
+                                        Default::default(),
+                                        module.exports
+                                    )
+                                    .into(),
+                                ),
+                            ),
+                        }
                         .into(),
                     );
                 }
                 TsImportExportAssignConfig::Preserve => {
-                    n.push(ModuleDecl::TsExportAssignment(cjs_export_assign).into());
+                    n.push(cjs_export_assign.into());
                 }
                 TsImportExportAssignConfig::NodeNext | TsImportExportAssignConfig::EsNext => {
                     // TS1203
@@ -1174,14 +1209,19 @@ impl VisitMut for ExportedPatRewriter {
 
         n.init = Some(
             right
-                .make_assign_to(op!("="), PatOrExpr::Pat(left.into()))
+                .make_assign_to(op!("="), left.try_into().unwrap())
                 .into(),
         );
     }
 
     fn visit_mut_pat(&mut self, n: &mut Pat) {
-        if let Pat::Ident(BindingIdent { id, .. }) = n {
-            *n = Pat::Expr(self.id.clone().make_member(id.take()).into());
+        if let Pat::Ident(bid) = n {
+            *n = Pat::Expr(
+                self.id
+                    .clone()
+                    .make_member(IdentName::from(take(bid)))
+                    .into(),
+            );
             return;
         }
 
@@ -1190,22 +1230,22 @@ impl VisitMut for ExportedPatRewriter {
 
     fn visit_mut_object_pat_prop(&mut self, n: &mut ObjectPatProp) {
         if let ObjectPatProp::Assign(AssignPatProp { key, value, .. }) = n {
-            let left = Box::new(Pat::Expr(self.id.clone().make_member(key.clone()).into()));
+            let left = Pat::Expr(self.id.clone().make_member(key.clone().into()).into());
 
             let value = if let Some(right) = value.take() {
-                Pat::Assign(AssignPat {
+                AssignPat {
                     span: DUMMY_SP,
-                    left,
+                    left: left.into(),
                     right,
-                })
+                }
                 .into()
             } else {
                 left
             };
 
             *n = ObjectPatProp::KeyValue(KeyValuePatProp {
-                key: PropName::Ident(key.clone()),
-                value,
+                key: PropName::Ident(key.clone().into()),
+                value: value.into(),
             });
             return;
         }
@@ -1220,14 +1260,28 @@ struct ExportQuery {
 }
 
 impl QueryRef for ExportQuery {
-    fn query_ref(&self, ident: &Ident) -> Option<Expr> {
-        self.export_id_list
-            .contains(&ident.to_id())
-            .then(|| self.namesapce_id.clone().make_member(ident.clone()).into())
+    fn query_ref(&self, ident: &Ident) -> Option<Box<Expr>> {
+        self.export_id_list.contains(&ident.to_id()).then(|| {
+            self.namesapce_id
+                .clone()
+                .make_member(ident.clone().into())
+                .into()
+        })
     }
 
-    fn query_lhs(&self, ident: &Ident) -> Option<Expr> {
+    fn query_lhs(&self, ident: &Ident) -> Option<Box<Expr>> {
         self.query_ref(ident)
+    }
+
+    fn query_jsx(&self, ident: &Ident) -> Option<JSXElementName> {
+        self.export_id_list.contains(&ident.to_id()).then(|| {
+            JSXMemberExpr {
+                span: DUMMY_SP,
+                obj: JSXObject::Ident(self.namesapce_id.clone().into()),
+                prop: ident.clone().into(),
+            }
+            .into()
+        })
     }
 
     fn should_fix_this(&self, _: &Ident) -> bool {

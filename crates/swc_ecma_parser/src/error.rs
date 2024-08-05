@@ -64,6 +64,7 @@ pub enum SyntaxError {
     ArrowNotAllowed,
     ExportNotAllowed,
     GetterSetterCannotBeReadonly,
+    GetterSetterCannotBeOptional,
     GetterParam,
     SetterParam,
 
@@ -147,6 +148,7 @@ pub enum SyntaxError {
     InvalidPat,
     InvalidExpr,
     NotSimpleAssign,
+    InvalidAssignTarget,
     ExpectedIdent,
     ExpectedSemi,
     DuplicateLabel(JsWord),
@@ -278,6 +280,7 @@ pub enum SyntaxError {
     TS2703,
     TS4112,
     TS8038,
+    TS18010,
     TSTypeAnnotationAfterAssign,
     TsNonNullAssertionNotAllowed(JsWord),
 
@@ -538,9 +541,9 @@ impl SyntaxError {
             SyntaxError::UsingDeclNotAllowedForForInLoop => {
                 "Using declaration is not allowed in for-in loop".into()
             }
-            SyntaxError::UsingDeclNotEnabled => {
-                "Using declaration is not enabled. Set jsc.parser.usingDecl to true".into()
-            }
+            SyntaxError::UsingDeclNotEnabled => "Using declaration is not enabled. Set \
+                                                 jsc.parser.explicitResourceManagement to true"
+                .into(),
             SyntaxError::InvalidNameInUsingDecl => {
                 "Using declaration only allows identifiers".into()
             }
@@ -560,6 +563,9 @@ impl SyntaxError {
             SyntaxError::ExportNotAllowed => "`export` is not allowed here".into(),
             SyntaxError::GetterSetterCannotBeReadonly => {
                 "A getter or a setter cannot be readonly".into()
+            }
+            SyntaxError::GetterSetterCannotBeOptional => {
+                "A getter or a setter cannot be optional".into()
             }
             SyntaxError::GetterParam => "A `get` accessor cannot have parameters".into(),
             SyntaxError::SetterParam => "A `set` accessor must have exactly one parameter".into(),
@@ -719,6 +725,9 @@ impl SyntaxError {
             SyntaxError::TS8038 => "Decorators may not appear after `export` or `export default` \
                                     if they also appear before `export`."
                 .into(),
+            SyntaxError::TS18010 => {
+                "An accessibility modifier cannot be used with a private identifier.".into()
+            }
             SyntaxError::TSTypeAnnotationAfterAssign => {
                 "Type annotations must come before default assignments".into()
             }
@@ -748,6 +757,7 @@ impl SyntaxError {
                                                     .mts or .cts extension. Add a trailing comma, \
                                                     as in `<T,>() => ...`."
                 .into(),
+            SyntaxError::InvalidAssignTarget => "Invalid assignment target".into(),
         }
     }
 }

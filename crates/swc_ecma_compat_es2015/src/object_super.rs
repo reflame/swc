@@ -5,7 +5,6 @@ use swc_ecma_ast::*;
 use swc_ecma_transforms_base::helper;
 use swc_ecma_utils::{
     alias_ident_for, is_rest_arguments, prepend_stmt, private_ident, quote_ident, ExprFactory,
-    IdentExt,
 };
 use swc_ecma_visit::{as_folder, noop_visit_mut_type, Fold, VisitMut, VisitMutWith};
 use swc_trace_macro::swc_trace;
@@ -22,7 +21,7 @@ pub fn object_super() -> impl Fold + VisitMut {
 
 #[swc_trace]
 impl VisitMut for ObjectSuper {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_module_items(&mut self, n: &mut Vec<ModuleItem>) {
         n.visit_mut_children_with(self);
@@ -44,6 +43,7 @@ impl VisitMut for ObjectSuper {
                             definite: false,
                         })
                         .collect(),
+                    ..Default::default()
                 }
                 .into(),
             );
@@ -58,7 +58,6 @@ impl VisitMut for ObjectSuper {
                 VarDecl {
                     span: DUMMY_SP,
                     kind: VarDeclKind::Var,
-                    declare: false,
                     decls: self
                         .extra_vars
                         .drain(..)
@@ -69,6 +68,7 @@ impl VisitMut for ObjectSuper {
                             definite: false,
                         })
                         .collect(),
+                    ..Default::default()
                 }
                 .into(),
             );
@@ -87,7 +87,7 @@ impl VisitMut for ObjectSuper {
                     if let Prop::Method(MethodProp { key: _, function }) = &mut **prop {
                         function.visit_mut_with(&mut replacer);
                         if !replacer.vars.is_empty() {
-                            if let Some(BlockStmt { span: _, stmts }) = &mut function.body {
+                            if let Some(BlockStmt { span: _, stmts, .. }) = &mut function.body {
                                 prepend_stmt(
                                     stmts,
                                     VarDecl {
@@ -104,6 +104,7 @@ impl VisitMut for ObjectSuper {
                                                 definite: false,
                                             })
                                             .collect(),
+                                        ..Default::default()
                                     }
                                     .into(),
                                 );
@@ -113,12 +114,13 @@ impl VisitMut for ObjectSuper {
                 }
             }
             if let Some(obj) = replacer.obj {
-                *expr = Expr::Assign(AssignExpr {
+                *expr = AssignExpr {
                     span: DUMMY_SP,
                     op: op!("="),
-                    left: PatOrExpr::Expr(Box::new(Expr::Ident(obj.clone()))),
+                    left: obj.clone().into(),
                     right: Box::new(expr.take()),
-                });
+                }
+                .into();
                 self.extra_vars.push(obj);
             }
         }
@@ -132,7 +134,7 @@ struct SuperReplacer {
 
 #[swc_trace]
 impl VisitMut for SuperReplacer {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_object_lit(&mut self, obj: &mut ObjectLit) {
         for prop_or_spread in obj.props.iter_mut() {
@@ -175,25 +177,27 @@ impl SuperReplacer {
     }
 
     fn get_proto(&mut self) -> ExprOrSpread {
-        Expr::Call(CallExpr {
+        CallExpr {
             span: DUMMY_SP,
             callee: helper!(get_prototype_of),
             args: vec![self.get_obj_ref().as_arg()],
-            type_args: Default::default(),
-        })
+
+            ..Default::default()
+        }
         .as_arg()
     }
 
     // .a -> "a"
     fn normalize_computed_expr(&mut self, prop: &mut SuperProp) -> Box<Expr> {
         match prop.take() {
-            SuperProp::Ident(Ident {
+            SuperProp::Ident(IdentName {
                 sym: value, span, ..
-            }) => Box::new(Expr::Lit(Lit::Str(Str {
+            }) => Lit::Str(Str {
                 raw: None,
                 value,
                 span,
-            }))),
+            })
+            .into(),
 
             SuperProp::Computed(ComputedPropName { expr, .. }) => expr,
         }
@@ -211,7 +215,6 @@ impl SuperReplacer {
         if let Expr::Call(CallExpr {
             callee: Callee::Expr(callee_expr),
             args,
-            type_args,
             ..
         }) = n
         {
@@ -226,7 +229,7 @@ impl SuperReplacer {
                     SuperReplacer::super_to_get_call(self.get_proto(), *super_token, prop.as_arg());
                 let this = ThisExpr { span: DUMMY_SP }.as_arg();
                 if args.len() == 1 && is_rest_arguments(&args[0]) {
-                    *n = Expr::Call(CallExpr {
+                    *n = CallExpr {
                         span: DUMMY_SP,
                         callee: MemberExpr {
                             span: DUMMY_SP,
@@ -241,12 +244,13 @@ impl SuperReplacer {
                                 arg
                             }))
                             .collect(),
-                        type_args: type_args.take(),
-                    });
+                        ..Default::default()
+                    }
+                    .into();
                     return;
                 }
 
-                *n = Expr::Call(CallExpr {
+                *n = CallExpr {
                     span: DUMMY_SP,
                     callee: MemberExpr {
                         span: DUMMY_SP,
@@ -255,8 +259,9 @@ impl SuperReplacer {
                     }
                     .as_callee(),
                     args: iter::once(this).chain(args.take()).collect(),
-                    type_args: type_args.take(),
-                });
+                    ..Default::default()
+                }
+                .into();
             }
         }
     }
@@ -293,33 +298,24 @@ impl SuperReplacer {
                 op,
                 right,
             }) => {
-                let mut left = left.take().normalize_expr();
-
-                if let PatOrExpr::Expr(expr) = &mut left {
-                    if let Expr::SuperProp(SuperPropExpr {
-                        obj: Super { span: super_token },
-                        prop,
-                        ..
-                    }) = &mut **expr
-                    {
-                        *n = self.super_to_set_call(
-                            *super_token,
-                            false,
-                            prop,
-                            *op,
-                            right.take(),
-                            false,
-                        );
-                        return;
-                    }
+                if let AssignTarget::Simple(SimpleAssignTarget::SuperProp(SuperPropExpr {
+                    obj: Super { span: super_token },
+                    prop,
+                    ..
+                })) = left
+                {
+                    *n =
+                        self.super_to_set_call(*super_token, false, prop, *op, right.take(), false);
+                    return;
                 }
                 left.visit_mut_children_with(self);
-                *n = Expr::Assign(AssignExpr {
+                *n = AssignExpr {
                     span: *span,
                     left: left.take(),
                     op: *op,
                     right: right.take(),
-                });
+                }
+                .into();
             }
             _ => {}
         }
@@ -348,12 +344,13 @@ impl SuperReplacer {
     }
 
     fn super_to_get_call(proto: ExprOrSpread, super_token: Span, prop: ExprOrSpread) -> Expr {
-        Expr::Call(CallExpr {
+        CallExpr {
             span: super_token,
             callee: helper!(get),
             args: vec![proto, prop, ThisExpr { span: super_token }.as_arg()],
-            type_args: Default::default(),
-        })
+            ..Default::default()
+        }
+        .into()
     }
 
     fn to_bin_expr(left: Box<Expr>, op: AssignOp, rhs: Box<Expr>) -> BinExpr {
@@ -371,7 +368,7 @@ impl SuperReplacer {
         prop: ExprOrSpread,
         rhs: ExprOrSpread,
     ) -> Expr {
-        Expr::Call(CallExpr {
+        CallExpr {
             span: super_token,
             callee: helper!(set),
             args: vec![
@@ -382,8 +379,9 @@ impl SuperReplacer {
                 // strict
                 true.as_arg(),
             ],
-            type_args: Default::default(),
-        })
+            ..Default::default()
+        }
+        .into()
     }
 
     fn super_to_set_call(
@@ -407,14 +405,15 @@ impl SuperReplacer {
                     self.get_proto(),
                     super_token,
                     if computed {
-                        let ref_ident = alias_ident_for(&rhs, "_ref").private();
+                        let ref_ident = alias_ident_for(&rhs, "_ref").into_private();
                         self.vars.push(ref_ident.clone());
-                        *prop = Expr::Assign(AssignExpr {
+                        *prop = AssignExpr {
                             span: DUMMY_SP,
-                            left: PatOrExpr::Pat(ref_ident.clone().into()),
+                            left: ref_ident.clone().into(),
                             op: op!("="),
                             right: prop.take(),
-                        });
+                        }
+                        .into();
                         ref_ident.as_arg()
                     } else {
                         prop.clone().as_arg()
@@ -426,20 +425,21 @@ impl SuperReplacer {
                             super_token,
                             prop.as_arg(),
                             SuperReplacer::to_bin_expr(
-                                Box::new(Expr::Unary(UnaryExpr {
+                                UnaryExpr {
                                     span: DUMMY_SP,
                                     op: op!(unary, "+"),
                                     arg: left,
-                                })),
+                                }
+                                .into(),
                                 op,
                                 rhs,
                             )
                             .as_arg(),
                         )
                     } else {
-                        let update_ident = alias_ident_for(&rhs, "_super").private();
+                        let update_ident = alias_ident_for(&rhs, "_super").into_private();
                         self.vars.push(update_ident.clone());
-                        Expr::Seq(SeqExpr {
+                        SeqExpr {
                             span: DUMMY_SP,
                             exprs: vec![
                                 Box::new(
@@ -450,9 +450,7 @@ impl SuperReplacer {
                                             Box::new(
                                                 AssignExpr {
                                                     span: DUMMY_SP,
-                                                    left: PatOrExpr::Pat(
-                                                        update_ident.clone().into(),
-                                                    ),
+                                                    left: update_ident.clone().into(),
                                                     op: op!("="),
                                                     right: Box::new(Expr::Unary(UnaryExpr {
                                                         span: DUMMY_SP,
@@ -470,7 +468,8 @@ impl SuperReplacer {
                                 ),
                                 Box::new(Expr::Ident(update_ident)),
                             ],
-                        })
+                        }
+                        .into()
                     }
                 } else {
                     self.call_set_helper(
@@ -486,7 +485,7 @@ impl SuperReplacer {
 #[cfg(test)]
 mod tests {
     use swc_common::{chain, Mark};
-    use swc_ecma_parser::{EsConfig, Syntax};
+    use swc_ecma_parser::{EsSyntax, Syntax};
     use swc_ecma_transforms_base::resolver;
     use swc_ecma_transforms_testing::test;
 
@@ -568,7 +567,7 @@ mod tests {
         }"
     );
     test!(
-        Syntax::Es(EsConfig {
+        Syntax::Es(EsSyntax {
             allow_super_outside_method: true,
             ..Default::default()
         }),

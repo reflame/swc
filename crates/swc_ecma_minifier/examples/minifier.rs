@@ -11,7 +11,10 @@ use swc_ecma_minifier::{
     option::{ExtraOptions, MangleOptions, MinifyOptions},
 };
 use swc_ecma_parser::parse_file_as_module;
-use swc_ecma_transforms_base::{fixer::fixer, resolver};
+use swc_ecma_transforms_base::{
+    fixer::{fixer, paren_remover},
+    resolver,
+};
 use swc_ecma_visit::FoldWith;
 
 fn main() {
@@ -31,12 +34,13 @@ fn main() {
                 Default::default(),
                 Default::default(),
                 None,
-                &mut vec![],
+                &mut Vec::new(),
             )
             .map_err(|err| {
                 err.into_diagnostic(&handler).emit();
             })
             .map(|module| module.fold_with(&mut resolver(unresolved_mark, top_level_mark, false)))
+            .map(|module| module.fold_with(&mut paren_remover(None)))
             .unwrap();
 
             let output = optimize(
@@ -72,7 +76,7 @@ fn main() {
 }
 
 fn print<N: swc_ecma_codegen::Node>(cm: Lrc<SourceMap>, nodes: &[N], minify: bool) -> String {
-    let mut buf = vec![];
+    let mut buf = Vec::new();
 
     {
         let mut emitter = swc_ecma_codegen::Emitter {

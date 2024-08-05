@@ -1,7 +1,7 @@
 use std::collections::BTreeSet;
 
 use quote::quote;
-use syn::visit::{self, Visit};
+use syn::visit::Visit;
 
 use super::*;
 
@@ -67,7 +67,7 @@ impl<'a> Derive<'a> {
                     _ => None,
                 })
                 .collect(),
-            fields: vec![],
+            fields: Vec::new(),
         };
 
         vis.visit_derive_input(self.input);

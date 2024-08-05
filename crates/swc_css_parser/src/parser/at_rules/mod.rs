@@ -31,9 +31,7 @@ where
                         if value.starts_with("--") {
                             ColorProfileName::DashedIdent(self.parse()?)
                         } else {
-                            let mut name: Ident = self.parse()?;
-
-                            name.value = name.value.to_ascii_lowercase();
+                            let name: Ident = self.parse()?;
 
                             ColorProfileName::Ident(name)
                         }
@@ -227,7 +225,7 @@ where
                 self.input.skip_ws();
 
                 if is!(self, Ident) {
-                    let mut name_list: Vec<LayerName> = vec![];
+                    let mut name_list: Vec<LayerName> = Vec::new();
 
                     name_list.push(self.parse()?);
 
@@ -254,7 +252,7 @@ where
                         Some(AtRulePrelude::LayerPrelude(LayerPrelude::NameList(
                             LayerNameList {
                                 name_list,
-                                span: Span::new(first.lo, last.hi, Default::default()),
+                                span: Span::new(first.lo, last.hi),
                             },
                         )))
                     };
@@ -421,6 +419,19 @@ where
 
                 Some(prelude)
             }
+
+            "value" => {
+                if self.config.css_modules {
+                    let span = self.input.cur_span();
+                    let _: ComponentValue = self.parse()?;
+
+                    self.errors.push(Error::new(span, ErrorKind::ValueAtRule));
+
+                    self.input.skip_ws();
+                }
+
+                return Err(Error::new(Default::default(), ErrorKind::Ignore));
+            }
             _ => {
                 return Err(Error::new(Default::default(), ErrorKind::Ignore));
             }
@@ -583,7 +594,7 @@ where
                                 }
                             };
 
-                            match self.parse_according_to_grammar(&locv, |parser| {
+                            let res = self.parse_according_to_grammar(&locv, |parser| {
                                 parser.input.skip_ws();
 
                                 let child = parser.parse()?;
@@ -604,7 +615,8 @@ where
                                 }
 
                                 Ok(keyframes_selectors)
-                            }) {
+                            });
+                            match res {
                                 Ok(keyframes_selectors) => {
                                     ComponentValue::KeyframeBlock(Box::new(KeyframeBlock {
                                         span: qualified_rule.span,
@@ -904,11 +916,10 @@ where
     fn parse(&mut self) -> PResult<KeyframeSelector> {
         match cur!(self) {
             tok!("ident") => {
-                let mut ident: Ident = self.parse()?;
+                let ident: Ident = self.parse()?;
+                let lower = ident.value.to_ascii_lowercase();
 
-                ident.value = ident.value.to_ascii_lowercase();
-
-                if ident.value != "from" && ident.value != "to" {
+                if lower != "from" && lower != "to" {
                     return Err(Error::new(
                         ident.span,
                         ErrorKind::Expected("'from' or 'to' idents"),
@@ -965,7 +976,7 @@ where
     fn parse(&mut self) -> PResult<SupportsCondition> {
         let start_pos = self.input.cur_span().lo;
         let mut last_pos;
-        let mut conditions = vec![];
+        let mut conditions = Vec::new();
 
         if is_case_insensitive_ident!(self, "not") {
             let not = self.parse()?;
@@ -1006,7 +1017,7 @@ where
         };
 
         Ok(SupportsCondition {
-            span: Span::new(start_pos, last_pos, Default::default()),
+            span: Span::new(start_pos, last_pos),
             conditions,
         })
     }
@@ -1020,9 +1031,7 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("not") => {
-                let mut ident: Ident = self.parse()?;
-
-                ident.value = ident.value.to_ascii_lowercase();
+                let ident: Ident = self.parse()?;
 
                 Some(ident)
             }
@@ -1054,9 +1063,7 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("and") => {
-                let mut ident: Ident = self.parse()?;
-
-                ident.value = ident.value.to_ascii_lowercase();
+                let ident: Ident = self.parse()?;
 
                 Some(ident)
             }
@@ -1088,9 +1095,7 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("or") => {
-                let mut ident: Ident = self.parse()?;
-
-                ident.value = ident.value.to_ascii_lowercase();
+                let ident: Ident = self.parse()?;
 
                 Some(ident)
             }
@@ -1349,7 +1354,7 @@ where
         };
 
         Ok(MediaQueryList {
-            span: Span::new(start_pos, last_pos, Default::default()),
+            span: Span::new(start_pos, last_pos),
             queries,
         })
     }
@@ -1401,7 +1406,7 @@ where
             };
 
             return Ok(MediaQuery {
-                span: Span::new(start_pos, end_pos, Default::default()),
+                span: Span::new(start_pos, end_pos),
                 modifier,
                 media_type,
                 keyword,
@@ -1416,7 +1421,7 @@ where
         let condition: MediaCondition = self.parse()?;
 
         Ok(MediaQuery {
-            span: Span::new(start_pos, condition.span.hi, Default::default()),
+            span: Span::new(start_pos, condition.span.hi),
             modifier: None,
             media_type: None,
             keyword: None,
@@ -1432,9 +1437,7 @@ where
     fn parse(&mut self) -> PResult<MediaType> {
         match cur!(self) {
             _ if !is_one_of_case_insensitive_ident!(self, "not", "and", "or", "only", "layer") => {
-                let mut name: Ident = self.parse()?;
-
-                name.value = name.value.to_ascii_lowercase();
+                let name: Ident = self.parse()?;
 
                 Ok(MediaType::Ident(name))
             }
@@ -1459,7 +1462,7 @@ where
     fn parse(&mut self) -> PResult<MediaCondition> {
         let start_pos = self.input.cur_span().lo;
         let mut last_pos;
-        let mut conditions = vec![];
+        let mut conditions = Vec::new();
 
         if is_case_insensitive_ident!(self, "not") {
             let not = self.parse()?;
@@ -1500,7 +1503,7 @@ where
         };
 
         Ok(MediaCondition {
-            span: Span::new(start_pos, last_pos, Default::default()),
+            span: Span::new(start_pos, last_pos),
             conditions,
         })
     }
@@ -1513,7 +1516,7 @@ where
     fn parse(&mut self) -> PResult<MediaConditionWithoutOr> {
         let start_pos = self.input.cur_span().lo;
         let mut last_pos;
-        let mut conditions = vec![];
+        let mut conditions = Vec::new();
 
         if is_case_insensitive_ident!(self, "not") {
             let not = self.parse()?;
@@ -1544,7 +1547,7 @@ where
         };
 
         Ok(MediaConditionWithoutOr {
-            span: Span::new(start_pos, last_pos, Default::default()),
+            span: Span::new(start_pos, last_pos),
             conditions,
         })
     }
@@ -1558,9 +1561,7 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("not") => {
-                let mut ident: Ident = self.parse()?;
-
-                ident.value = ident.value.to_ascii_lowercase();
+                let ident: Ident = self.parse()?;
 
                 Some(ident)
             }
@@ -1592,9 +1593,7 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("and") => {
-                let mut ident: Ident = self.parse()?;
-
-                ident.value = ident.value.to_ascii_lowercase();
+                let ident: Ident = self.parse()?;
 
                 Some(ident)
             }
@@ -1626,9 +1625,7 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("or") => {
-                let mut ident: Ident = self.parse()?;
-
-                ident.value = ident.value.to_ascii_lowercase();
+                let ident: Ident = self.parse()?;
 
                 Some(ident)
             }
@@ -1907,9 +1904,7 @@ where
                 Ok(MediaFeatureValue::Number(left))
             }
             tok!("ident") => {
-                let mut name: Ident = self.parse()?;
-
-                name.value = name.value.to_ascii_lowercase();
+                let name: Ident = self.parse()?;
 
                 Ok(MediaFeatureValue::Ident(name))
             }
@@ -1963,7 +1958,7 @@ where
         };
 
         Ok(PageSelectorList {
-            span: Span::new(start_pos, last_pos, Default::default()),
+            span: Span::new(start_pos, last_pos),
             selectors,
         })
     }
@@ -1983,7 +1978,7 @@ where
         };
 
         let pseudos = if is!(self, ":") {
-            let mut pseudos = vec![];
+            let mut pseudos = Vec::new();
 
             loop {
                 if !is!(self, ":") {
@@ -2036,9 +2031,7 @@ where
             Token::Ident { value, .. }
                 if matches_eq_ignore_ascii_case!(value, "left", "right", "first", "blank") =>
             {
-                let mut name: Ident = self.parse()?;
-
-                name.value = name.value.to_ascii_lowercase();
+                let name: Ident = self.parse()?;
 
                 name
             }
@@ -2065,7 +2058,7 @@ where
 {
     fn parse(&mut self) -> PResult<LayerName> {
         let start = self.input.cur_span().lo;
-        let mut name = vec![];
+        let mut name = Vec::new();
 
         while is!(self, Ident) {
             name.push(self.parse()?);
@@ -2100,7 +2093,7 @@ where
         let query: ContainerQuery = self.parse()?;
 
         Ok(ContainerCondition {
-            span: Span::new(start_pos, query.span.hi, Default::default()),
+            span: Span::new(start_pos, query.span.hi),
             name,
             query,
         })
@@ -2135,7 +2128,7 @@ where
         let start_pos = self.input.cur_span().lo;
         let mut last_pos;
 
-        let mut queries = vec![];
+        let mut queries = Vec::new();
 
         if is_case_insensitive_ident!(self, "not") {
             let not = self.parse()?;
@@ -2178,7 +2171,7 @@ where
         }
 
         Ok(ContainerQuery {
-            span: Span::new(start_pos, last_pos, Default::default()),
+            span: Span::new(start_pos, last_pos),
             queries,
         })
     }
@@ -2192,9 +2185,7 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("not") => {
-                let mut ident: Ident = self.parse()?;
-
-                ident.value = ident.value.to_ascii_lowercase();
+                let ident: Ident = self.parse()?;
 
                 Some(ident)
             }
@@ -2226,9 +2217,7 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("and") => {
-                let mut ident: Ident = self.parse()?;
-
-                ident.value = ident.value.to_ascii_lowercase();
+                let ident: Ident = self.parse()?;
 
                 Some(ident)
             }
@@ -2260,9 +2249,7 @@ where
         let span = self.input.cur_span();
         let keyword = match cur!(self) {
             Token::Ident { value, .. } if value.as_ref().eq_ignore_ascii_case("or") => {
-                let mut ident: Ident = self.parse()?;
-
-                ident.value = ident.value.to_ascii_lowercase();
+                let ident: Ident = self.parse()?;
 
                 Some(ident)
             }
@@ -2519,9 +2506,7 @@ where
                 Ok(SizeFeatureValue::Number(left))
             }
             tok!("ident") => {
-                let mut name: Ident = self.parse()?;
-
-                name.value = name.value.to_ascii_lowercase();
+                let name: Ident = self.parse()?;
 
                 Ok(SizeFeatureValue::Ident(name))
             }

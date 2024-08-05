@@ -4,7 +4,7 @@ use swc_common::{
     sync::Lrc,
     FileName, SourceMap,
 };
-use swc_ecma_ast::{Pat, *};
+use swc_ecma_ast::*;
 use swc_ecma_codegen::Emitter;
 use swc_ecma_parser::{error::Error, lexer::Lexer, Parser, StringInput, Syntax};
 use swc_ecma_utils::DropSpan;
@@ -53,7 +53,7 @@ impl<'a> Tester<'a> {
     {
         let fm = self
             .cm
-            .new_source_file(FileName::Real(file_name.into()), src.into());
+            .new_source_file(FileName::Real(file_name.into()).into(), src.into());
 
         let mut p = Parser::new(syntax, StringInput::from(&*fm), Some(&self.comments));
         let res = op(&mut p).map_err(|e| e.into_diagnostic(self.handler).emit());
@@ -93,7 +93,7 @@ impl<'a> Tester<'a> {
     ) -> Result<Module, ()> {
         let fm = self
             .cm
-            .new_source_file(FileName::Real(name.into()), src.into());
+            .new_source_file(FileName::Real(name.into()).into(), src.into());
 
         let module = {
             let mut p = Parser::new(syntax, StringInput::from(&*fm), Some(&self.comments));
@@ -110,16 +110,13 @@ impl<'a> Tester<'a> {
 
         let module = module
             .fold_with(&mut tr)
-            .fold_with(&mut as_folder(DropSpan {
-                preserve_ctxt: true,
-            }))
-            .fold_with(&mut Normalizer);
+            .fold_with(&mut as_folder(DropSpan {}));
 
         Ok(module)
     }
 
     pub fn print(&mut self, module: &Module) -> String {
-        let mut buf = vec![];
+        let mut buf = Vec::new();
         {
             let mut emitter = Emitter {
                 cfg: Default::default(),
@@ -146,23 +143,9 @@ pub(crate) struct HygieneVisualizer;
 impl Fold for HygieneVisualizer {
     fn fold_ident(&mut self, ident: Ident) -> Ident {
         Ident {
-            sym: format!("{}{:?}", ident.sym, ident.span.ctxt()).into(),
+            sym: format!("{}{:?}", ident.sym, ident.ctxt).into(),
             ..ident
         }
-    }
-}
-
-struct Normalizer;
-impl Fold for Normalizer {
-    fn fold_pat_or_expr(&mut self, mut n: PatOrExpr) -> PatOrExpr {
-        if let PatOrExpr::Pat(pat) = n {
-            if let Pat::Expr(expr) = *pat {
-                return PatOrExpr::Expr(expr);
-            }
-            n = PatOrExpr::Pat(pat);
-        }
-
-        n
     }
 }
 
@@ -179,9 +162,7 @@ pub(crate) fn test_transform<F, P>(
 {
     crate::tests::Tester::run(|tester| {
         let expected = tester.apply_transform(
-            as_folder(::swc_ecma_utils::DropSpan {
-                preserve_ctxt: true,
-            }),
+            as_folder(::swc_ecma_utils::DropSpan),
             "output.js",
             syntax,
             expected,
@@ -203,9 +184,7 @@ pub(crate) fn test_transform<F, P>(
         let actual = actual
             .fold_with(&mut hygiene_with_config(hygiene_config()))
             .fold_with(&mut fixer(None))
-            .fold_with(&mut as_folder(DropSpan {
-                preserve_ctxt: false,
-            }));
+            .fold_with(&mut as_folder(DropSpan));
 
         if actual == expected {
             return Ok(());

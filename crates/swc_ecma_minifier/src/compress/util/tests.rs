@@ -11,7 +11,7 @@ use crate::{compress::util::negate, debug::dump};
 
 struct UnwrapParen;
 impl VisitMut for UnwrapParen {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_expr(&mut self, e: &mut Expr) {
         e.visit_mut_children_with(self);
@@ -24,14 +24,14 @@ impl VisitMut for UnwrapParen {
 
 fn assert_negate_cost(s: &str, in_bool_ctx: bool, is_ret_val_ignored: bool, expected: isize) {
     testing::run_test2(false, |cm, handler| {
-        let fm = cm.new_source_file(FileName::Anon, s.to_string());
+        let fm = cm.new_source_file(FileName::Anon.into(), s.to_string());
 
         let mut e = parse_file_as_expr(
             &fm,
             Default::default(),
             swc_ecma_ast::EsVersion::latest(),
             None,
-            &mut vec![],
+            &mut Vec::new(),
         )
         .map_err(|e| {
             e.into_diagnostic(&handler).emit();

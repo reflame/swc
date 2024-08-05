@@ -1,4 +1,4 @@
-use swc_common::{util::take::Take, SyntaxContext, DUMMY_SP};
+use swc_common::{util::take::Take, DUMMY_SP};
 use swc_ecma_ast::*;
 use swc_ecma_utils::ExprFactory;
 
@@ -19,19 +19,14 @@ impl Pure<'_> {
             &*seq.exprs[seq.exprs.len() - 1],
         ) {
             // Check if lhs is same as `ident`.
-            match &assign.left {
-                PatOrExpr::Expr(_) => {}
-                PatOrExpr::Pat(left) => {
-                    if let Pat::Ident(left) = &**left {
-                        if left.id.sym == ident.sym && left.id.span.ctxt == ident.span.ctxt {
-                            report_change!(
-                                "drop_useless_ident_ref_in_seq: Dropping `{}` as it's useless",
-                                left.id
-                            );
-                            self.changed = true;
-                            seq.exprs.pop();
-                        }
-                    }
+            if let AssignTarget::Simple(SimpleAssignTarget::Ident(left)) = &assign.left {
+                if left.id.sym == ident.sym && left.id.ctxt == ident.ctxt {
+                    report_change!(
+                        "drop_useless_ident_ref_in_seq: Dropping `{}` as it's useless",
+                        left.id
+                    );
+                    self.changed = true;
+                    seq.exprs.pop();
                 }
             }
         }
@@ -57,17 +52,21 @@ impl Pure<'_> {
 
             let mut exprs = left.exprs.take();
 
-            exprs.push(Box::new(Expr::Bin(BinExpr {
-                span: left.span,
-                op: bin.op,
-                left: left_last,
-                right: bin.right.take(),
-            })));
+            exprs.push(
+                BinExpr {
+                    span: left.span,
+                    op: bin.op,
+                    left: left_last,
+                    right: bin.right.take(),
+                }
+                .into(),
+            );
 
-            *e = Expr::Seq(SeqExpr {
+            *e = SeqExpr {
                 span: bin.span,
                 exprs,
-            })
+            }
+            .into()
         }
     }
 
@@ -92,7 +91,7 @@ impl Pure<'_> {
         if let Expr::Seq(test) = &mut *cond.test {
             //
             if test.exprs.len() >= 2 {
-                let mut new_seq = vec![];
+                let mut new_seq = Vec::new();
                 new_seq.extend(test.exprs.drain(..test.exprs.len() - 1));
 
                 self.changed = true;
@@ -104,17 +103,21 @@ impl Pure<'_> {
                     alt: cond.alt.take(),
                 };
 
-                new_seq.push(Box::new(Expr::Assign(AssignExpr {
-                    span: assign.span,
-                    op: assign.op,
-                    left: assign.left.take(),
-                    right: Box::new(Expr::Cond(new_cond)),
-                })));
+                new_seq.push(
+                    AssignExpr {
+                        span: assign.span,
+                        op: assign.op,
+                        left: assign.left.take(),
+                        right: Box::new(new_cond.into()),
+                    }
+                    .into(),
+                );
 
-                *e = Expr::Seq(SeqExpr {
+                *e = SeqExpr {
                     span: assign.span,
                     exprs: new_seq,
-                });
+                }
+                .into();
             }
         }
     }
@@ -170,11 +173,11 @@ impl Pure<'_> {
                             continue;
                         }
 
-                        let span = a_assign.span.with_ctxt(SyntaxContext::empty());
+                        let span = a_assign.span;
 
                         let obj = Box::new(a.take());
 
-                        let new = Expr::Call(CallExpr {
+                        let new = CallExpr {
                             span,
                             callee: MemberExpr {
                                 span: DUMMY_SP,
@@ -183,8 +186,9 @@ impl Pure<'_> {
                             }
                             .as_callee(),
                             args: args.take(),
-                            type_args: Default::default(),
-                        });
+                            ..Default::default()
+                        }
+                        .into();
                         b.take();
                         self.changed = true;
                         report_change!(

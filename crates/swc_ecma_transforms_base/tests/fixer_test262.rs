@@ -10,7 +10,7 @@ use std::{
 };
 
 use swc_ecma_ast::*;
-use swc_ecma_codegen::{self, Emitter};
+use swc_ecma_codegen::Emitter;
 use swc_ecma_parser::{lexer::Lexer, Parser, Syntax};
 use swc_ecma_transforms_base::fixer::fixer;
 use swc_ecma_utils::DropSpan;
@@ -90,6 +90,11 @@ const IGNORED_PASS_TESTS: &[&str] = &[
     "59ae0289778b80cd.js",
     "a4d62a651f69d815.js",
     "c06df922631aeabc.js",
+    // Unicode 14 vs 15
+    "046a0bb70d03d0cc.js",
+    "08a39e4289b0c3f3.js",
+    "300a638d978d0f2c.js",
+    "44f31660bd715f05.js",
 ];
 
 fn add_test<F: FnOnce() -> Result<(), String> + Send + 'static>(
@@ -167,8 +172,8 @@ fn identity_tests(tests: &mut Vec<TestDescAndFn>) -> Result<(), io::Error> {
                         .load_file(&normal.join(file_name))
                         .expect("failed to load reference file");
 
-                    let mut wr = Buf(Arc::new(RwLock::new(vec![])));
-                    let mut wr2 = Buf(Arc::new(RwLock::new(vec![])));
+                    let mut wr = Buf(Arc::new(RwLock::new(Vec::new())));
+                    let mut wr2 = Buf(Arc::new(RwLock::new(Vec::new())));
 
                     let mut parser: Parser<Lexer> =
                         Parser::new(Syntax::default(), (&*src).into(), None);
@@ -293,10 +298,18 @@ impl Fold for Normalizer {
 
         expr.args = match expr.args {
             Some(..) => expr.args,
-            None => Some(vec![]),
+            None => Some(Vec::new()),
         };
 
         expr
+    }
+
+    fn fold_number(&mut self, n: Number) -> Number {
+        Number {
+            span: n.span,
+            value: n.value,
+            raw: None,
+        }
     }
 
     fn fold_prop_name(&mut self, name: PropName) -> PropName {
@@ -328,13 +341,28 @@ impl Fold for Normalizer {
         }
     }
 
+    fn fold_simple_assign_target(&mut self, n: SimpleAssignTarget) -> SimpleAssignTarget {
+        let n = n.fold_children_with(self);
+
+        match n {
+            SimpleAssignTarget::Paren(ParenExpr { mut expr, .. }) => {
+                while let Expr::Paren(ParenExpr { expr: e, .. }) = *expr {
+                    expr = e;
+                }
+
+                SimpleAssignTarget::try_from(expr).unwrap()
+            }
+            _ => n,
+        }
+    }
+
     fn fold_stmt(&mut self, stmt: Stmt) -> Stmt {
         let stmt = stmt.fold_children_with(self);
 
         match stmt {
             Stmt::Expr(ExprStmt { span, expr }) => match *expr {
-                Expr::Paren(ParenExpr { expr, .. }) => Stmt::Expr(ExprStmt { span, expr }),
-                _ => Stmt::Expr(ExprStmt { span, expr }),
+                Expr::Paren(ParenExpr { expr, .. }) => ExprStmt { span, expr }.into(),
+                _ => ExprStmt { span, expr }.into(),
             },
             _ => stmt,
         }
@@ -347,14 +375,6 @@ impl Fold for Normalizer {
             raw: None,
         }
     }
-
-    fn fold_number(&mut self, n: Number) -> Number {
-        Number {
-            span: n.span,
-            value: n.value,
-            raw: None,
-        }
-    }
 }
 
 fn normalize<T>(node: T) -> T
@@ -362,8 +382,6 @@ where
     T: FoldWith<Normalizer> + VisitMutWith<DropSpan>,
 {
     let mut node = node.fold_with(&mut Normalizer);
-    node.visit_mut_with(&mut DropSpan {
-        preserve_ctxt: false,
-    });
+    node.visit_mut_with(&mut DropSpan);
     node
 }

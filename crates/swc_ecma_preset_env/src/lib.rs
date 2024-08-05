@@ -6,10 +6,11 @@ use std::path::PathBuf;
 
 use preset_env_base::query::targets_to_versions;
 pub use preset_env_base::{query::Targets, version::Version, BrowserData, Versions};
-use regenerator::RegeneratorVisitor;
 use serde::Deserialize;
 use swc_atoms::{js_word, JsWord};
-use swc_common::{chain, collections::AHashSet, comments::Comments, FromVariant, Mark, DUMMY_SP};
+use swc_common::{
+    chain, collections::AHashSet, comments::Comments, FromVariant, Mark, SyntaxContext, DUMMY_SP,
+};
 use swc_ecma_ast::*;
 use swc_ecma_transforms::{
     compat::{
@@ -99,6 +100,7 @@ where
         let enable_sticky_regex = should_enable!(StickyRegex, false);
         let enable_unicode_property_regex = should_enable!(UnicodePropertyRegex, false);
         let enable_unicode_regex = should_enable!(UnicodeRegex, false);
+        let enable_unicode_sets_regex = should_enable!(UnicodeSetsRegex, false);
 
         let enable = enable_dot_all_regex
             || enable_named_capturing_groups_regex
@@ -119,6 +121,7 @@ where
                     sticky_regex: enable_sticky_regex,
                     unicode_property_regex: enable_unicode_property_regex,
                     unicode_regex: enable_unicode_regex,
+                    unicode_sets_regex: enable_unicode_sets_regex,
                 }),
                 enable
             )
@@ -247,11 +250,6 @@ where
     );
     let pass = add!(pass, ObjectSuper, es2015::object_super());
     let pass = add!(pass, FunctionName, es2015::function_name());
-    let pass = add!(pass, ArrowFunctions, es2015::arrow(unresolved_mark));
-    let pass = add!(pass, DuplicateKeys, es2015::duplicate_keys());
-    let pass = add!(pass, StickyRegex, es2015::sticky_regex());
-    // TODO:    InstanceOf,
-    let pass = add!(pass, TypeOfSymbol, es2015::typeof_symbol());
     let pass = add!(pass, ShorthandProperties, es2015::shorthand());
     let pass = add!(
         pass,
@@ -263,6 +261,11 @@ where
             unresolved_mark
         )
     );
+    let pass = add!(pass, ArrowFunctions, es2015::arrow(unresolved_mark));
+    let pass = add!(pass, DuplicateKeys, es2015::duplicate_keys());
+    let pass = add!(pass, StickyRegex, es2015::sticky_regex());
+    // TODO:    InstanceOf,
+    let pass = add!(pass, TypeOfSymbol, es2015::typeof_symbol());
     let pass = add!(
         pass,
         ForOf,
@@ -376,8 +379,7 @@ impl Polyfills {
         T: VisitWith<corejs2::UsageVisitor>
             + VisitWith<corejs3::UsageVisitor>
             + VisitMutWith<corejs2::Entry>
-            + VisitMutWith<corejs3::Entry>
-            + VisitWith<RegeneratorVisitor>,
+            + VisitMutWith<corejs3::Entry>,
     {
         let required = match self.mode {
             None => Default::default(),
@@ -457,9 +459,9 @@ impl VisitMut for Polyfills {
             prepend_stmts(
                 &mut m.body,
                 v.into_iter().map(|src| {
-                    ModuleItem::ModuleDecl(ModuleDecl::Import(ImportDecl {
+                    ImportDecl {
                         span,
-                        specifiers: vec![],
+                        specifiers: Vec::new(),
                         src: Str {
                             span: DUMMY_SP,
                             raw: None,
@@ -468,16 +470,18 @@ impl VisitMut for Polyfills {
                         .into(),
                         type_only: false,
                         with: None,
-                    }))
+                        phase: Default::default(),
+                    }
+                    .into()
                 }),
             );
         } else {
             prepend_stmts(
                 &mut m.body,
                 required.into_iter().map(|src| {
-                    ModuleItem::ModuleDecl(ModuleDecl::Import(ImportDecl {
+                    ImportDecl {
                         span,
-                        specifiers: vec![],
+                        specifiers: Vec::new(),
                         src: Str {
                             span: DUMMY_SP,
                             raw: None,
@@ -486,7 +490,9 @@ impl VisitMut for Polyfills {
                         .into(),
                         type_only: false,
                         with: None,
-                    }))
+                        phase: Default::default(),
+                    }
+                    .into()
                 }),
             );
         }
@@ -503,15 +509,15 @@ impl VisitMut for Polyfills {
             prepend_stmts(
                 &mut m.body,
                 v.into_iter().map(|src| {
-                    Stmt::Expr(ExprStmt {
+                    ExprStmt {
                         span: DUMMY_SP,
                         expr: CallExpr {
                             span,
-                            callee: Expr::Ident(Ident {
-                                span: DUMMY_SP.apply_mark(self.unresolved_mark),
+                            callee: Ident {
+                                ctxt: SyntaxContext::empty().apply_mark(self.unresolved_mark),
                                 sym: "require".into(),
-                                optional: false,
-                            })
+                                ..Default::default()
+                            }
                             .as_callee(),
                             args: vec![Str {
                                 span: DUMMY_SP,
@@ -520,24 +526,26 @@ impl VisitMut for Polyfills {
                             }
                             .as_arg()],
                             type_args: None,
+                            ..Default::default()
                         }
                         .into(),
-                    })
+                    }
+                    .into()
                 }),
             );
         } else {
             prepend_stmts(
                 &mut m.body,
                 required.into_iter().map(|src| {
-                    Stmt::Expr(ExprStmt {
+                    ExprStmt {
                         span: DUMMY_SP,
                         expr: CallExpr {
                             span,
-                            callee: Expr::Ident(Ident {
-                                span: DUMMY_SP.apply_mark(self.unresolved_mark),
+                            callee: Ident {
+                                ctxt: SyntaxContext::empty().apply_mark(self.unresolved_mark),
                                 sym: "require".into(),
-                                optional: false,
-                            })
+                                ..Default::default()
+                            }
                             .as_callee(),
                             args: vec![Str {
                                 span: DUMMY_SP,
@@ -545,10 +553,11 @@ impl VisitMut for Polyfills {
                                 raw: None,
                             }
                             .as_arg()],
-                            type_args: None,
+                            ..Default::default()
                         }
                         .into(),
-                    })
+                    }
+                    .into()
                 }),
             );
         }

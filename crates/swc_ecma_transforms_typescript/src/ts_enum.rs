@@ -3,7 +3,10 @@ use std::mem;
 use swc_atoms::JsWord;
 use swc_common::{collections::AHashMap, Mark, DUMMY_SP};
 use swc_ecma_ast::*;
-use swc_ecma_utils::{undefined, ExprFactory};
+use swc_ecma_utils::{
+    number::{JsNumber, ToJsString},
+    ExprFactory,
+};
 use swc_ecma_visit::{noop_visit_mut_type, VisitMut, VisitMutWith};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -17,7 +20,7 @@ pub(crate) type TsEnumRecord = AHashMap<TsEnumRecordKey, TsEnumRecordValue>;
 #[derive(Debug, Clone)]
 pub(crate) enum TsEnumRecordValue {
     String(JsWord),
-    Number(f64),
+    Number(JsNumber),
     Opaque(Box<Expr>),
     Void,
 }
@@ -25,7 +28,7 @@ pub(crate) enum TsEnumRecordValue {
 impl TsEnumRecordValue {
     pub fn inc(&self) -> Self {
         match self {
-            Self::Number(num) => Self::Number(num + 1.0),
+            Self::Number(num) => Self::Number((**num + 1.0).into()),
             _ => Self::Void,
         }
     }
@@ -49,35 +52,39 @@ impl TsEnumRecordValue {
 impl From<TsEnumRecordValue> for Expr {
     fn from(value: TsEnumRecordValue) -> Self {
         match value {
-            TsEnumRecordValue::String(string) => Expr::Lit(Lit::Str(string.into())),
-            TsEnumRecordValue::Number(num) if f64::is_nan(num) => Expr::Ident(Ident {
+            TsEnumRecordValue::String(string) => Lit::Str(string.into()).into(),
+            TsEnumRecordValue::Number(num) if num.is_nan() => Ident {
                 span: DUMMY_SP,
                 sym: "NaN".into(),
-                optional: false,
-            }),
-            TsEnumRecordValue::Number(num) if f64::is_infinite(num) => {
-                let value = Expr::Ident(Ident {
+                ..Default::default()
+            }
+            .into(),
+            TsEnumRecordValue::Number(num) if num.is_infinite() => {
+                let value: Expr = Ident {
                     span: DUMMY_SP,
                     sym: "Infinity".into(),
-                    optional: false,
-                });
+                    ..Default::default()
+                }
+                .into();
 
-                if f64::is_sign_negative(num) {
-                    Expr::Unary(UnaryExpr {
+                if num.is_sign_negative() {
+                    UnaryExpr {
                         span: DUMMY_SP,
                         op: op!(unary, "-"),
                         arg: value.into(),
-                    })
+                    }
+                    .into()
                 } else {
                     value
                 }
             }
-            TsEnumRecordValue::Number(num) => Expr::Lit(Lit::Num(Number {
+            TsEnumRecordValue::Number(num) => Lit::Num(Number {
                 span: DUMMY_SP,
-                value: num,
+                value: *num,
                 raw: None,
-            })),
-            TsEnumRecordValue::Void => *undefined(DUMMY_SP),
+            })
+            .into(),
+            TsEnumRecordValue::Void => *Expr::undefined(DUMMY_SP),
             TsEnumRecordValue::Opaque(expr) => *expr,
         }
     }
@@ -85,13 +92,13 @@ impl From<TsEnumRecordValue> for Expr {
 
 impl From<f64> for TsEnumRecordValue {
     fn from(value: f64) -> Self {
-        Self::Number(value)
+        Self::Number(value.into())
     }
 }
 
 pub(crate) struct EnumValueComputer<'a> {
     pub enum_id: &'a Id,
-    pub top_level_mark: Mark,
+    pub unresolved_mark: Mark,
     pub record: &'a TsEnumRecord,
 }
 
@@ -106,16 +113,16 @@ impl<'a> EnumValueComputer<'a> {
     fn compute_rec(&self, expr: Box<Expr>) -> TsEnumRecordValue {
         match *expr {
             Expr::Lit(Lit::Str(s)) => TsEnumRecordValue::String(s.value),
-            Expr::Lit(Lit::Num(n)) => TsEnumRecordValue::Number(n.value),
-            Expr::Ident(Ident { span, sym, .. })
-                if &*sym == "NaN" && span.ctxt.has_mark(self.top_level_mark) =>
+            Expr::Lit(Lit::Num(n)) => TsEnumRecordValue::Number(n.value.into()),
+            Expr::Ident(Ident { ctxt, sym, .. })
+                if &*sym == "NaN" && ctxt.has_mark(self.unresolved_mark) =>
             {
-                TsEnumRecordValue::Number(f64::NAN)
+                TsEnumRecordValue::Number(f64::NAN.into())
             }
-            Expr::Ident(Ident { span, sym, .. })
-                if &*sym == "Infinity" && span.ctxt.has_mark(self.top_level_mark) =>
+            Expr::Ident(Ident { ctxt, sym, .. })
+                if &*sym == "Infinity" && ctxt.has_mark(self.unresolved_mark) =>
             {
-                TsEnumRecordValue::Number(f64::INFINITY)
+                TsEnumRecordValue::Number(f64::INFINITY.into())
             }
             Expr::Ident(ref ident) => self
                 .record
@@ -156,7 +163,7 @@ impl<'a> EnumValueComputer<'a> {
         match expr.op {
             op!(unary, "+") => TsEnumRecordValue::Number(num),
             op!(unary, "-") => TsEnumRecordValue::Number(-num),
-            op!("~") => TsEnumRecordValue::Number(!(num as i32) as f64),
+            op!("~") => TsEnumRecordValue::Number(!num),
             _ => unreachable!(),
         }
     }
@@ -191,13 +198,13 @@ impl<'a> EnumValueComputer<'a> {
                     op!("*") => left * right,
                     op!("/") => left / right,
                     op!("%") => left % right,
-                    op!("**") => left.powf(right),
-                    op!("<<") => (left.trunc() as i32).wrapping_shl(right.trunc() as u32) as f64,
-                    op!(">>") => (left.trunc() as i32).wrapping_shr(right.trunc() as u32) as f64,
-                    op!(">>>") => (left.trunc() as u32).wrapping_shr(right.trunc() as u32) as f64,
-                    op!("|") => ((left.trunc() as i32) | (right.trunc() as i32)) as f64,
-                    op!("&") => ((left.trunc() as i32) & (right.trunc() as i32)) as f64,
-                    op!("^") => ((left.trunc() as i32) ^ (right.trunc() as i32)) as f64,
+                    op!("**") => left.pow(right),
+                    op!("<<") => left << right,
+                    op!(">>") => left >> right,
+                    op!(">>>") => left.unsigned_shr(right),
+                    op!("|") => left | right,
+                    op!("&") => left & right,
+                    op!("^") => left ^ right,
                     _ => unreachable!(),
                 };
 
@@ -207,14 +214,12 @@ impl<'a> EnumValueComputer<'a> {
                 TsEnumRecordValue::String(format!("{}{}", left, right).into())
             }
             (TsEnumRecordValue::Number(left), TsEnumRecordValue::String(right), op!(bin, "+")) => {
-                let mut buffer = ryu_js::Buffer::new();
-                let left = buffer.format(left);
+                let left = left.to_js_string();
 
                 TsEnumRecordValue::String(format!("{}{}", left, right).into())
             }
             (TsEnumRecordValue::String(left), TsEnumRecordValue::Number(right), op!(bin, "+")) => {
-                let mut buffer = ryu_js::Buffer::new();
-                let right = buffer.format(right);
+                let right = right.to_js_string();
 
                 TsEnumRecordValue::String(format!("{}{}", left, right).into())
             }
@@ -279,7 +284,7 @@ impl<'a> EnumValueComputer<'a> {
 
             let expr = match expr {
                 TsEnumRecordValue::String(s) => s.to_string(),
-                TsEnumRecordValue::Number(n) => ryu_js::Buffer::new().format(n).to_string(),
+                TsEnumRecordValue::Number(n) => n.to_js_string(),
                 _ => return opaque_expr,
             };
 
@@ -302,7 +307,11 @@ impl<'a> VisitMut for EnumValueComputer<'a> {
                     member_name: ident.sym.clone(),
                 }) =>
             {
-                *expr = self.enum_id.clone().make_member(ident.clone()).into();
+                *expr = self
+                    .enum_id
+                    .clone()
+                    .make_member(ident.clone().into())
+                    .into();
             }
             Expr::Member(MemberExpr {
                 obj,

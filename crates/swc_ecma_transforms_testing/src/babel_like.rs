@@ -131,9 +131,12 @@ impl<'a> BabelLikeFixtureTest<'a> {
             } else {
                 src
             };
-            let fm = cm.new_source_file(swc_common::FileName::Real(self.input.to_path_buf()), src);
+            let fm = cm.new_source_file(
+                swc_common::FileName::Real(self.input.to_path_buf()).into(),
+                src,
+            );
 
-            let mut errors = vec![];
+            let mut errors = Vec::new();
             let input_program = parse_file_as_program(
                 &fm,
                 self.syntax,
@@ -270,7 +273,7 @@ pub struct PassContext {
 
 impl PassContext {
     fn print(&mut self, program: &Program) -> String {
-        let mut buf = vec![];
+        let mut buf = Vec::new();
         {
             let mut emitter = Emitter {
                 cfg: Default::default(),

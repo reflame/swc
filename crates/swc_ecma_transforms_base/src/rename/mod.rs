@@ -1,9 +1,12 @@
+#![allow(unused_imports)]
+
 use std::borrow::Cow;
 
 use rustc_hash::FxHashSet;
 use swc_atoms::JsWord;
 use swc_common::collections::AHashMap;
 use swc_ecma_ast::*;
+use swc_ecma_utils::stack_size::maybe_grow_default;
 use swc_ecma_visit::{as_folder, noop_visit_mut_type, Fold, VisitMut, VisitMutWith, VisitWith};
 
 #[cfg(feature = "concurrent-renamer")]
@@ -130,7 +133,6 @@ where
     {
         let mut scope = {
             let mut v = Analyzer {
-                safari_10: self.config.safari_10,
                 has_eval,
                 top_level_mark: self.config.top_level_mark,
 
@@ -182,9 +184,7 @@ where
             );
         }
 
-        map.into_iter()
-            .map(|((s, ctxt), v)| ((s.into_inner(), ctxt), v))
-            .collect()
+        map
     }
 }
 
@@ -200,7 +200,9 @@ macro_rules! unit {
             } else {
                 let map = self.get_map(n, false, false, false);
 
-                n.visit_mut_with(&mut rename_with_config(&map, self.config.clone()));
+                if !map.is_empty() {
+                    n.visit_mut_with(&mut rename_with_config(&map, self.config.clone()));
+                }
             }
         }
     };
@@ -212,7 +214,9 @@ macro_rules! unit {
             } else {
                 let map = self.get_map(n, true, false, false);
 
-                n.visit_mut_with(&mut rename_with_config(&map, self.config.clone()));
+                if !map.is_empty() {
+                    n.visit_mut_with(&mut rename_with_config(&map, self.config.clone()));
+                }
             }
         }
     };
@@ -244,6 +248,24 @@ where
 
     unit!(visit_mut_class_decl, ClassDecl, true);
 
+    fn visit_mut_default_decl(&mut self, n: &mut DefaultDecl) {
+        match n {
+            DefaultDecl::Class(n) => {
+                n.visit_mut_children_with(self);
+            }
+            DefaultDecl::Fn(n) => {
+                n.visit_mut_children_with(self);
+            }
+            DefaultDecl::TsInterfaceDecl(n) => {
+                n.visit_mut_children_with(self);
+            }
+        }
+    }
+
+    fn visit_mut_expr(&mut self, n: &mut Expr) {
+        maybe_grow_default(|| n.visit_mut_children_with(self));
+    }
+
     fn visit_mut_module(&mut self, m: &mut Module) {
         self.preserved = self.renamer.preserved_ids_for_module(m);
 
@@ -270,7 +292,7 @@ where
         // 3. Per-unit renaming
         // 4. Top level renaming
         //
-        // This is because the the top level map may contain a mapping which conflicts
+        // This is because the top level map may contain a mapping which conflicts
         // with a map from one of the children.
         //
         // See https://github.com/swc-project/swc/pull/7615
@@ -278,7 +300,9 @@ where
             m.visit_mut_children_with(self);
         }
 
-        m.visit_mut_with(&mut rename_with_config(&map, self.config.clone()));
+        if !map.is_empty() {
+            m.visit_mut_with(&mut rename_with_config(&map, self.config.clone()));
+        }
     }
 
     fn visit_mut_script(&mut self, m: &mut Script) {
@@ -294,7 +318,9 @@ where
             m.visit_mut_children_with(self);
         }
 
-        m.visit_mut_with(&mut rename_with_config(&map, self.config.clone()));
+        if !map.is_empty() {
+            m.visit_mut_with(&mut rename_with_config(&map, self.config.clone()));
+        }
     }
 }
 

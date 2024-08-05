@@ -1,7 +1,7 @@
-use swc_common::{comments::SingleThreadedComments, BytePos};
+use swc_common::comments::SingleThreadedComments;
 
 use super::*;
-use crate::{test_parser, EsConfig, TsConfig};
+use crate::EsSyntax;
 
 fn program(src: &'static str) -> Program {
     test_parser(src, Default::default(), |p| p.parse_program())
@@ -24,7 +24,7 @@ fn assert_module_error(src: &'static str) -> Module {
         let program = p.parse_program()?;
 
         let errors = p.take_errors();
-        assert_ne!(errors, vec![]);
+        assert_ne!(errors, Vec::new());
 
         let module = program.expect_module();
 
@@ -185,7 +185,7 @@ fn issue_2264_1() {
     let _ = super::test_parser_comment(
         &c,
         s,
-        Syntax::Typescript(TsConfig {
+        Syntax::Typescript(TsSyntax {
             tsx: true,
             ..Default::default()
         }),
@@ -209,7 +209,7 @@ fn issue_2264_2() {
     let _ = super::test_parser_comment(
         &c,
         s,
-        Syntax::Es(EsConfig {
+        Syntax::Es(EsSyntax {
             jsx: true,
             ..Default::default()
         }),
@@ -228,7 +228,7 @@ fn issue_2264_3() {
     let _ = super::test_parser_comment(
         &c,
         s,
-        Syntax::Typescript(TsConfig {
+        Syntax::Typescript(TsSyntax {
             tsx: true,
             ..Default::default()
         }),
@@ -255,7 +255,7 @@ fn issue_2339_1() {
     let _ = super::test_parser_comment(
         &c,
         s,
-        Syntax::Typescript(TsConfig {
+        Syntax::Typescript(TsSyntax {
             tsx: true,
             ..Default::default()
         }),
@@ -274,8 +274,8 @@ fn issue_2853_1() {
         let program = p.parse_program()?;
 
         let errors = p.take_errors();
-        assert_eq!(errors, vec![]);
-        assert_eq!(errors, vec![]);
+        assert_eq!(errors, Vec::new());
+        assert_eq!(errors, Vec::new());
 
         Ok(program)
     });
@@ -287,7 +287,7 @@ fn issue_2853_2() {
         let program = p.parse_program()?;
 
         let errors = p.take_errors();
-        assert_eq!(errors, vec![]);
+        assert_eq!(errors, Vec::new());
 
         Ok(program)
     });
@@ -308,7 +308,6 @@ fn illegal_language_mode_directive1() {
                     Span {
                         lo: BytePos(21),
                         hi: BytePos(34),
-                        ctxt: swc_common::SyntaxContext::empty()
                     },
                     crate::parser::SyntaxError::IllegalLanguageModeDirective
                 )]
@@ -333,7 +332,6 @@ fn illegal_language_mode_directive2() {
                     Span {
                         lo: BytePos(22),
                         hi: BytePos(35),
-                        ctxt: swc_common::SyntaxContext::empty()
                     },
                     crate::parser::SyntaxError::IllegalLanguageModeDirective
                 )]

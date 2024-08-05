@@ -11,20 +11,28 @@ use swc_ecma_visit::{as_folder, Fold, VisitMut, VisitMutWith};
 pub use crate::config::*;
 use crate::{strip_import_export::StripImportExport, strip_type::StripType, transform::transform};
 
-pub fn typescript(config: Config, top_level_mark: Mark) -> impl Fold + VisitMut {
+pub fn typescript(
+    config: Config,
+    unresolved_mark: Mark,
+    top_level_mark: Mark,
+) -> impl Fold + VisitMut {
+    debug_assert_ne!(unresolved_mark, top_level_mark);
+
     as_folder(TypeScript {
         config,
+        unresolved_mark,
         top_level_mark,
         id_usage: Default::default(),
     })
 }
 
-pub fn strip(top_level_mark: Mark) -> impl Fold + VisitMut {
-    typescript(Config::default(), top_level_mark)
+pub fn strip(unresolved_mark: Mark, top_level_mark: Mark) -> impl Fold + VisitMut {
+    typescript(Config::default(), unresolved_mark, top_level_mark)
 }
 
 pub(crate) struct TypeScript {
     pub config: Config,
+    pub unresolved_mark: Mark,
     pub top_level_mark: Mark,
 
     id_usage: AHashSet<Id>,
@@ -44,6 +52,7 @@ impl VisitMut for TypeScript {
         n.visit_mut_with(&mut StripType::default());
 
         n.visit_mut_with(&mut transform(
+            self.unresolved_mark,
             self.top_level_mark,
             self.config.import_export_assign_config,
             self.config.ts_enum_is_mutable,
@@ -89,13 +98,13 @@ impl TypeScript {
             return;
         }
 
-        n.body.push(ModuleItem::ModuleDecl(
+        n.body.push(
             NamedExport {
                 span,
                 ..NamedExport::dummy()
             }
             .into(),
-        ));
+        );
     }
 }
 
@@ -104,6 +113,7 @@ pub fn tsx<C>(
     config: Config,
     tsx_config: TsxConfig,
     comments: C,
+    unresolved_mark: Mark,
     top_level_mark: Mark,
 ) -> impl Fold + VisitMut
 where
@@ -116,20 +126,19 @@ where
         comments,
         cm,
         top_level_mark,
+        unresolved_mark,
     })
 }
 
 /// Get an [Id] which will used by expression.
 ///
 /// For `React#1.createElement`, this returns `React#1`.
-fn id_for_jsx(e: &Expr) -> Id {
+fn id_for_jsx(e: &Expr) -> Option<Id> {
     match e {
-        Expr::Ident(i) => i.to_id(),
-        Expr::Member(MemberExpr { obj, .. }) => id_for_jsx(obj),
-        Expr::Lit(Lit::Null(..)) => ("null".into(), Default::default()),
-        _ => {
-            panic!("failed to determine top-level Id for jsx expression")
-        }
+        Expr::Ident(i) => Some(i.to_id()),
+        Expr::Member(MemberExpr { obj, .. }) => Some(id_for_jsx(obj)).flatten(),
+        Expr::Lit(Lit::Null(..)) => Some(("null".into(), Default::default())),
+        _ => None,
     }
 }
 
@@ -143,6 +152,7 @@ where
     comments: C,
     cm: Lrc<SourceMap>,
     top_level_mark: Mark,
+    unresolved_mark: Mark,
 }
 
 impl<C> VisitMut for TypeScriptReact<C>
@@ -175,8 +185,8 @@ where
                 self.top_level_mark,
             );
 
-            let pragma_id = id_for_jsx(&pragma);
-            let pragma_frag_id = id_for_jsx(&pragma_frag);
+            let pragma_id = id_for_jsx(&pragma).unwrap();
+            let pragma_frag_id = id_for_jsx(&pragma_frag).unwrap();
 
             self.id_usage.insert(pragma_id);
             self.id_usage.insert(pragma_frag_id);
@@ -199,13 +209,15 @@ where
             });
 
             if let Some(pragma) = pragma {
-                let pragma_id = id_for_jsx(&pragma);
-                self.id_usage.insert(pragma_id);
+                if let Some(pragma_id) = id_for_jsx(&pragma) {
+                    self.id_usage.insert(pragma_id);
+                }
             }
 
             if let Some(pragma_frag) = pragma_frag {
-                let pragma_frag_id = id_for_jsx(&pragma_frag);
-                self.id_usage.insert(pragma_frag_id);
+                if let Some(pragma_frag_id) = id_for_jsx(&pragma_frag) {
+                    self.id_usage.insert(pragma_frag_id);
+                }
             }
         }
     }
@@ -219,6 +231,7 @@ where
 
         n.visit_mut_with(&mut TypeScript {
             config: mem::take(&mut self.config),
+            unresolved_mark: self.unresolved_mark,
             top_level_mark: self.top_level_mark,
             id_usage: mem::take(&mut self.id_usage),
         });

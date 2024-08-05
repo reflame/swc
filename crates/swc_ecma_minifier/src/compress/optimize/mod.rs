@@ -1,3 +1,5 @@
+#![allow(clippy::collapsible_match)]
+
 use std::iter::once;
 
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -10,8 +12,7 @@ use swc_ecma_ast::*;
 use swc_ecma_transforms_optimization::debug_assert_valid;
 use swc_ecma_usage_analyzer::{analyzer::UsageAnalyzer, marks::Marks};
 use swc_ecma_utils::{
-    prepend_stmts, undefined, ExprCtx, ExprExt, ExprFactory, IsEmpty, ModuleItemLike, StmtLike,
-    Type, Value,
+    prepend_stmts, ExprCtx, ExprExt, ExprFactory, IsEmpty, ModuleItemLike, StmtLike, Type, Value,
 };
 use swc_ecma_visit::{noop_visit_mut_type, VisitMut, VisitMutWith, VisitWith};
 #[cfg(feature = "debug")]
@@ -31,7 +32,7 @@ use crate::{
     maybe_par,
     mode::Mode,
     option::{CompressOptions, MangleOptions},
-    program_data::ProgramData,
+    program_data::{ProgramData, VarUsageInfo},
     util::{
         contains_eval, contains_leaping_continue_with_label, make_number, ExprOptExt, ModuleItemExt,
     },
@@ -87,8 +88,6 @@ pub(super) fn optimizer<'a>(
         prepend_stmts: Default::default(),
         append_stmts: Default::default(),
         vars: Default::default(),
-        vars_for_prop_hoisting: Default::default(),
-        simple_props: Default::default(),
         typeofs: Default::default(),
         data,
         ctx,
@@ -103,9 +102,6 @@ pub(super) fn optimizer<'a>(
 /// This should not be modified directly. Use `.with_ctx()` instead.
 #[derive(Debug, Default, Clone, Copy)]
 struct Ctx {
-    /// See [crate::marks::Marks]
-    skip_standalone: bool,
-
     /// `true` if the [VarDecl] has const annotation.
     #[allow(dead_code)]
     has_const_ann: bool,
@@ -172,14 +168,16 @@ struct Ctx {
 
     in_with_stmt: bool,
 
+    in_param: bool,
+
     /// Current scope.
     scope: SyntaxContext,
 }
 
 impl Ctx {
     pub fn is_top_level_for_block_level_vars(self) -> bool {
-        if self.top_level {
-            return true;
+        if !self.top_level {
+            return false;
         }
 
         if self.in_fn_like || self.in_block {
@@ -207,10 +205,6 @@ struct Optimizer<'a> {
 
     vars: Vars,
 
-    /// Used for `hoist_props`.
-    vars_for_prop_hoisting: Box<FxHashMap<Id, Box<Expr>>>,
-    /// Used for `hoist_props`.
-    simple_props: Box<FxHashMap<(Id, JsWord), Box<Expr>>>,
     typeofs: Box<AHashMap<Id, JsWord>>,
     /// This information is created by analyzing identifier usages.
     ///
@@ -233,6 +227,9 @@ struct Vars {
     ///
     /// Used for inlining.
     lits: FxHashMap<Id, Box<Expr>>,
+
+    /// Used for `hoist_props`.
+    hoisted_props: Box<FxHashMap<(Id, JsWord), Ident>>,
 
     /// Literals which are cheap to clone, but not sure if we can inline without
     /// making output bigger.
@@ -270,6 +267,7 @@ impl Vars {
             || !self.lits.is_empty()
             || !self.lits_for_cmp.is_empty()
             || !self.lits_for_array_access.is_empty()
+            || !self.hoisted_props.is_empty()
             || !self.removed.is_empty()
         {
             let mut v = Finalizer {
@@ -277,6 +275,7 @@ impl Vars {
                 lits_for_cmp: &self.lits_for_cmp,
                 lits_for_array_access: &self.lits_for_array_access,
                 lits: &self.lits,
+                hoisted_props: &self.hoisted_props,
                 vars_to_remove: &self.removed,
                 changed: false,
             };
@@ -323,11 +322,11 @@ impl From<&Function> for FnMetadata {
 
 impl Optimizer<'_> {
     fn may_remove_ident(&self, id: &Ident) -> bool {
-        if self.ctx.is_exported {
+        if let Some(VarUsageInfo { exported: true, .. }) = self.data.vars.get(&id.clone().to_id()) {
             return false;
         }
 
-        if id.span.ctxt != self.marks.top_level_ctxt {
+        if id.ctxt != self.marks.top_level_ctxt {
             return true;
         }
 
@@ -339,11 +338,27 @@ impl Optimizer<'_> {
     }
 
     fn may_add_ident(&self) -> bool {
+        if self.ctx.in_top_level() && self.data.top.has_eval_call {
+            return false;
+        }
+
+        if self.data.scopes.get(&self.ctx.scope).unwrap().has_eval_call {
+            return false;
+        }
+
         if !self.ctx.in_top_level() {
             return true;
         }
 
         self.options.top_level()
+    }
+
+    fn ident_reserved(&self, sym: &JsWord) -> bool {
+        if let Some(MangleOptions { reserved, .. }) = self.mangle_options {
+            reserved.contains(sym)
+        } else {
+            false
+        }
     }
 
     fn handle_stmts(&mut self, stmts: &mut Vec<Stmt>, will_terminate: bool) {
@@ -424,8 +439,8 @@ impl Optimizer<'_> {
 
             let mut new = Vec::with_capacity(stmts.len() * 11 / 10);
             for (i, mut stmt) in stmts.take().into_iter().enumerate() {
-                // debug_assert_eq!(self.prepend_stmts, vec![]);
-                // debug_assert_eq!(self.append_stmts, vec![]);
+                // debug_assert_eq!(self.prepend_stmts, Vec::new());
+                // debug_assert_eq!(self.append_stmts, Vec::new());
 
                 if i < directive_count {
                     // Don't set in_strict for directive itself.
@@ -440,21 +455,21 @@ impl Optimizer<'_> {
                     stmt.visit_with(&mut AssertValid);
                 }
 
-                new.extend(self.prepend_stmts.drain(..).map(T::from_stmt));
+                new.extend(self.prepend_stmts.drain(..).map(T::from));
 
                 match stmt.try_into_stmt() {
-                    Ok(Stmt::Block(s)) if s.span.has_mark(self.marks.fake_block) => {
-                        new.extend(s.stmts.into_iter().map(T::from_stmt));
+                    Ok(Stmt::Block(s)) if s.ctxt.has_mark(self.marks.fake_block) => {
+                        new.extend(s.stmts.into_iter().map(T::from));
                     }
                     Ok(s) => {
-                        new.push(T::from_stmt(s));
+                        new.push(T::from(s));
                     }
                     Err(stmt) => {
                         new.push(stmt);
                     }
                 }
 
-                new.extend(self.append_stmts.drain(..).map(T::from_stmt));
+                new.extend(self.append_stmts.drain(..).map(T::from));
             }
             *stmts = new;
         }
@@ -501,11 +516,11 @@ impl Optimizer<'_> {
             stmts.visit_with(&mut AssertValid);
         }
 
-        // stmts.extend(self.append_stmts.drain(..).map(T::from_stmt));
+        // stmts.extend(self.append_stmts.drain(..).map(T::from));
 
         drop_invalid_stmts(stmts);
 
-        // debug_assert_eq!(self.prepend_stmts, vec![]);
+        // debug_assert_eq!(self.prepend_stmts, Vec::new());
         self.prepend_stmts = prepend_stmts;
         self.append_stmts = append_stmts;
     }
@@ -518,14 +533,8 @@ impl Optimizer<'_> {
 
         // TODO: Handle pure properties.
         let lhs = match &e.left {
-            PatOrExpr::Expr(e) => match &**e {
-                Expr::Ident(i) => i,
-                _ => return,
-            },
-            PatOrExpr::Pat(p) => match &**p {
-                Pat::Ident(i) => &i.id,
-                _ => return,
-            },
+            AssignTarget::Simple(SimpleAssignTarget::Ident(i)) => i,
+            _ => return,
         };
 
         // If left operand of a binary expression is not same as lhs, this method has
@@ -534,7 +543,7 @@ impl Optimizer<'_> {
             Expr::Bin(BinExpr {
                 left, op, right, ..
             }) => match &**left {
-                Expr::Ident(r) if lhs.sym == r.sym && lhs.span.ctxt == r.span.ctxt => (op, right),
+                Expr::Ident(r) if lhs.sym == r.sym && lhs.ctxt == r.ctxt => (op, right),
                 _ => return,
             },
             _ => return,
@@ -614,7 +623,7 @@ impl Optimizer<'_> {
     fn compress_undefined(&mut self, e: &mut Expr) {
         if let Expr::Ident(Ident { span, sym, .. }) = e {
             if &**sym == "undefined" {
-                *e = *undefined(*span);
+                *e = *Expr::undefined(*span);
             }
         }
     }
@@ -632,15 +641,17 @@ impl Optimizer<'_> {
             if let Lit::Bool(v) = lit {
                 self.changed = true;
                 report_change!("Compressing boolean literal");
-                *e = Expr::Unary(UnaryExpr {
+                *e = UnaryExpr {
                     span: v.span,
                     op: op!("!"),
-                    arg: Box::new(Expr::Lit(Lit::Num(Number {
+                    arg: Lit::Num(Number {
                         span: v.span,
                         value: if v.value { 0.0 } else { 1.0 },
                         raw: None,
-                    }))),
-                });
+                    })
+                    .into(),
+                }
+                .into();
             }
         }
     }
@@ -707,7 +718,7 @@ impl Optimizer<'_> {
                     .any(|m| m.as_static_block().iter().any(|s| !s.body.is_empty()))
                 {
                     // there's nothing we can do about it
-                    return Some(Expr::Class(cls.take()));
+                    return Some(cls.take().into());
                 }
 
                 let exprs: Vec<Box<Expr>> =
@@ -721,10 +732,13 @@ impl Optimizer<'_> {
                     return None;
                 }
 
-                return Some(Expr::Seq(SeqExpr {
-                    span: cls.class.span,
-                    exprs,
-                }));
+                return Some(
+                    SeqExpr {
+                        span: cls.class.span,
+                        exprs,
+                    }
+                    .into(),
+                );
             }
 
             Expr::Paren(e) => return self.ignore_return_value(&mut e.expr),
@@ -798,10 +812,13 @@ impl Optimizer<'_> {
 
                 self.changed = true;
                 report_change!("ignore_return_value: Compressing binary as seq");
-                return Some(Expr::Seq(SeqExpr {
-                    span,
-                    exprs: vec![Box::new(left.unwrap()), Box::new(right.unwrap())],
-                }));
+                return Some(
+                    SeqExpr {
+                        span,
+                        exprs: vec![Box::new(left.unwrap()), Box::new(right.unwrap())],
+                    }
+                    .into(),
+                );
             }
 
             // Pure calls can be removed
@@ -881,10 +898,13 @@ impl Optimizer<'_> {
                                         return None;
                                     }
 
-                                    return Some(Expr::Array(ArrayLit {
-                                        span: callee.span,
-                                        elems,
-                                    }));
+                                    return Some(
+                                        ArrayLit {
+                                            span: callee.span,
+                                            elems,
+                                        }
+                                        .into(),
+                                    );
                                 }
 
                                 let args = args
@@ -898,10 +918,13 @@ impl Optimizer<'_> {
                                     return None;
                                 }
 
-                                return Some(Expr::Seq(SeqExpr {
-                                    span: callee.span,
-                                    exprs: args,
-                                }));
+                                return Some(
+                                    SeqExpr {
+                                        span: callee.span,
+                                        exprs: args,
+                                    }
+                                    .into(),
+                                );
                             }
                         }
                     }
@@ -912,10 +935,10 @@ impl Optimizer<'_> {
 
             Expr::Assign(AssignExpr {
                 op, left, right, ..
-            }) if left.is_expr() && !op.may_short_circuit() => {
-                if let PatOrExpr::Expr(expr) = left {
-                    if let Expr::Member(m) = &**expr {
-                        if !expr.may_have_side_effects(&self.expr_ctx)
+            }) if left.is_simple() && !op.may_short_circuit() => {
+                if let AssignTarget::Simple(expr) = left {
+                    if let SimpleAssignTarget::Member(m) = expr {
+                        if !m.obj.may_have_side_effects(&self.expr_ctx)
                             && (m.obj.is_object()
                                 || m.obj.is_fn_expr()
                                 || m.obj.is_arrow()
@@ -944,22 +967,20 @@ impl Optimizer<'_> {
 
             Expr::Assign(AssignExpr {
                 op: op!("="),
-                left: PatOrExpr::Pat(pat),
+                left: AssignTarget::Simple(SimpleAssignTarget::Ident(i)),
                 right,
                 ..
             }) => {
-                if let Pat::Ident(i) = &mut **pat {
-                    let old = i.id.to_id();
-                    self.store_var_for_inlining(&mut i.id, right, true);
+                let old = i.id.to_id();
+                self.store_var_for_inlining(&mut i.id, right, true);
 
-                    if i.is_dummy() && self.options.unused {
-                        report_change!("inline: Removed variable ({}{:?})", old.0, old.1);
-                        self.vars.removed.insert(old);
-                    }
+                if i.is_dummy() && self.options.unused {
+                    report_change!("inline: Removed variable ({}{:?})", old.0, old.1);
+                    self.vars.removed.insert(old);
+                }
 
-                    if right.is_invalid() {
-                        return None;
-                    }
+                if right.is_invalid() {
+                    return None;
                 }
             }
 
@@ -1015,28 +1036,31 @@ impl Optimizer<'_> {
                     }) => true,
                     _ => false,
                 }) {
-                    return Some(Expr::Array(ArrayLit {
-                        elems: arr
-                            .elems
-                            .take()
-                            .into_iter()
-                            .flatten()
-                            .filter_map(|mut e| {
-                                if e.spread.is_some() {
-                                    return Some(e);
-                                }
+                    return Some(
+                        ArrayLit {
+                            elems: arr
+                                .elems
+                                .take()
+                                .into_iter()
+                                .flatten()
+                                .filter_map(|mut e| {
+                                    if e.spread.is_some() {
+                                        return Some(e);
+                                    }
 
-                                self.ignore_return_value(&mut e.expr)
-                                    .map(Box::new)
-                                    .map(|expr| ExprOrSpread { expr, spread: None })
-                            })
-                            .map(Some)
-                            .collect(),
-                        ..*arr
-                    }));
+                                    self.ignore_return_value(&mut e.expr)
+                                        .map(Box::new)
+                                        .map(|expr| ExprOrSpread { expr, spread: None })
+                                })
+                                .map(Some)
+                                .collect(),
+                            ..*arr
+                        }
+                        .into(),
+                    );
                 }
 
-                let mut exprs = vec![];
+                let mut exprs = Vec::new();
                 self.changed = true;
                 report_change!("ignore_return_value: Inverting an array literal");
                 exprs.extend(
@@ -1053,14 +1077,17 @@ impl Optimizer<'_> {
                     return None;
                 }
 
-                return Some(Expr::Seq(SeqExpr {
-                    span: arr.span,
-                    exprs,
-                }));
+                return Some(
+                    SeqExpr {
+                        span: arr.span,
+                        exprs,
+                    }
+                    .into(),
+                );
             }
 
             Expr::Object(obj) => {
-                let mut exprs = vec![];
+                let mut exprs = Vec::new();
                 self.changed = true;
                 report_change!("ignore_return_value: Inverting an object literal");
                 for prop in obj.props.take() {
@@ -1113,10 +1140,13 @@ impl Optimizer<'_> {
                     return None;
                 }
 
-                return Some(Expr::Seq(SeqExpr {
-                    span: obj.span,
-                    exprs,
-                }));
+                return Some(
+                    SeqExpr {
+                        span: obj.span,
+                        exprs,
+                    }
+                    .into(),
+                );
             }
 
             // Preserves negated iife
@@ -1167,10 +1197,11 @@ impl Optimizer<'_> {
                 let left = self.ignore_return_value(left).map(Box::new);
                 let right = self.ignore_return_value(right).map(Box::new);
 
-                let mut seq = Expr::Seq(SeqExpr {
+                let mut seq = SeqExpr {
                     span: *span,
                     exprs: left.into_iter().chain(right).collect(),
-                });
+                }
+                .into();
                 return self.ignore_return_value(&mut seq);
             }
 
@@ -1198,20 +1229,23 @@ impl Optimizer<'_> {
 
                 // TODO: Remove if test is side effect free.
 
-                return Some(Expr::Cond(CondExpr {
-                    span: cond.span,
-                    test: cond.test.take(),
-                    cons: cons.unwrap_or_else(|| {
-                        report_change!("ignore_return_value: Dropped `cons`");
-                        self.changed = true;
-                        undefined(cons_span)
-                    }),
-                    alt: alt.unwrap_or_else(|| {
-                        report_change!("ignore_return_value: Dropped `alt`");
-                        self.changed = true;
-                        undefined(alt_span)
-                    }),
-                }));
+                return Some(
+                    CondExpr {
+                        span: cond.span,
+                        test: cond.test.take(),
+                        cons: cons.unwrap_or_else(|| {
+                            report_change!("ignore_return_value: Dropped `cons`");
+                            self.changed = true;
+                            Expr::undefined(cons_span)
+                        }),
+                        alt: alt.unwrap_or_else(|| {
+                            report_change!("ignore_return_value: Dropped `alt`");
+                            self.changed = true;
+                            Expr::undefined(alt_span)
+                        }),
+                    }
+                    .into(),
+                );
             }
 
             Expr::Seq(seq) => {
@@ -1256,11 +1290,12 @@ impl Optimizer<'_> {
                         if let Some(last) = exprs.last_mut() {
                             report_change!("ignore_return_value: Shifting void");
                             self.changed = true;
-                            *last = Box::new(Expr::Unary(UnaryExpr {
+                            *last = UnaryExpr {
                                 span: DUMMY_SP,
                                 op: op!("void"),
                                 arg: last.take(),
-                            }));
+                            }
+                            .into();
                         }
                     }
 
@@ -1269,14 +1304,17 @@ impl Optimizer<'_> {
                         return None;
                     }
 
-                    return Some(Expr::Seq(SeqExpr {
-                        span: seq.span,
-                        exprs,
-                    }));
+                    return Some(
+                        SeqExpr {
+                            span: seq.span,
+                            exprs,
+                        }
+                        .into(),
+                    );
                 }
             }
 
-            Expr::Ident(id) if id.span.ctxt != self.expr_ctx.unresolved_ctxt => {
+            Expr::Ident(id) if id.ctxt != self.expr_ctx.unresolved_ctxt => {
                 report_change!("ignore_return_value: Dropping a declared ident {}", id);
                 self.changed = true;
                 return None;
@@ -1292,13 +1330,13 @@ impl Optimizer<'_> {
             Stmt::Block(bs) => {
                 if bs.stmts.is_empty() {
                     report_change!("Converting empty block to empty statement");
-                    *s = Stmt::Empty(EmptyStmt { span: DUMMY_SP });
+                    *s = EmptyStmt { span: DUMMY_SP }.into();
                     return;
                 }
 
                 // Remove nested blocks
                 if bs.stmts.len() == 1 {
-                    if bs.span.has_mark(self.marks.fake_block) {
+                    if bs.ctxt.has_mark(self.marks.fake_block) {
                         report_change!("Unwrapping a fake block");
                         *s = bs.stmts.take().into_iter().next().unwrap();
                         return;
@@ -1347,7 +1385,7 @@ impl Optimizer<'_> {
                         if block.stmts.is_empty() {
                             self.changed = true;
                             report_change!("optimizer: Removing empty block");
-                            *stmt = Stmt::Empty(EmptyStmt { span: DUMMY_SP });
+                            *stmt = EmptyStmt { span: DUMMY_SP }.into();
                             return;
                         }
                     }
@@ -1409,7 +1447,7 @@ impl Optimizer<'_> {
 
         match s {
             Stmt::Block(block) if block.stmts.is_empty() => {
-                *s = Stmt::Empty(EmptyStmt { span: block.span });
+                *s = EmptyStmt { span: block.span }.into();
             }
             Stmt::Block(block)
                 if block.stmts.len() == 1 && is_fine_for_if_cons(&block.stmts[0]) =>
@@ -1434,10 +1472,11 @@ impl Optimizer<'_> {
             if let Stmt::Expr(cons) = &mut *stmt.cons {
                 self.changed = true;
                 report_change!("Converting if statement to a form `test && cons`");
-                *s = Stmt::Expr(ExprStmt {
+                *s = ExprStmt {
                     span: stmt.span,
                     expr: Box::new(stmt.test.take().make_bin(op!("&&"), *cons.expr.take())),
-                });
+                }
+                .into();
             }
         }
     }
@@ -1458,15 +1497,24 @@ impl Optimizer<'_> {
 }
 
 impl VisitMut for Optimizer<'_> {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_mut_arrow_expr(&mut self, n: &mut ArrowExpr) {
+        self.drop_unused_arrow_params(&mut n.params);
+
         let prepend = self.prepend_stmts.take();
 
-        let ctx = self.ctx;
+        {
+            let ctx = Ctx {
+                in_param: true,
+                ..self.ctx
+            };
 
-        n.visit_mut_children_with(&mut *self.with_ctx(ctx));
+            n.params.visit_mut_with(&mut *self.with_ctx(ctx));
+        }
+
+        n.body.visit_mut_with(self);
 
         if !self.prepend_stmts.is_empty() {
             let mut stmts = self.prepend_stmts.take().take_stmts();
@@ -1478,13 +1526,17 @@ impl VisitMut for Optimizer<'_> {
                     self.changed = true;
                     report_change!("Converting a body of an arrow expression to BlockStmt");
 
-                    stmts.push(Stmt::Return(ReturnStmt {
-                        span: DUMMY_SP,
-                        arg: Some(v.take()),
-                    }));
+                    stmts.push(
+                        ReturnStmt {
+                            span: DUMMY_SP,
+                            arg: Some(v.take()),
+                        }
+                        .into(),
+                    );
                     n.body = Box::new(BlockStmtOrExpr::BlockStmt(BlockStmt {
                         span: DUMMY_SP,
                         stmts,
+                        ..Default::default()
                     }));
                 }
             }
@@ -1565,7 +1617,8 @@ impl VisitMut for Optimizer<'_> {
         let ctx = Ctx {
             top_level: false,
             in_block: true,
-            scope: n.span.ctxt,
+            scope: n.ctxt,
+            in_param: false,
             ..self.ctx
         };
         n.visit_mut_children_with(&mut *self.with_ctx(ctx));
@@ -1608,18 +1661,20 @@ impl VisitMut for Optimizer<'_> {
         if is_this_undefined {
             if let Callee::Expr(callee) = &mut e.callee {
                 if let Expr::Member(..) = &mut **callee {
-                    let zero = Box::new(Expr::Lit(Lit::Num(Number {
+                    let zero = Lit::Num(Number {
                         span: DUMMY_SP,
                         value: 0.0,
                         raw: None,
-                    })));
+                    })
+                    .into();
                     self.changed = true;
                     report_change!("injecting zero to preserve `this` in call");
 
-                    *callee = Box::new(Expr::Seq(SeqExpr {
+                    *callee = SeqExpr {
                         span: callee.span(),
                         exprs: vec![zero, callee.take()],
-                    }));
+                    }
+                    .into();
                 }
             }
         }
@@ -1663,6 +1718,7 @@ impl VisitMut for Optimizer<'_> {
         }
     }
 
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_mut_class_expr(&mut self, e: &mut ClassExpr) {
         if !self.options.keep_classnames {
             if e.ident.is_some() && !contains_eval(&e.class, true) {
@@ -1692,9 +1748,7 @@ impl VisitMut for Optimizer<'_> {
         match n {
             DefaultDecl::Class(_) => {}
             DefaultDecl::Fn(f) => {
-                if !self.options.keep_fargs && self.options.unused {
-                    self.drop_unused_params(&mut f.function.params);
-                }
+                self.drop_unused_params(&mut f.function.params);
             }
             DefaultDecl::TsInterfaceDecl(_) => {}
         }
@@ -1715,9 +1769,7 @@ impl VisitMut for Optimizer<'_> {
     #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_mut_export_decl(&mut self, n: &mut ExportDecl) {
         if let Decl::Fn(f) = &mut n.decl {
-            if !self.options.keep_fargs && self.options.unused {
-                self.drop_unused_params(&mut f.function.params);
-            }
+            self.drop_unused_params(&mut f.function.params);
         }
 
         let ctx = Ctx {
@@ -1765,7 +1817,9 @@ impl VisitMut for Optimizer<'_> {
 
         match e {
             Expr::Seq(seq) if seq.exprs.len() == 1 => {
+                let span = seq.span;
                 *e = *seq.exprs[0].take();
+                e.set_span(span);
             }
 
             Expr::Assign(AssignExpr {
@@ -1996,7 +2050,7 @@ impl VisitMut for Optimizer<'_> {
                     #[cfg(feature = "debug")]
                     dump_change_detail!("Removed {}", start);
 
-                    undefined(DUMMY_SP)
+                    Expr::undefined(DUMMY_SP)
                 });
             }
         } else {
@@ -2034,12 +2088,11 @@ impl VisitMut for Optimizer<'_> {
             .entry(f.ident.to_id())
             .or_insert_with(|| FnMetadata::from(&*f.function));
 
-        if !self.options.keep_fargs && self.options.unused {
-            self.drop_unused_params(&mut f.function.params);
-        }
+        self.drop_unused_params(&mut f.function.params);
 
         let ctx = Ctx {
             top_level: false,
+            in_fn_like: true,
             is_lhs_of_assign: false,
             is_exact_lhs_of_assign: false,
             ..self.ctx
@@ -2061,7 +2114,14 @@ impl VisitMut for Optimizer<'_> {
             }
         }
 
-        e.visit_mut_children_with(self);
+        let ctx = Ctx {
+            top_level: false,
+            in_fn_like: true,
+            is_lhs_of_assign: false,
+            is_exact_lhs_of_assign: false,
+            ..self.ctx
+        };
+        e.visit_mut_children_with(&mut *self.with_ctx(ctx));
     }
 
     #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
@@ -2131,21 +2191,12 @@ impl VisitMut for Optimizer<'_> {
     fn visit_mut_function(&mut self, n: &mut Function) {
         n.decorators.visit_mut_with(self);
 
-        let is_standalone = n.span.has_mark(self.marks.standalone);
-
-        // We don't dig into standalone function, as it does not share any variable with
-        // outer scope.
-        if self.ctx.skip_standalone && is_standalone {
-            return;
-        }
-
         let old_in_asm = self.ctx.in_asm;
 
         {
             let ctx = Ctx {
-                skip_standalone: self.ctx.skip_standalone || is_standalone,
                 in_fn_like: true,
-                scope: n.span.ctxt,
+                scope: n.ctxt,
                 top_level: false,
 
                 ..self.ctx
@@ -2223,7 +2274,7 @@ impl VisitMut for Optimizer<'_> {
         let ctx = Ctx {
             dont_use_prepend_nor_append: contains_leaping_continue_with_label(
                 &n.body,
-                n.label.to_id(),
+                n.label.sym.clone(),
             ),
             ..self.ctx
         };
@@ -2255,6 +2306,7 @@ impl VisitMut for Optimizer<'_> {
         }
     }
 
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_mut_module_item(&mut self, s: &mut ModuleItem) {
         s.visit_mut_children_with(self);
 
@@ -2269,8 +2321,13 @@ impl VisitMut for Optimizer<'_> {
         }
     }
 
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_mut_script(&mut self, s: &mut Script) {
-        s.visit_mut_children_with(self);
+        let ctx = Ctx {
+            top_level: true,
+            ..self.ctx
+        };
+        s.visit_mut_children_with(&mut *self.with_ctx(ctx));
 
         if self.vars.inline_with_multi_replacer(s) {
             self.changed = true;
@@ -2279,10 +2336,10 @@ impl VisitMut for Optimizer<'_> {
         drop_invalid_stmts(&mut s.body);
     }
 
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_mut_module_items(&mut self, stmts: &mut Vec<ModuleItem>) {
         let ctx = Ctx {
             top_level: true,
-            skip_standalone: true,
             ..self.ctx
         };
         self.with_ctx(ctx).handle_stmt_likes(stmts, true);
@@ -2354,6 +2411,7 @@ impl VisitMut for Optimizer<'_> {
     fn visit_mut_param(&mut self, n: &mut Param) {
         let ctx = Ctx {
             var_kind: None,
+            in_param: true,
             ..self.ctx
         };
         let mut o = self.with_ctx(ctx);
@@ -2374,12 +2432,12 @@ impl VisitMut for Optimizer<'_> {
 
         if let Prop::Shorthand(i) = n {
             if self.vars.has_pending_inline_for(&i.to_id()) {
-                let mut e = Box::new(Expr::Ident(i.clone()));
+                let mut e: Expr = i.clone().into();
                 e.visit_mut_with(self);
 
                 *n = Prop::KeyValue(KeyValueProp {
-                    key: PropName::Ident(i.clone()),
-                    value: e,
+                    key: PropName::Ident(i.clone().into()),
+                    value: Box::new(e),
                 });
             }
         }
@@ -2491,14 +2549,14 @@ impl VisitMut for Optimizer<'_> {
             match s {
                 // We use var decl with no declarator to indicate we dropped an decl.
                 Stmt::Decl(Decl::Var(v)) if v.decls.is_empty() => {
-                    *s = Stmt::Empty(EmptyStmt { span: DUMMY_SP });
+                    *s = EmptyStmt { span: DUMMY_SP }.into();
                     self.prepend_stmts = old_prepend;
                     self.append_stmts = old_append;
                     return;
                 }
                 Stmt::Expr(es) => {
                     if es.expr.is_invalid() {
-                        *s = Stmt::Empty(EmptyStmt { span: DUMMY_SP });
+                        *s = EmptyStmt { span: DUMMY_SP }.into();
                         self.prepend_stmts = old_prepend;
                         self.append_stmts = old_append;
                         return;
@@ -2565,8 +2623,9 @@ impl VisitMut for Optimizer<'_> {
             report_change!("Creating a fake block because of prepend or append");
 
             let span = s.span();
-            *s = Stmt::Block(BlockStmt {
-                span: span.apply_mark(self.marks.fake_block),
+            *s = BlockStmt {
+                span,
+                ctxt: SyntaxContext::empty().apply_mark(self.marks.fake_block),
                 stmts: self
                     .prepend_stmts
                     .take_stmts()
@@ -2579,7 +2638,8 @@ impl VisitMut for Optimizer<'_> {
                         _ => true,
                     })
                     .collect(),
-            });
+            }
+            .into();
 
             #[cfg(debug_assertions)]
             {
@@ -2607,7 +2667,7 @@ impl VisitMut for Optimizer<'_> {
 
         if let Stmt::Expr(ExprStmt { expr, .. }) = s {
             if is_pure_undefined(&self.expr_ctx, expr) {
-                *s = Stmt::Empty(EmptyStmt { span: DUMMY_SP });
+                *s = EmptyStmt { span: DUMMY_SP }.into();
                 return;
             }
 
@@ -2622,7 +2682,7 @@ impl VisitMut for Optimizer<'_> {
                 }
             {
                 report_change!("Removing 'use strict'");
-                *s = Stmt::Empty(EmptyStmt { span: DUMMY_SP });
+                *s = EmptyStmt { span: DUMMY_SP }.into();
                 return;
             }
 
@@ -2635,7 +2695,7 @@ impl VisitMut for Optimizer<'_> {
                     self.changed = true;
                     report_change!("unused: Dropping an expression without side effect");
                     dump_change_detail!("unused: Dropping \n{}\n", dump(&*expr, false));
-                    *s = Stmt::Empty(EmptyStmt { span: DUMMY_SP });
+                    *s = EmptyStmt { span: DUMMY_SP }.into();
                     return;
                 }
             }
@@ -2647,7 +2707,7 @@ impl VisitMut for Optimizer<'_> {
         match s {
             // We use var decl with no declarator to indicate we dropped an decl.
             Stmt::Decl(Decl::Var(v)) if v.decls.is_empty() => {
-                *s = Stmt::Empty(EmptyStmt { span: DUMMY_SP });
+                *s = EmptyStmt { span: DUMMY_SP }.into();
                 return;
             }
             _ => {}
@@ -2701,6 +2761,7 @@ impl VisitMut for Optimizer<'_> {
         debug_assert_valid(s);
     }
 
+    #[cfg_attr(feature = "debug", tracing::instrument(skip_all))]
     fn visit_mut_stmts(&mut self, stmts: &mut Vec<Stmt>) {
         // Skip if `use asm` exists.
         if maybe_par!(
@@ -2854,7 +2915,7 @@ impl VisitMut for Optimizer<'_> {
         {
             let ctx = Ctx {
                 is_update_arg: false,
-                has_const_ann: self.has_const_ann(n.span),
+                has_const_ann: self.has_const_ann(n.ctxt),
                 var_kind: Some(n.kind),
                 ..self.ctx
             };
@@ -2903,12 +2964,11 @@ impl VisitMut for Optimizer<'_> {
                 var.init = None
             }
 
-            if id.is_dummy() {
+            // Dummy check.
+            if id.sym.is_empty() {
                 var.name = Pat::dummy();
             }
         };
-
-        self.store_var_for_prop_hoisting(var);
 
         self.drop_unused_properties(var);
 
@@ -2923,10 +2983,38 @@ impl VisitMut for Optimizer<'_> {
                 return false;
             }
 
-            var.visit_mut_with(self);
+            true
+        });
 
+        {
+            // We loop with index to avoid borrow checker issue.
+            // We use splice so we cannot use for _ in vars
+            let mut idx = 0;
+
+            while idx < vars.len() {
+                let var = &mut vars[idx];
+                var.visit_mut_with(self);
+
+                // The varaible is dropped.
+                if var.name.is_invalid() {
+                    vars.remove(idx);
+                    continue;
+                }
+
+                let new = self.hoist_props_of_var(var);
+
+                if let Some(new) = new {
+                    let len = new.len();
+                    vars.splice(idx..=idx, new);
+                    idx += len;
+                } else {
+                    idx += 1;
+                }
+            }
+        }
+
+        vars.retain_mut(|var| {
             if var.name.is_invalid() {
-                // It will be inlined.
                 self.changed = true;
                 return false;
             }
@@ -2950,11 +3038,14 @@ impl VisitMut for Optimizer<'_> {
             }
 
             let mut can_prepend = true;
-            let mut side_effects = vec![];
+            let mut side_effects = Vec::new();
 
             for v in vars.iter_mut() {
                 let mut storage = None;
                 self.drop_unused_var_declarator(v, &mut storage);
+                if let Some(expr) = &mut storage {
+                    expr.visit_mut_with(self);
+                }
                 side_effects.extend(storage);
 
                 // Dropped. Side effects of the initializer is stored in `side_effects`.
@@ -2980,17 +3071,21 @@ impl VisitMut for Optimizer<'_> {
                 if can_prepend {
                     can_prepend = false;
 
-                    self.prepend_stmts.push(Stmt::Expr(ExprStmt {
-                        span: DUMMY_SP,
-                        expr: if side_effects.len() == 1 {
-                            side_effects.remove(0)
-                        } else {
-                            Box::new(Expr::Seq(SeqExpr {
-                                span: DUMMY_SP,
-                                exprs: side_effects.take(),
-                            }))
-                        },
-                    }));
+                    self.prepend_stmts.push(
+                        ExprStmt {
+                            span: DUMMY_SP,
+                            expr: if side_effects.len() == 1 {
+                                side_effects.remove(0)
+                            } else {
+                                SeqExpr {
+                                    span: DUMMY_SP,
+                                    exprs: side_effects.take(),
+                                }
+                                .into()
+                            },
+                        }
+                        .into(),
+                    );
                 } else {
                     // We prepend side effects to the initializer.
 
@@ -3005,17 +3100,21 @@ impl VisitMut for Optimizer<'_> {
 
             // We append side effects.
             if !side_effects.is_empty() {
-                self.append_stmts.push(Stmt::Expr(ExprStmt {
-                    span: DUMMY_SP,
-                    expr: if side_effects.len() == 1 {
-                        side_effects.remove(0)
-                    } else {
-                        Box::new(Expr::Seq(SeqExpr {
-                            span: DUMMY_SP,
-                            exprs: side_effects,
-                        }))
-                    },
-                }));
+                self.append_stmts.push(
+                    ExprStmt {
+                        span: DUMMY_SP,
+                        expr: if side_effects.len() == 1 {
+                            side_effects.remove(0)
+                        } else {
+                            SeqExpr {
+                                span: DUMMY_SP,
+                                exprs: side_effects,
+                            }
+                            .into()
+                        },
+                    }
+                    .into(),
+                );
             }
 
             vars.retain_mut(|var| {
@@ -3102,21 +3201,18 @@ fn is_callee_this_aware(callee: &Expr) -> bool {
     true
 }
 
-fn is_expr_access_to_arguments(l: &Expr) -> bool {
+fn is_expr_access_to_arguments(l: &SimpleAssignTarget) -> bool {
     match l {
-        Expr::Member(MemberExpr { obj, .. }) => {
+        SimpleAssignTarget::Member(MemberExpr { obj, .. }) => {
             matches!(&**obj, Expr::Ident(Ident { sym, .. }) if (&**sym == "arguments"))
         }
         _ => false,
     }
 }
 
-fn is_left_access_to_arguments(l: &PatOrExpr) -> bool {
+fn is_left_access_to_arguments(l: &AssignTarget) -> bool {
     match l {
-        PatOrExpr::Expr(e) => is_expr_access_to_arguments(e),
-        PatOrExpr::Pat(pat) => match &**pat {
-            Pat::Expr(e) => is_expr_access_to_arguments(e),
-            _ => false,
-        },
+        AssignTarget::Simple(e) => is_expr_access_to_arguments(e),
+        _ => false,
     }
 }

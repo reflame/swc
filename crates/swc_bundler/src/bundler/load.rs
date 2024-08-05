@@ -4,7 +4,10 @@ use anyhow::{Context, Error};
 use is_macro::Is;
 #[cfg(feature = "rayon")]
 use rayon::iter::ParallelIterator;
-use swc_common::{sync::Lrc, FileName, SourceFile, SyntaxContext};
+use swc_common::{
+    sync::{Lock, Lrc},
+    FileName, SourceFile, SyntaxContext,
+};
 use swc_ecma_ast::{
     CallExpr, Callee, Expr, Ident, ImportDecl, ImportSpecifier, MemberExpr, MemberProp, Module,
     ModuleDecl, ModuleExportName, Str, SuperProp, SuperPropExpr,
@@ -38,7 +41,7 @@ pub(crate) struct TransformedModule {
     /// Used helpers
     pub helpers: Lrc<Helpers>,
 
-    pub swc_helpers: Lrc<swc_ecma_transforms_base::helpers::Helpers>,
+    pub swc_helpers: Lrc<Lock<swc_ecma_transforms_base::helpers::HelperData>>,
 
     local_ctxt: SyntaxContext,
     export_ctxt: SyntaxContext,
@@ -208,7 +211,7 @@ where
                     exports: Lrc::new(exports),
                     is_es6,
                     helpers: Default::default(),
-                    swc_helpers: Lrc::new(data.helpers),
+                    swc_helpers: Lrc::new(Lock::new(data.helpers.data())),
                     local_ctxt: SyntaxContext::empty().apply_mark(local_mark),
                     export_ctxt: SyntaxContext::empty().apply_mark(export_mark),
                 },
@@ -225,7 +228,7 @@ where
     ) -> Result<(Exports, Vec<(Source, Lrc<FileName>)>), Error> {
         self.run(|| {
             tracing::trace!("resolve_exports({})", base);
-            let mut files = vec![];
+            let mut files = Vec::new();
 
             let mut exports = Exports::default();
 
@@ -282,7 +285,7 @@ where
     ) -> Result<(Imports, Vec<(Source, Lrc<FileName>)>), Error> {
         self.run(|| {
             tracing::trace!("resolve_imports({})", base);
-            let mut files = vec![];
+            let mut files = Vec::new();
 
             let mut merged = Imports::default();
             let RawImports {
@@ -300,10 +303,11 @@ where
                     (
                         ImportDecl {
                             span: src.span,
-                            specifiers: vec![],
+                            specifiers: Vec::new(),
                             src: Box::new(src),
                             type_only: false,
                             with: None,
+                            phase: Default::default(),
                         },
                         true,
                         false,
@@ -345,7 +349,7 @@ where
                 files.push((src.clone(), file_name));
 
                 // TODO: Handle rename
-                let mut specifiers = vec![];
+                let mut specifiers = Vec::new();
                 for s in decl.specifiers {
                     match s {
                         ImportSpecifier::Named(s) => {
@@ -363,7 +367,7 @@ where
                         }
                         ImportSpecifier::Default(s) => specifiers.push(Specifier::Specific {
                             local: s.local.into(),
-                            alias: Some(Id::new("default".into(), s.span.ctxt())),
+                            alias: Some(Id::new("default".into(), SyntaxContext::empty())),
                         }),
                         ImportSpecifier::Namespace(s) => {
                             specifiers.push(Specifier::Namespace {
@@ -485,9 +489,9 @@ impl Visit for Es6ModuleDetector {
 #[derive(Clone, Copy)]
 struct ClearMark;
 impl VisitMut for ClearMark {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_ident(&mut self, ident: &mut Ident) {
-        ident.span.ctxt = SyntaxContext::empty();
+        ident.ctxt = SyntaxContext::empty();
     }
 }

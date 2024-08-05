@@ -5,7 +5,7 @@ use std::{
 
 use rustc_hash::{FxHashMap, FxHashSet};
 use swc_atoms::JsWord;
-use swc_common::{collections::AHashSet, util::take::Take, Mark, Span, DUMMY_SP};
+use swc_common::{collections::AHashSet, util::take::Take, Mark, SyntaxContext, DUMMY_SP};
 use swc_ecma_ast::*;
 use swc_ecma_transforms_base::perf::{Parallel, ParallelExt};
 use swc_ecma_utils::{collect_decls, ExprCtx, ExprExt, Remapper};
@@ -30,7 +30,7 @@ impl<'b> Optimizer<'b> {
                 }
 
                 if seq.exprs.iter().any(|v| v.is_seq()) {
-                    let mut new = vec![];
+                    let mut new = Vec::new();
 
                     for e in seq.exprs.take() {
                         match *e {
@@ -68,13 +68,13 @@ impl<'b> Optimizer<'b> {
     }
 
     /// Check for `/** @const */`.
-    pub(super) fn has_const_ann(&self, span: Span) -> bool {
-        span.has_mark(self.marks.const_ann)
+    pub(super) fn has_const_ann(&self, ctxt: SyntaxContext) -> bool {
+        ctxt.has_mark(self.marks.const_ann)
     }
 
     /// Check for `/*#__NOINLINE__*/`
-    pub(super) fn has_noinline(&self, span: Span) -> bool {
-        span.has_mark(self.marks.noinline)
+    pub(super) fn has_noinline(&self, ctxt: SyntaxContext) -> bool {
+        ctxt.has_mark(self.marks.noinline)
     }
 
     /// RAII guard to change context temporarically
@@ -224,6 +224,7 @@ pub(crate) struct Finalizer<'a> {
     pub lits: &'a FxHashMap<Id, Box<Expr>>,
     pub lits_for_cmp: &'a FxHashMap<Id, Box<Expr>>,
     pub lits_for_array_access: &'a FxHashMap<Id, Box<Expr>>,
+    pub hoisted_props: &'a FxHashMap<(Id, JsWord), Ident>,
 
     pub vars_to_remove: &'a FxHashSet<Id>,
 
@@ -275,12 +276,13 @@ impl<'a> Finalizer<'a> {
         e.visit_mut_children_with(self);
 
         match &*e {
-            Expr::Ident(Ident { sym, .. }) if &**sym == "eval" => {
-                Some(Box::new(Expr::Seq(SeqExpr {
+            Expr::Ident(Ident { sym, .. }) if &**sym == "eval" => Some(
+                SeqExpr {
                     span: DUMMY_SP,
                     exprs: vec![0.into(), e],
-                })))
-            }
+                }
+                .into(),
+            ),
             _ => Some(e),
         }
     }
@@ -305,7 +307,7 @@ enum FinalizerMode {
 }
 
 impl VisitMut for Finalizer<'_> {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_callee(&mut self, e: &mut Callee) {
         e.visit_mut_children_with(self);
@@ -404,13 +406,35 @@ impl VisitMut for Finalizer<'_> {
     }
 
     fn visit_mut_expr(&mut self, n: &mut Expr) {
-        if let Expr::Ident(i) = n {
-            if let Some(expr) = self.lits.get(&i.to_id()) {
-                *n = *expr.clone();
+        match n {
+            Expr::Ident(i) => {
+                if let Some(expr) = self.lits.get(&i.to_id()) {
+                    *n = *expr.clone();
+                    return;
+                }
             }
-        } else {
-            n.visit_mut_children_with(self);
+            Expr::Member(e) => {
+                if let Expr::Ident(obj) = &*e.obj {
+                    let sym = match &e.prop {
+                        MemberProp::Ident(i) => &i.sym,
+                        MemberProp::Computed(e) => match &*e.expr {
+                            Expr::Lit(Lit::Str(s)) => &s.value,
+                            _ => return,
+                        },
+                        _ => return,
+                    };
+
+                    if let Some(ident) = self.hoisted_props.get(&(obj.to_id(), sym.clone())) {
+                        self.changed = true;
+                        *n = ident.clone().into();
+                        return;
+                    }
+                }
+            }
+            _ => {}
         }
+
+        n.visit_mut_children_with(self);
     }
 
     fn visit_mut_stmts(&mut self, n: &mut Vec<Stmt>) {
@@ -446,19 +470,20 @@ impl<'a> NormalMultiReplacer<'a> {
         e.visit_mut_children_with(self);
 
         match &*e {
-            Expr::Ident(Ident { sym, .. }) if &**sym == "eval" => {
-                Some(Box::new(Expr::Seq(SeqExpr {
+            Expr::Ident(Ident { sym, .. }) if &**sym == "eval" => Some(
+                SeqExpr {
                     span: DUMMY_SP,
                     exprs: vec![0.into(), e],
-                })))
-            }
+                }
+                .into(),
+            ),
             _ => Some(e),
         }
     }
 }
 
 impl VisitMut for NormalMultiReplacer<'_> {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_expr(&mut self, e: &mut Expr) {
         if self.vars.is_empty() {
@@ -502,14 +527,19 @@ impl VisitMut for NormalMultiReplacer<'_> {
                 self.changed = true;
 
                 *p = Prop::KeyValue(KeyValueProp {
-                    key: PropName::Ident(Ident::new(
-                        i.sym.clone(),
-                        i.span.with_ctxt(Default::default()),
-                    )),
+                    key: PropName::Ident(IdentName::new(i.sym.clone(), i.span)),
                     value,
                 });
             }
         }
+    }
+
+    fn visit_mut_stmt(&mut self, node: &mut Stmt) {
+        if self.vars.is_empty() {
+            return;
+        }
+
+        node.visit_mut_children_with(self);
     }
 }
 
@@ -533,25 +563,26 @@ impl ExprReplacer {
         let e = self.to.take()?;
 
         match &*e {
-            Expr::Ident(Ident { sym, .. }) if &**sym == "eval" => {
-                Some(Box::new(Expr::Seq(SeqExpr {
+            Expr::Ident(Ident { sym, .. }) if &**sym == "eval" => Some(
+                SeqExpr {
                     span: DUMMY_SP,
                     exprs: vec![0.into(), e],
-                })))
-            }
+                }
+                .into(),
+            ),
             _ => Some(e),
         }
     }
 }
 
 impl VisitMut for ExprReplacer {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_expr(&mut self, e: &mut Expr) {
         e.visit_mut_children_with(self);
 
         if let Expr::Ident(i) = e {
-            if self.from.0 == i.sym && self.from.1 == i.span.ctxt {
+            if self.from.0 == i.sym && self.from.1 == i.ctxt {
                 if let Some(new) = self.take() {
                     *e = *new;
                 } else {
@@ -565,14 +596,14 @@ impl VisitMut for ExprReplacer {
         p.visit_mut_children_with(self);
 
         if let Prop::Shorthand(i) = p {
-            if self.from.0 == i.sym && self.from.1 == i.span.ctxt {
+            if self.from.0 == i.sym && self.from.1 == i.ctxt {
                 let value = if let Some(new) = self.take() {
                     new
                 } else {
                     unreachable!("`{}` is already taken", i)
                 };
                 *p = Prop::KeyValue(KeyValueProp {
-                    key: PropName::Ident(i.clone()),
+                    key: PropName::Ident(i.clone().into()),
                     value,
                 });
             }

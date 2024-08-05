@@ -1,31 +1,39 @@
 import { doSomething } from "somewhere";
 export * from "somewhere else";
 export * as ns from "somewhere else";
-function f() {
-    a;
-    B;
-}
-function h() {
-    b;
-    A;
-}
-export function g() {
-    c;
-}
+var _g;
 export { f };
-export let { b } = {};
-export class B {
-}
+var _b;
+var _B;
 try {
-    var _stack = [];
+    var _usingCtx = _using_ctx();
+    function f() {
+        a;
+        B;
+    }
+    function h() {
+        b;
+        A;
+    }
+    function g() {
+        c;
+    }
+    _g = g;
     doSomething();
-    var c = 2;
+    let { b } = {};
+    _b = b;
+    let c = 2;
     class A {
     }
-    var x = _using(_stack, null);
+    class B {
+    }
+    _B = B;
+    var x = _usingCtx.u(null);
 } catch (_) {
-    var _error = _;
-    var _hasError = true;
+    _usingCtx.e = _;
 } finally{
-    _dispose(_stack, _error, _hasError);
+    _usingCtx.d();
 }
+export { _g as g };
+export { _b as b };
+export { _B as B };

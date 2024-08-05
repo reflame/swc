@@ -55,7 +55,7 @@ impl Parallel for Shorthand {
 
 #[swc_trace]
 impl VisitMut for Shorthand {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_prop(&mut self, prop: &mut Prop) {
         prop.visit_mut_children_with(self);
@@ -78,7 +78,7 @@ impl VisitMut for Shorthand {
             }
             Prop::Method(MethodProp { key, function }) => {
                 let key = match key.take() {
-                    PropName::Ident(Ident { span, sym, .. }) if sym == "__proto__" => {
+                    PropName::Ident(IdentName { span, sym, .. }) if sym == "__proto__" => {
                         ComputedPropName {
                             span,
                             expr: sym.into(),
@@ -96,10 +96,11 @@ impl VisitMut for Shorthand {
                 };
                 *prop = Prop::KeyValue(KeyValueProp {
                     key,
-                    value: Box::new(Expr::Fn(FnExpr {
+                    value: FnExpr {
                         ident: None,
                         function: function.take(),
-                    })),
+                    }
+                    .into(),
                 })
             }
             _ => {}

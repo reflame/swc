@@ -45,7 +45,7 @@ impl Parallel for InstanceOf {
 
 #[swc_trace]
 impl VisitMut for InstanceOf {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_expr(&mut self, expr: &mut Expr) {
         expr.visit_mut_children_with(self);
@@ -60,15 +60,15 @@ impl VisitMut for InstanceOf {
             let instanceof_span = Span {
                 lo: left.span_hi(),
                 hi: right.span_lo(),
-                ..*span
             };
 
-            *expr = Expr::Call(CallExpr {
+            *expr = CallExpr {
                 span: *span,
                 callee: helper!(instanceof_span, instanceof),
                 args: vec![left.take().as_arg(), right.take().as_arg()],
-                type_args: Default::default(),
-            });
+                ..Default::default()
+            }
+            .into();
         }
     }
 }

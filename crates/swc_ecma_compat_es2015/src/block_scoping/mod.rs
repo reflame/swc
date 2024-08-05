@@ -1,4 +1,4 @@
-use std::mem::take;
+use std::{iter::once, mem::take};
 
 use indexmap::IndexMap;
 use smallvec::SmallVec;
@@ -13,11 +13,10 @@ use swc_ecma_ast::*;
 use swc_ecma_transforms_base::helper;
 use swc_ecma_utils::{
     find_pat_ids, function::FnEnvHoister, prepend_stmt, private_ident, quote_ident, quote_str,
-    undefined, ExprFactory, StmtLike,
+    ExprFactory, StmtLike,
 };
 use swc_ecma_visit::{
-    as_folder, noop_visit_mut_type, noop_visit_type, visit_mut_obj_and_computed, Fold, Visit,
-    VisitMut, VisitMutWith, VisitWith,
+    as_folder, noop_visit_mut_type, visit_mut_obj_and_computed, Fold, VisitMut, VisitMutWith,
 };
 use swc_trace_macro::swc_trace;
 
@@ -42,7 +41,7 @@ pub fn block_scoping(unresolved_mark: Mark) -> impl VisitMut + Fold {
         BlockScoping {
             unresolved_mark,
             scope: Default::default(),
-            vars: vec![],
+            vars: Vec::new(),
             var_decl_kind: VarDeclKind::Var,
         }
     ))
@@ -82,7 +81,6 @@ struct BlockScoping {
     var_decl_kind: VarDeclKind,
 }
 
-#[swc_trace]
 impl BlockScoping {
     /// This methods remove [ScopeKind::Loop] and [ScopeKind::Fn], but not
     /// [ScopeKind::ForLetLoop]
@@ -101,17 +99,19 @@ impl BlockScoping {
     }
 
     fn mark_as_used(&mut self, i: Id) {
-        for (idx, scope) in self.scope.iter_mut().rev().enumerate() {
+        // Only consider the variable used in a non-ScopeKind::Loop, which means it is
+        // captured in a closure
+        for scope in self
+            .scope
+            .iter_mut()
+            .rev()
+            .skip_while(|scope| matches!(scope, ScopeKind::Loop { .. }))
+        {
             if let ScopeKind::Loop {
                 lexical_var, used, ..
             } = scope
             {
-                //
                 if lexical_var.contains(&i) {
-                    if idx == 0 {
-                        return;
-                    }
-
                     used.push(i);
                     return;
                 }
@@ -129,16 +129,6 @@ impl BlockScoping {
     fn handle_capture_of_vars(&mut self, body: &mut Box<Stmt>) {
         let body_stmt = &mut **body;
 
-        {
-            let mut v = FunctionFinder { found: false };
-            body_stmt.visit_with(&mut v);
-            if !v.found {
-                self.scope.pop();
-                return;
-            }
-        }
-
-        //
         if let Some(ScopeKind::Loop {
             args,
             used,
@@ -153,7 +143,23 @@ impl BlockScoping {
             let mut env_hoister =
                 FnEnvHoister::new(SyntaxContext::empty().apply_mark(self.unresolved_mark));
             body_stmt.visit_mut_with(&mut env_hoister);
-            self.vars.extend(env_hoister.to_decl());
+            let mut inits: Vec<Box<Expr>> = Vec::new();
+
+            for mut var in env_hoister.to_decl() {
+                if let Some(init) = var.init.take() {
+                    inits.push(
+                        AssignExpr {
+                            span: DUMMY_SP,
+                            op: op!("="),
+                            left: var.name.clone().try_into().unwrap(),
+                            right: init,
+                        }
+                        .into(),
+                    );
+                }
+
+                self.vars.push(var);
+            }
 
             let mut flow_helper = FlowHelper {
                 all: &args,
@@ -175,6 +181,7 @@ impl BlockScoping {
                 body => BlockStmt {
                     span: DUMMY_SP,
                     stmts: vec![body.take()],
+                    ..Default::default()
                 },
             };
 
@@ -215,7 +222,7 @@ impl BlockScoping {
                                 Param {
                                     span: DUMMY_SP,
                                     decorators: Default::default(),
-                                    pat: Ident::new(i.0.clone(), DUMMY_SP.with_ctxt(ctxt)).into(),
+                                    pat: Ident::new(i.0.clone(), DUMMY_SP, ctxt).into(),
                                 }
                             })
                             .collect(),
@@ -223,8 +230,7 @@ impl BlockScoping {
                         body: Some(body_stmt),
                         is_generator: flow_helper.has_yield,
                         is_async: flow_helper.has_await,
-                        type_params: None,
-                        return_type: None,
+                        ..Default::default()
                     }
                     .into(),
                 ),
@@ -237,9 +243,9 @@ impl BlockScoping {
                 args: args
                     .iter()
                     .cloned()
-                    .map(|i| Ident::new(i.0, DUMMY_SP.with_ctxt(i.1)).as_arg())
+                    .map(|i| Ident::new(i.0, DUMMY_SP, i.1).as_arg())
                     .collect(),
-                type_args: None,
+                ..Default::default()
             }
             .into();
 
@@ -260,6 +266,14 @@ impl BlockScoping {
                 .into();
             }
 
+            if !inits.is_empty() {
+                call = SeqExpr {
+                    span: DUMMY_SP,
+                    exprs: inits.into_iter().chain(once(Box::new(call))).collect(),
+                }
+                .into()
+            }
+
             if flow_helper.has_return || flow_helper.has_break || !flow_helper.label.is_empty() {
                 let ret = private_ident!("_ret");
 
@@ -268,13 +282,13 @@ impl BlockScoping {
                     VarDecl {
                         span: DUMMY_SP,
                         kind: VarDeclKind::Var,
-                        declare: false,
                         decls: vec![VarDeclarator {
                             span: DUMMY_SP,
                             name: ret.clone().into(),
                             init: Some(Box::new(call.take())),
                             definite: false,
                         }],
+                        ..Default::default()
                     }
                     .into(),
                 ];
@@ -284,28 +298,32 @@ impl BlockScoping {
                     stmts.push(
                         IfStmt {
                             span: DUMMY_SP,
-                            test: Box::new(Expr::Bin(BinExpr {
+                            test: BinExpr {
                                 span: DUMMY_SP,
                                 op: op!("==="),
                                 left: {
                                     // _type_of(_ret)
                                     let callee = helper!(type_of);
 
-                                    Expr::Call(CallExpr {
+                                    CallExpr {
                                         span: Default::default(),
                                         callee,
                                         args: vec![ret.clone().as_arg()],
-                                        type_args: None,
-                                    })
+                                        ..Default::default()
+                                    }
                                     .into()
                                 },
                                 //"object"
                                 right: "object".into(),
-                            })),
-                            cons: Box::new(Stmt::Return(ReturnStmt {
-                                span: DUMMY_SP,
-                                arg: Some(ret.clone().make_member(quote_ident!("v")).into()),
-                            })),
+                            }
+                            .into(),
+                            cons: Box::new(
+                                ReturnStmt {
+                                    span: DUMMY_SP,
+                                    arg: Some(ret.clone().make_member(quote_ident!("v")).into()),
+                                }
+                                .into(),
+                            ),
                             alt: None,
                         }
                         .into(),
@@ -317,10 +335,10 @@ impl BlockScoping {
                         IfStmt {
                             span: DUMMY_SP,
                             test: ret.clone().make_eq(quote_str!("break")).into(),
-                            cons: Stmt::Break(BreakStmt {
+                            cons: BreakStmt {
                                 span: DUMMY_SP,
                                 label: None,
-                            })
+                            }
                             .into(),
                             alt: None,
                         }
@@ -361,6 +379,7 @@ impl BlockScoping {
                     BlockStmt {
                         span: DUMMY_SP,
                         stmts,
+                        ..Default::default()
                     }
                     .into(),
                 );
@@ -388,10 +407,14 @@ impl BlockScoping {
     /// which fixes https://github.com/swc-project/swc/issues/6573
     fn blockify_for_stmt_body(&self, body: &mut Box<Stmt>) -> bool {
         if !body.is_block() {
-            *body = Box::new(Stmt::Block(BlockStmt {
-                span: Default::default(),
-                stmts: vec![*body.take()],
-            }));
+            *body = Box::new(
+                BlockStmt {
+                    span: Default::default(),
+                    stmts: vec![*body.take()],
+                    ..Default::default()
+                }
+                .into(),
+            );
             true
         } else {
             false
@@ -412,7 +435,7 @@ impl BlockScoping {
 
 #[swc_trace]
 impl VisitMut for BlockScoping {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_arrow_expr(&mut self, n: &mut ArrowExpr) {
         n.params.visit_mut_with(self);
@@ -422,7 +445,7 @@ impl VisitMut for BlockScoping {
     fn visit_mut_block_stmt(&mut self, n: &mut BlockStmt) {
         let vars = take(&mut self.vars);
         n.visit_mut_children_with(self);
-        debug_assert_eq!(self.vars, vec![]);
+        debug_assert_eq!(self.vars, Vec::new());
         self.vars = vars;
     }
 
@@ -455,7 +478,7 @@ impl VisitMut for BlockScoping {
         let kind = ScopeKind::Loop {
             lexical_var,
             args,
-            used: vec![],
+            used: Vec::new(),
             mutated: Default::default(),
         };
 
@@ -481,7 +504,7 @@ impl VisitMut for BlockScoping {
         let kind = ScopeKind::Loop {
             lexical_var: vars,
             args,
-            used: vec![],
+            used: Vec::new(),
             mutated: Default::default(),
         };
 
@@ -507,7 +530,7 @@ impl VisitMut for BlockScoping {
         let kind = ScopeKind::Loop {
             lexical_var,
             args,
-            used: vec![],
+            used: Vec::new(),
             mutated: Default::default(),
         };
         self.visit_mut_with_scope(kind, &mut node.body);
@@ -574,7 +597,7 @@ impl VisitMut for BlockScoping {
             if self.var_decl_kind == VarDeclKind::Var {
                 var.init = None
             } else {
-                var.init = Some(undefined(var.span()))
+                var.init = Some(Expr::undefined(var.span()))
             }
         }
     }
@@ -598,12 +621,13 @@ impl BlockScoping {
         if !self.vars.is_empty() {
             prepend_stmt(
                 stmts,
-                T::from_stmt(
+                T::from(
                     VarDecl {
                         span: DUMMY_SP,
                         kind: VarDeclKind::Var,
                         declare: false,
                         decls: take(&mut self.vars),
+                        ..Default::default()
                     }
                     .into(),
                 ),
@@ -653,7 +677,7 @@ impl<'a> FlowHelper<'a> {
 
     fn has_outer_label(&self, label: &Option<Ident>) -> bool {
         match label {
-            Some(l) => self.inner_label.get(&l.sym).is_none(),
+            Some(l) => !self.inner_label.contains(&l.sym),
             None => false,
         }
     }
@@ -661,19 +685,19 @@ impl<'a> FlowHelper<'a> {
 
 #[swc_trace]
 impl VisitMut for FlowHelper<'_> {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     /// noop
     fn visit_mut_arrow_expr(&mut self, _n: &mut ArrowExpr) {}
 
     fn visit_mut_assign_expr(&mut self, n: &mut AssignExpr) {
         match &n.left {
-            PatOrExpr::Expr(e) => {
-                if let Expr::Ident(i) = &**e {
+            AssignTarget::Simple(e) => {
+                if let SimpleAssignTarget::Ident(i) = e {
                     self.check(i.to_id());
                 }
             }
-            PatOrExpr::Pat(p) => {
+            AssignTarget::Pat(p) => {
                 let ids: Vec<Id> = find_pat_ids(p);
 
                 for id in ids {
@@ -749,17 +773,18 @@ impl VisitMut for FlowHelper<'_> {
                     "continue".into()
                 };
 
-                *node = Stmt::Return(ReturnStmt {
+                *node = ReturnStmt {
                     span,
                     arg: Some(
-                        Expr::Lit(Lit::Str(Str {
+                        Lit::Str(Str {
                             span,
                             value,
                             raw: None,
-                        }))
+                        })
                         .into(),
                     ),
-                });
+                }
+                .into();
             }
             Stmt::Break(BreakStmt { label, .. }) => {
                 if (self.in_switch_case || self.in_nested_loop) && !self.has_outer_label(label) {
@@ -774,35 +799,45 @@ impl VisitMut for FlowHelper<'_> {
                     self.has_break = true;
                     "break".into()
                 };
-                *node = Stmt::Return(ReturnStmt {
+                *node = ReturnStmt {
                     span,
-                    arg: Some(Box::new(Expr::Lit(Lit::Str(Str {
-                        span,
-                        value,
-                        raw: None,
-                    })))),
-                });
+                    arg: Some(
+                        Lit::Str(Str {
+                            span,
+                            value,
+                            raw: None,
+                        })
+                        .into(),
+                    ),
+                }
+                .into();
             }
             Stmt::Return(s) => {
                 self.has_return = true;
                 s.visit_mut_with(self);
 
-                *node = Stmt::Return(ReturnStmt {
+                *node = ReturnStmt {
                     span,
-                    arg: Some(Box::new(Expr::Object(ObjectLit {
-                        span,
-                        props: vec![PropOrSpread::Prop(Box::new(Prop::KeyValue(KeyValueProp {
-                            key: PropName::Ident(Ident::new("v".into(), DUMMY_SP)),
-                            value: s.arg.take().unwrap_or_else(|| {
-                                Box::new(Expr::Unary(UnaryExpr {
-                                    span: DUMMY_SP,
-                                    op: op!("void"),
-                                    arg: undefined(DUMMY_SP),
-                                }))
-                            }),
-                        })))],
-                    }))),
-                });
+                    arg: Some(
+                        ObjectLit {
+                            span,
+                            props: vec![PropOrSpread::Prop(Box::new(Prop::KeyValue(
+                                KeyValueProp {
+                                    key: PropName::Ident(IdentName::new("v".into(), DUMMY_SP)),
+                                    value: s.arg.take().unwrap_or_else(|| {
+                                        Box::new(Expr::Unary(UnaryExpr {
+                                            span: DUMMY_SP,
+                                            op: op!("void"),
+                                            arg: Expr::undefined(DUMMY_SP),
+                                        }))
+                                    }),
+                                },
+                            )))],
+                        }
+                        .into(),
+                    ),
+                }
+                .into();
             }
             _ => node.visit_mut_children_with(self),
         }
@@ -847,34 +882,35 @@ struct MutationHandler<'a> {
 impl MutationHandler<'_> {
     fn make_reassignment(&self, orig: Option<Box<Expr>>) -> Expr {
         if self.map.is_empty() {
-            return *orig.unwrap_or_else(|| undefined(DUMMY_SP));
+            return *orig.unwrap_or_else(|| Expr::undefined(DUMMY_SP));
         }
 
         let mut exprs = Vec::with_capacity(self.map.len() + 1);
 
         for (id, ctxt) in &*self.map {
-            exprs.push(Box::new(Expr::Assign(AssignExpr {
-                span: DUMMY_SP,
-                left: PatOrExpr::Pat(Ident::new(id.0.clone(), DUMMY_SP.with_ctxt(id.1)).into()),
-                op: op!("="),
-                right: Box::new(Expr::Ident(Ident::new(
-                    id.0.clone(),
-                    DUMMY_SP.with_ctxt(*ctxt),
-                ))),
-            })));
+            exprs.push(
+                AssignExpr {
+                    span: DUMMY_SP,
+                    left: Ident::new(id.0.clone(), DUMMY_SP, id.1).into(),
+                    op: op!("="),
+                    right: Box::new(Ident::new(id.0.clone(), DUMMY_SP, *ctxt).into()),
+                }
+                .into(),
+            );
         }
-        exprs.push(orig.unwrap_or_else(|| undefined(DUMMY_SP)));
+        exprs.push(orig.unwrap_or_else(|| Expr::undefined(DUMMY_SP)));
 
-        Expr::Seq(SeqExpr {
+        SeqExpr {
             span: DUMMY_SP,
             exprs,
-        })
+        }
+        .into()
     }
 }
 
 #[swc_trace]
 impl VisitMut for MutationHandler<'_> {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     visit_mut_obj_and_computed!();
 
@@ -898,7 +934,7 @@ impl VisitMut for MutationHandler<'_> {
 
     fn visit_mut_ident(&mut self, n: &mut Ident) {
         if let Some(&ctxt) = self.map.get(&n.to_id()) {
-            n.span = n.span.with_ctxt(ctxt)
+            n.ctxt = ctxt;
         }
     }
 
@@ -912,46 +948,4 @@ impl VisitMut for MutationHandler<'_> {
 
         n.arg = Some(Box::new(self.make_reassignment(val)))
     }
-}
-
-#[derive(Debug)]
-struct FunctionFinder {
-    found: bool,
-}
-
-impl Visit for FunctionFinder {
-    noop_visit_type!();
-
-    fn visit_arrow_expr(&mut self, _: &ArrowExpr) {
-        self.found = true;
-    }
-
-    /// Do not recurse into nested loop.
-    ///
-    /// https://github.com/swc-project/swc/issues/2622
-    fn visit_do_while_stmt(&mut self, _: &DoWhileStmt) {}
-
-    /// Do not recurse into nested loop.
-    ///
-    /// https://github.com/swc-project/swc/issues/2622
-    fn visit_for_in_stmt(&mut self, _: &ForInStmt) {}
-
-    /// Do not recurse into nested loop.
-    ///
-    /// https://github.com/swc-project/swc/issues/2622
-    fn visit_for_of_stmt(&mut self, _: &ForOfStmt) {}
-
-    /// Do not recurse into nested loop.
-    ///
-    /// https://github.com/swc-project/swc/issues/2622
-    fn visit_for_stmt(&mut self, _: &ForStmt) {}
-
-    fn visit_function(&mut self, _: &Function) {
-        self.found = true
-    }
-
-    /// Do not recurse into nested loop.
-    ///
-    /// https://github.com/swc-project/swc/issues/2622
-    fn visit_while_stmt(&mut self, _: &WhileStmt) {}
 }

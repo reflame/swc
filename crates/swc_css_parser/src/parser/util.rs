@@ -1,6 +1,6 @@
 use std::ops::{Deref, DerefMut};
 
-use swc_common::{Span, Spanned, SyntaxContext, DUMMY_SP};
+use swc_common::{Span, Spanned, DUMMY_SP};
 use swc_css_ast::*;
 
 use super::{
@@ -51,9 +51,7 @@ where
 
     pub(super) fn create_locv(&self, children: Vec<ComponentValue>) -> ListOfComponentValues {
         let span = match (children.first(), children.last()) {
-            (Some(first), Some(last)) => {
-                Span::new(first.span_lo(), last.span_hi(), SyntaxContext::empty())
-            }
+            (Some(first), Some(last)) => Span::new(first.span_lo(), last.span_hi()),
             _ => DUMMY_SP,
         };
 
@@ -288,8 +286,8 @@ where
     ) -> PResult<Declaration> {
         let locv = self.create_locv(declaration.value);
 
-        declaration.value = match self.parse_according_to_grammar(&locv, |parser| {
-            let mut values = vec![];
+        let value = self.parse_according_to_grammar(&locv, |parser| {
+            let mut values = Vec::new();
 
             loop {
                 if is!(parser, EOF) {
@@ -300,7 +298,8 @@ where
             }
 
             Ok(values)
-        }) {
+        });
+        declaration.value = match value {
             Ok(values) => values,
             Err(err) => {
                 if *err.kind() != ErrorKind::Ignore {
@@ -337,7 +336,7 @@ where
     pub(super) fn try_to_parse_declaration_in_parens(&mut self) -> Option<Declaration> {
         let mut temporary_list = ListOfComponentValues {
             span: Default::default(),
-            children: vec![],
+            children: Vec::new(),
         };
 
         while !is_one_of!(self, ")", EOF) {

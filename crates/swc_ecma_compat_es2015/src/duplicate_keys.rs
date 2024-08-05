@@ -22,7 +22,7 @@ impl Parallel for DuplicateKeys {
 
 #[swc_trace]
 impl VisitMut for DuplicateKeys {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_expr(&mut self, expr: &mut Expr) {
         expr.visit_mut_children_with(self);
@@ -42,7 +42,7 @@ struct PropFolder {
 
 #[swc_trace]
 impl VisitMut for PropFolder {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     /// Noop
     fn visit_mut_expr(&mut self, _: &mut Expr) {}
@@ -59,12 +59,12 @@ impl VisitMut for PropFolder {
                             span: ident.span,
                             expr: quote_str!(ident.sym.clone()).into(),
                         }),
-                        value: Box::new(Expr::Ident(ident.clone())),
+                        value: ident.clone().into(),
                     })
                 }
             }
 
-            Prop::Assign(..) => unreachable!("assign property in object literal is invalid"),
+            Prop::Assign(..) => {}
 
             Prop::Getter(..) => prop.visit_mut_children_with(&mut PropNameFolder {
                 props: &mut self.getter_props,
@@ -90,7 +90,7 @@ struct PropNameFolder<'a> {
 
 #[swc_trace]
 impl<'a> VisitMut for PropNameFolder<'a> {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_expr(&mut self, _: &mut Expr) {}
 
@@ -102,11 +102,12 @@ impl<'a> VisitMut for PropNameFolder<'a> {
                 if !self.props.insert(ident.sym.clone()) {
                     *name = PropName::Computed(ComputedPropName {
                         span,
-                        expr: Box::new(Expr::Lit(Lit::Str(Str {
+                        expr: Lit::Str(Str {
                             span,
                             raw: None,
                             value: ident.sym.clone(),
-                        }))),
+                        })
+                        .into(),
                     })
                 }
             }

@@ -23,7 +23,7 @@ impl Parallel for TypeOfSymbol {
 
 #[swc_trace]
 impl VisitMut for TypeOfSymbol {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_bin_expr(&mut self, expr: &mut BinExpr) {
         match expr.op {
@@ -67,40 +67,46 @@ impl VisitMut for TypeOfSymbol {
                 Expr::Ident(..) => {
                     let undefined_str: Box<Expr> = quote_str!("undefined").into();
 
-                    let test = Box::new(Expr::Bin(BinExpr {
+                    let test = BinExpr {
                         span: DUMMY_SP,
                         op: op!("==="),
-                        left: Box::new(Expr::Unary(UnaryExpr {
-                            span: DUMMY_SP,
-                            op: op!("typeof"),
-                            arg: arg.clone(),
-                        })),
+                        left: Box::new(
+                            UnaryExpr {
+                                span: DUMMY_SP,
+                                op: op!("typeof"),
+                                arg: arg.clone(),
+                            }
+                            .into(),
+                        ),
                         right: undefined_str.clone(),
-                    }));
+                    }
+                    .into();
 
-                    let call = Expr::Call(CallExpr {
+                    let call = CallExpr {
                         span: *span,
                         callee: helper!(*span, type_of),
                         args: vec![arg.take().as_arg()],
+                        ..Default::default()
+                    }
+                    .into();
 
-                        type_args: Default::default(),
-                    });
-
-                    *expr = Expr::Cond(CondExpr {
+                    *expr = CondExpr {
                         span: *span,
                         test,
                         cons: undefined_str,
                         alt: Box::new(call),
-                    });
+                    }
+                    .into();
                 }
                 _ => {
-                    let call = Expr::Call(CallExpr {
+                    let call = CallExpr {
                         span: *span,
                         callee: helper!(*span, type_of),
                         args: vec![arg.take().as_arg()],
 
-                        type_args: Default::default(),
-                    });
+                        ..Default::default()
+                    }
+                    .into();
 
                     *expr = call;
                 }
@@ -137,7 +143,7 @@ fn is_non_symbol_literal(e: &Expr) -> bool {
     match e {
         Expr::Lit(Lit::Str(Str { value, .. })) => matches!(
             &**value,
-            "undefined" | "object" | "boolean" | "number" | "string" | "function"
+            "undefined" | "boolean" | "number" | "string" | "function"
         ),
         _ => false,
     }

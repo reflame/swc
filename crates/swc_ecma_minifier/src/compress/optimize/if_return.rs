@@ -1,7 +1,7 @@
 use swc_common::{util::take::Take, Spanned, DUMMY_SP};
 use swc_ecma_ast::*;
 use swc_ecma_transforms_optimization::debug_assert_valid;
-use swc_ecma_utils::{undefined, StmtExt, StmtLike};
+use swc_ecma_utils::{StmtExt, StmtLike};
 use swc_ecma_visit::{noop_visit_type, Visit, VisitWith};
 
 use super::Optimizer;
@@ -31,12 +31,13 @@ impl Optimizer<'_> {
             self.changed = true;
             report_change!("if_return: Merging nested if statements");
 
-            s.test = Box::new(Expr::Bin(BinExpr {
+            s.test = BinExpr {
                 span: s.test.span(),
                 op: op!("&&"),
                 left: s.test.take(),
                 right: test.take(),
-            }));
+            }
+            .into();
             s.cons = cons.take();
         }
     }
@@ -295,7 +296,7 @@ impl Optimizer<'_> {
                 stmt
             };
             let is_nonconditional_return = matches!(stmt, Stmt::Return(..));
-            let new_expr = self.merge_if_returns_to(stmt, vec![]);
+            let new_expr = self.merge_if_returns_to(stmt, Vec::new());
             match new_expr {
                 Expr::Seq(v) => match &mut cur {
                     Some(cur) => match &mut **cur {
@@ -313,7 +314,7 @@ impl Optimizer<'_> {
                             )
                         }
                     },
-                    None => cur = Some(Box::new(Expr::Seq(v))),
+                    None => cur = Some(v.into()),
                 },
                 Expr::Cond(v) => match &mut cur {
                     Some(cur) => match &mut **cur {
@@ -328,26 +329,31 @@ impl Optimizer<'_> {
                                 (prev_seq.span, exprs)
                             };
 
-                            *alt = Expr::Cond(CondExpr {
+                            *alt = CondExpr {
                                 span: DUMMY_SP,
-                                test: Box::new(Expr::Seq(SeqExpr { span, exprs })),
+                                test: SeqExpr { span, exprs }.into(),
                                 cons: v.cons,
                                 alt: v.alt,
-                            });
+                            }
+                            .into();
                         }
                         Expr::Seq(prev_seq) => {
                             prev_seq.exprs.push(v.test);
                             let exprs = prev_seq.exprs.take();
 
-                            *cur = Box::new(Expr::Cond(CondExpr {
+                            *cur = CondExpr {
                                 span: DUMMY_SP,
-                                test: Box::new(Expr::Seq(SeqExpr {
-                                    span: prev_seq.span,
-                                    exprs,
-                                })),
+                                test: Box::new(
+                                    SeqExpr {
+                                        span: prev_seq.span,
+                                        exprs,
+                                    }
+                                    .into(),
+                                ),
                                 cons: v.cons,
                                 alt: v.alt,
-                            }));
+                            }
+                            .into();
                         }
                         _ => {
                             unreachable!(
@@ -356,7 +362,7 @@ impl Optimizer<'_> {
                             )
                         }
                     },
-                    None => cur = Some(Box::new(Expr::Cond(v))),
+                    None => cur = Some(v.into()),
                 },
                 _ => {
                     unreachable!(
@@ -386,19 +392,25 @@ impl Optimizer<'_> {
                     let expr = self.ignore_return_value(&mut cur);
 
                     if let Some(cur) = expr {
-                        new.push(Stmt::Expr(ExprStmt {
-                            span: DUMMY_SP,
-                            expr: Box::new(cur),
-                        }))
+                        new.push(
+                            ExprStmt {
+                                span: DUMMY_SP,
+                                expr: Box::new(cur),
+                            }
+                            .into(),
+                        )
                     } else {
                         trace_op!("if_return: Ignoring return value");
                     }
                 }
                 _ => {
-                    new.push(Stmt::Return(ReturnStmt {
-                        span: DUMMY_SP,
-                        arg: Some(cur),
-                    }));
+                    new.push(
+                        ReturnStmt {
+                            span: DUMMY_SP,
+                            arg: Some(cur),
+                        }
+                        .into(),
+                    );
                 }
             }
         }
@@ -424,42 +436,49 @@ impl Optimizer<'_> {
                 alt,
                 ..
             }) => {
-                let cons = Box::new(self.merge_if_returns_to(*cons, vec![]));
+                let cons = Box::new(self.merge_if_returns_to(*cons, Vec::new()));
                 let alt = match alt {
-                    Some(alt) => Box::new(self.merge_if_returns_to(*alt, vec![])),
-                    None => undefined(DUMMY_SP),
+                    Some(alt) => Box::new(self.merge_if_returns_to(*alt, Vec::new())),
+                    None => Expr::undefined(DUMMY_SP),
                 };
 
                 exprs.push(test);
 
-                Expr::Cond(CondExpr {
+                CondExpr {
                     span,
-                    test: Box::new(Expr::Seq(SeqExpr {
+                    test: SeqExpr {
                         span: DUMMY_SP,
                         exprs,
-                    })),
+                    }
+                    .into(),
                     cons,
                     alt,
-                })
+                }
+                .into()
             }
             Stmt::Expr(stmt) => {
-                exprs.push(Box::new(Expr::Unary(UnaryExpr {
-                    span: DUMMY_SP,
-                    op: op!("void"),
-                    arg: stmt.expr,
-                })));
-                Expr::Seq(SeqExpr {
+                exprs.push(
+                    UnaryExpr {
+                        span: DUMMY_SP,
+                        op: op!("void"),
+                        arg: stmt.expr,
+                    }
+                    .into(),
+                );
+                SeqExpr {
                     span: DUMMY_SP,
                     exprs,
-                })
+                }
+                .into()
             }
             Stmt::Return(stmt) => {
                 let span = stmt.span;
-                exprs.push(stmt.arg.unwrap_or_else(|| undefined(span)));
-                Expr::Seq(SeqExpr {
+                exprs.push(stmt.arg.unwrap_or_else(|| Expr::undefined(span)));
+                SeqExpr {
                     span: DUMMY_SP,
                     exprs,
-                })
+                }
+                .into()
             }
             _ => unreachable!(),
         }
@@ -510,7 +529,7 @@ pub(super) struct ReturnFinder {
 }
 
 impl Visit for ReturnFinder {
-    noop_visit_type!();
+    noop_visit_type!(fail);
 
     fn visit_return_stmt(&mut self, n: &ReturnStmt) {
         n.visit_children_with(self);

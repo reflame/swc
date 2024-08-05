@@ -6,7 +6,7 @@ use swc_common::{pass::Repeated, util::take::Take, SyntaxContext, DUMMY_SP, GLOB
 use swc_ecma_ast::*;
 use swc_ecma_transforms_optimization::debug_assert_valid;
 use swc_ecma_usage_analyzer::marks::Marks;
-use swc_ecma_utils::{undefined, ExprCtx};
+use swc_ecma_utils::ExprCtx;
 use swc_ecma_visit::{noop_visit_mut_type, VisitMut, VisitMutWith, VisitWith};
 #[cfg(feature = "debug")]
 use tracing::{debug, span, Level};
@@ -15,10 +15,7 @@ use self::{ctx::Ctx, misc::DropOpts};
 use super::util::is_pure_undefined_or_null;
 #[cfg(feature = "debug")]
 use crate::debug::dump;
-use crate::{
-    debug::AssertValid, maybe_par, option::CompressOptions, program_data::ProgramData,
-    util::ModuleItemExt,
-};
+use crate::{debug::AssertValid, maybe_par, option::CompressOptions, util::ModuleItemExt};
 
 mod arrows;
 mod bools;
@@ -29,6 +26,7 @@ mod drop_console;
 mod evaluate;
 mod if_return;
 mod loops;
+mod member_expr;
 mod misc;
 mod numbers;
 mod properties;
@@ -51,7 +49,6 @@ pub(crate) struct PureOptimizerConfig {
 #[allow(clippy::needless_lifetimes)]
 pub(crate) fn pure_optimizer<'a>(
     options: &'a CompressOptions,
-    data: Option<&'a ProgramData>,
     marks: Marks,
     config: PureOptimizerConfig,
 ) -> impl 'a + VisitMut + Repeated {
@@ -63,7 +60,6 @@ pub(crate) fn pure_optimizer<'a>(
             unresolved_ctxt: SyntaxContext::empty().apply_mark(marks.unresolved_mark),
             is_unresolved_ref_safe: false,
         },
-        data,
         ctx: Default::default(),
         changed: Default::default(),
     }
@@ -75,8 +71,6 @@ struct Pure<'a> {
     marks: Marks,
     expr_ctx: ExprCtx,
 
-    #[allow(unused)]
-    data: Option<&'a ProgramData>,
     ctx: Ctx,
     changed: bool,
 }
@@ -253,7 +247,7 @@ impl Pure<'_> {
 }
 
 impl VisitMut for Pure<'_> {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_assign_expr(&mut self, e: &mut AssignExpr) {
         {
@@ -300,7 +294,23 @@ impl VisitMut for Pure<'_> {
 
         e.args.visit_mut_with(self);
 
+        self.eval_spread_array(&mut e.args);
+
         self.drop_arguments_of_symbol_call(e);
+    }
+
+    fn visit_mut_opt_call(&mut self, opt_call: &mut OptCall) {
+        {
+            let ctx = Ctx {
+                is_callee: true,
+                ..self.ctx
+            };
+            opt_call.callee.visit_mut_with(&mut *self.with_ctx(ctx));
+        }
+
+        opt_call.args.visit_mut_with(self);
+
+        self.eval_spread_array(&mut opt_call.args);
     }
 
     fn visit_mut_class_member(&mut self, m: &mut ClassMember) {
@@ -373,7 +383,7 @@ impl VisitMut for Pure<'_> {
                         },
                     );
                     if arg.is_invalid() {
-                        *e = *undefined(*span);
+                        *e = *Expr::undefined(*span);
                         return;
                     }
                 }
@@ -402,7 +412,7 @@ impl VisitMut for Pure<'_> {
 
         if let Expr::Seq(seq) = e {
             if seq.exprs.is_empty() {
-                *e = Expr::Invalid(Invalid { span: DUMMY_SP });
+                *e = Invalid { span: DUMMY_SP }.into();
                 return;
             }
             if seq.exprs.len() == 1 {
@@ -576,6 +586,8 @@ impl VisitMut for Pure<'_> {
         if e.is_seq() {
             debug_assert_valid(e);
         }
+
+        self.eval_member_expr(e);
     }
 
     fn visit_mut_expr_or_spreads(&mut self, nodes: &mut Vec<ExprOrSpread>) {
@@ -683,6 +695,7 @@ impl VisitMut for Pure<'_> {
 
     fn visit_mut_member_expr(&mut self, e: &mut MemberExpr) {
         e.obj.visit_mut_with(self);
+
         if let MemberProp::Computed(c) = &mut e.prop {
             c.visit_mut_with(self);
 
@@ -741,20 +754,6 @@ impl VisitMut for Pure<'_> {
         self.visit_par(nodes);
     }
 
-    fn visit_mut_pat_or_expr(&mut self, n: &mut PatOrExpr) {
-        n.visit_mut_children_with(self);
-
-        match n {
-            PatOrExpr::Expr(e) => {
-                //
-                if let Expr::Ident(i) = &mut **e {
-                    *n = PatOrExpr::Pat(i.clone().into());
-                }
-            }
-            PatOrExpr::Pat(_) => {}
-        }
-    }
-
     fn visit_mut_prop(&mut self, p: &mut Prop) {
         p.visit_mut_children_with(self);
 
@@ -801,7 +800,7 @@ impl VisitMut for Pure<'_> {
             exprs.iter().any(|e| e.is_seq()),
             *crate::LIGHT_TASK_PARALLELS
         ) {
-            let mut exprs = vec![];
+            let mut exprs = Vec::new();
 
             for e in e.exprs.take() {
                 if let Expr::Seq(seq) = *e {
@@ -885,7 +884,7 @@ impl VisitMut for Pure<'_> {
 
         match s {
             Stmt::Expr(ExprStmt { expr, .. }) if expr.is_invalid() => {
-                *s = Stmt::Empty(EmptyStmt { span: DUMMY_SP });
+                *s = EmptyStmt { span: DUMMY_SP }.into();
                 return;
             }
             _ => {}
@@ -905,7 +904,7 @@ impl VisitMut for Pure<'_> {
         if self.options.drop_debugger {
             if let Stmt::Debugger(..) = s {
                 self.changed = true;
-                *s = Stmt::Empty(EmptyStmt { span: DUMMY_SP });
+                *s = EmptyStmt { span: DUMMY_SP }.into();
                 report_change!("drop_debugger: Dropped a debugger statement");
                 return;
             }
@@ -929,7 +928,7 @@ impl VisitMut for Pure<'_> {
 
         if let Stmt::Expr(es) = s {
             if es.expr.is_invalid() {
-                *s = Stmt::Empty(EmptyStmt { span: DUMMY_SP });
+                *s = EmptyStmt { span: DUMMY_SP }.into();
                 return;
             }
         }

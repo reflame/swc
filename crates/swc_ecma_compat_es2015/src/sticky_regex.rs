@@ -34,19 +34,20 @@ impl Parallel for StickyRegex {
 
 #[swc_trace]
 impl VisitMut for StickyRegex {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_expr(&mut self, e: &mut Expr) {
         e.visit_mut_children_with(self);
 
         if let Expr::Lit(Lit::Regex(Regex { exp, flags, span })) = e {
             if flags.contains('y') {
-                *e = Expr::New(NewExpr {
+                *e = NewExpr {
                     span: *span,
-                    callee: Box::new(quote_ident!(*span, "RegExp").into()),
+                    callee: Box::new(quote_ident!(Default::default(), *span, "RegExp").into()),
                     args: Some(vec![exp.clone().as_arg(), flags.clone().as_arg()]),
-                    type_args: Default::default(),
-                })
+                    ..Default::default()
+                }
+                .into()
             }
         }
     }

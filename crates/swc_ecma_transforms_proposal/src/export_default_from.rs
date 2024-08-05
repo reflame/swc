@@ -41,9 +41,9 @@ impl VisitMut for ExportDefaultFrom {
                     type_only: false,
                     with,
                 })) if specifiers.iter().any(|s| s.is_default()) => {
-                    let mut origin_specifiers = vec![];
+                    let mut origin_specifiers = Vec::new();
 
-                    let mut export_specifiers = vec![];
+                    let mut export_specifiers = Vec::new();
 
                     let mut has_namespace = false;
 
@@ -53,7 +53,8 @@ impl VisitMut for ExportDefaultFrom {
                                 export_specifiers.push(ExportSpecifier::Named(
                                     ExportNamedSpecifier {
                                         span: DUMMY_SP,
-                                        orig: quote_ident!(exported.span, "default").into(),
+                                        orig: quote_ident!(exported.ctxt, exported.span, "default")
+                                            .into(),
                                         exported: Some(exported.into()),
                                         is_type_only: false,
                                     },
@@ -73,26 +74,28 @@ impl VisitMut for ExportDefaultFrom {
                         }
                     }
 
-                    stmts.push(ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(
+                    stmts.push(
                         NamedExport {
                             span,
                             specifiers: export_specifiers,
                             src: Some(src.clone()),
                             type_only: false,
                             with: None,
-                        },
-                    )));
+                        }
+                        .into(),
+                    );
 
                     if !origin_specifiers.is_empty() {
-                        stmts.push(ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(
+                        stmts.push(
                             NamedExport {
                                 span,
                                 specifiers: origin_specifiers,
                                 src: Some(src),
                                 type_only: false,
                                 with,
-                            },
-                        )));
+                            }
+                            .into(),
+                        );
                     }
                 }
                 _ => {

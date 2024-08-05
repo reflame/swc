@@ -27,7 +27,7 @@
 //! `SWC_RUN` to `1`, the minifier will validate the code using node before each
 //! step.
 #![deny(clippy::all)]
-#![allow(clippy::blocks_in_if_conditions)]
+#![allow(clippy::blocks_in_conditions)]
 #![allow(clippy::collapsible_else_if)]
 #![allow(clippy::collapsible_if)]
 #![allow(clippy::ptr_arg)]
@@ -53,7 +53,6 @@ use crate::{
     mode::{Minification, Mode},
     option::{CompressOptions, ExtraOptions, MinifyOptions},
     pass::{
-        expand_names::name_expander,
         global_defs,
         mangle_names::{idents_to_preserve, name_mangler},
         mangle_props::mangle_properties,
@@ -78,6 +77,7 @@ mod mode;
 pub mod option;
 mod pass;
 mod program_data;
+mod size_hint;
 pub mod timing;
 mod util;
 
@@ -172,7 +172,7 @@ pub fn optimize(
     if options.rename && DISABLE_BUGGY_PASSES {
         // toplevel.figure_out_scope(options.mangle);
         // TODO: Pass `options.mangle` to name expander.
-        n.visit_mut_with(&mut name_expander());
+        // n.visit_mut_with(&mut name_expander());
     }
 
     if let Some(ref mut t) = timings {
@@ -202,7 +202,6 @@ pub fn optimize(
 
             let mut v = pure_optimizer(
                 c,
-                None,
                 marks,
                 PureOptimizerConfig {
                     force_str_for_tpl: Minification.force_str_for_tpl(),

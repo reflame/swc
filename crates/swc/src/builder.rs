@@ -382,7 +382,7 @@ struct MinifierPass<'a> {
 }
 
 impl VisitMut for MinifierPass<'_> {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_module(&mut self, m: &mut Module) {
         if let Some(options) = &self.options {
@@ -461,6 +461,8 @@ impl VisitMut for MinifierPass<'_> {
                         if v.const_to_let.is_none() {
                             v.const_to_let = Some(true);
                         }
+
+                        v.module = false;
 
                         v.into_config(self.cm.clone())
                     }),

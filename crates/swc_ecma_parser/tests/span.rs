@@ -2,7 +2,7 @@ use std::path::PathBuf;
 
 use swc_common::{comments::SingleThreadedComments, errors::Handler, Spanned};
 use swc_ecma_ast::*;
-use swc_ecma_parser::{lexer::Lexer, EsConfig, Parser, Syntax, TsConfig};
+use swc_ecma_parser::{lexer::Lexer, EsSyntax, Parser, Syntax, TsSyntax};
 use swc_ecma_visit::{Visit, VisitWith};
 
 #[testing::fixture("tests/span/**/*.js")]
@@ -23,13 +23,13 @@ fn span(entry: PathBuf) {
         let comments = SingleThreadedComments::default();
         let lexer = Lexer::new(
             if file_name.ends_with(".js") {
-                Syntax::Es(EsConfig {
+                Syntax::Es(EsSyntax {
                     jsx: true,
                     decorators: true,
                     ..Default::default()
                 })
             } else {
-                Syntax::Typescript(TsConfig {
+                Syntax::Typescript(TsSyntax {
                     tsx: true,
                     decorators: true,
                     no_early_errors: true,
@@ -582,8 +582,8 @@ impl Visit for Shower<'_> {
         n.visit_children_with(self)
     }
 
-    fn visit_pat_or_expr(&mut self, n: &PatOrExpr) {
-        self.show("PatOrExpr", n);
+    fn visit_assign_target(&mut self, n: &AssignTarget) {
+        self.show("AssignTarget", n);
         n.visit_children_with(self)
     }
 

@@ -96,7 +96,7 @@ pub fn get_terser_output(file: &Path, compress: bool, mangle: bool) -> Result<St
 
         // Drop comments
         let cm = Arc::new(SourceMap::default());
-        let fm = cm.new_source_file(FileName::Anon, output);
+        let fm = cm.new_source_file(FileName::Anon.into(), output);
         let m = parse_js(fm)?;
 
         let code = print_js(cm, &m.module, true)?;
@@ -136,7 +136,7 @@ pub fn get_esbuild_output(file: &Path, mangle: bool) -> Result<String> {
 struct Normalizer {}
 
 impl VisitMut for Normalizer {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_prop(&mut self, p: &mut Prop) {
         p.visit_mut_children_with(self);

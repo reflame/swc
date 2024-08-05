@@ -3,15 +3,15 @@ use std::path::{Path, PathBuf};
 use swc_common::{chain, sync::Lrc, Mark, SourceMap, SyntaxContext};
 use swc_ecma_ast::*;
 use swc_ecma_codegen::Emitter;
-use swc_ecma_parser::{lexer::Lexer, EsConfig, Parser, StringInput, Syntax, TsConfig};
+use swc_ecma_parser::{lexer::Lexer, EsSyntax, Parser, StringInput, Syntax, TsSyntax};
 use swc_ecma_transforms_base::{fixer::fixer, resolver};
 use swc_ecma_visit::{
     as_folder, visit_mut_obj_and_computed, Fold, FoldWith, VisitMut, VisitMutWith,
 };
 use testing::{fixture, run_test2, NormalizedOutput};
 
-pub fn print(cm: Lrc<SourceMap>, module: &Module) -> String {
-    let mut buf = vec![];
+pub fn print(cm: Lrc<SourceMap>, program: &Program) -> String {
+    let mut buf = Vec::new();
     {
         let mut emitter = Emitter {
             cfg: Default::default(),
@@ -23,7 +23,7 @@ pub fn print(cm: Lrc<SourceMap>, module: &Module) -> String {
         };
 
         // println!("Emitting: {:?}", module);
-        emitter.emit_module(module).unwrap();
+        emitter.emit_program(program).unwrap();
     }
 
     let s = String::from_utf8_lossy(&buf);
@@ -47,15 +47,15 @@ where
         let lexer = Lexer::new(syntax, EsVersion::latest(), StringInput::from(&*fm), None);
         let mut parser = Parser::new_from(lexer);
 
-        let module = parser
-            .parse_module()
+        let program = parser
+            .parse_program()
             .map_err(|err| err.into_diagnostic(&handler).emit())?;
 
         let mut folder = op();
 
-        let module = module.fold_with(&mut folder);
+        let program = program.fold_with(&mut folder);
 
-        let actual = print(cm, &module);
+        let actual = print(cm, &program);
         let actual = NormalizedOutput::from(actual);
 
         actual.compare_to_file(&output).unwrap();
@@ -68,7 +68,7 @@ where
 #[fixture("tests/resolver/**/input.js")]
 fn test_resolver(input: PathBuf) {
     run(
-        Syntax::Es(EsConfig {
+        Syntax::Es(EsSyntax {
             jsx: true,
             ..Default::default()
         }),
@@ -88,7 +88,7 @@ fn test_resolver(input: PathBuf) {
 #[fixture("tests/ts-resolver/**/input.ts")]
 fn test_ts_resolver(input: PathBuf) {
     run(
-        Syntax::Typescript(TsConfig {
+        Syntax::Typescript(TsSyntax {
             decorators: true,
             ..Default::default()
         }),
@@ -113,14 +113,14 @@ impl VisitMut for TsHygiene {
     visit_mut_obj_and_computed!();
 
     fn visit_mut_ident(&mut self, i: &mut Ident) {
-        if SyntaxContext::empty().apply_mark(self.unresolved_mark) == i.span.ctxt {
+        if SyntaxContext::empty().apply_mark(self.unresolved_mark) == i.ctxt {
             println!("ts_hygiene: {} is unresolved", i.sym);
             return;
         }
 
-        let ctxt = format!("{:?}", i.span.ctxt).replace('#', "");
+        let ctxt = format!("{:?}", i.ctxt).replace('#', "");
         i.sym = format!("{}__{}", i.sym, ctxt).into();
-        i.span = i.span.with_ctxt(SyntaxContext::empty());
+        i.ctxt = SyntaxContext::empty();
     }
 
     fn visit_mut_prop_name(&mut self, n: &mut PropName) {

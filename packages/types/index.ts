@@ -27,7 +27,7 @@ export interface JsMinifyOptions {
 
     keep_fnames?: boolean;
 
-    module?: boolean;
+    module?: boolean | "unknown";
 
     safari10?: boolean;
 
@@ -302,12 +302,44 @@ export interface TerserCompressOptions {
 export interface TerserMangleOptions {
     props?: TerserManglePropertiesOptions;
 
+    /**
+     * Pass `true` to mangle names declared in the top level scope.
+     */
+    topLevel?: boolean
+
+    /**
+     * @deprecated An alias for compatibility with terser.
+     */
     toplevel?: boolean;
 
+    /**
+     * Pass `true` to not mangle class names.
+     */
+    keepClassNames?: boolean;
+
+    /**
+     * @deprecated An alias for compatibility with terser.
+     */
     keep_classnames?: boolean;
 
+    /**
+     * Pass `true` to not mangle function names.
+     */
+    keepFnNames?: boolean;
+
+    /**
+     * @deprecated An alias for compatibility with terser.
+     */
     keep_fnames?: boolean;
 
+    /**
+     * Pass `true` to not mangle private props.
+     */
+    keepPrivateProps?: boolean;
+
+    /**
+     * @deprecated An alias for compatibility with terser.
+     */
     keep_private_props?: boolean;
 
     ie8?: boolean;
@@ -540,6 +572,13 @@ export interface EnvConfig {
 
     loose?: boolean;
 
+    /**
+     * Transpiles the broken syntax to the closest non-broken modern syntax
+     *
+     * Defaults to false.
+     */
+    bugfixes?: boolean;
+
     /// Skipped es features.
     ///
     /// e.g.)
@@ -627,6 +666,11 @@ export interface JscConfig {
          * Disable builtin transforms. If enabled, only Wasm plugins are used.
          */
         disableBuiltinTransformsForInternalTesting?: boolean;
+
+        /**
+         * Emit isolated dts files for each module.
+         */
+        emitIsolatedDts?: boolean;
     };
 
     baseUrl?: string;
@@ -665,7 +709,7 @@ export interface TsParserConfig {
      */
     decorators?: boolean;
     /**
-     * Defaults to `false`
+     * @deprecated Always true because it's in ecmascript spec.
      */
     dynamicImport?: boolean;
 }
@@ -733,9 +777,29 @@ export interface EsParserConfig {
      */
     topLevelAwait?: boolean;
     /**
-     * Defaults to `false`
+     * @deprecated An alias of `importAttributes`
      */
     importAssertions?: boolean;
+    /**
+     * Defaults to `false`
+     */
+    importAttributes?: boolean;
+    /**
+     * Defaults to `false`
+     */
+    allowSuperOutsideMethod?: boolean;
+    /**
+     * Defaults to `false`
+     */
+    allowReturnOutsideFunction?: boolean;
+    /**
+     * Defaults to `false`
+     */
+    autoAccessors?: boolean;
+    /**
+     * Defaults to `false`
+     */
+    explicitResourceManagement?: boolean;
 }
 
 /**
@@ -763,6 +827,11 @@ export interface TransformConfig {
      * https://swc.rs/docs/configuring-swc.html#jsctransformdecoratormetadata
      */
     decoratorMetadata?: boolean;
+
+    /**
+     * https://swc.rs/docs/configuration/compilation#jsctransformdecoratorversion
+     */
+    decoratorVersion?: "2021-12" | "2022-03";
 
     treatConstEnumAsEnum?: boolean;
 
@@ -860,7 +929,7 @@ export interface GlobalPassOption {
      *
      * Defaults to `["NODE_ENV", "SWC_ENV"]`
      */
-    envs?: string[];
+    envs?: string[] | Record<string, string>;
 
     /**
      * Replaces typeof calls for passed variables with corresponding value

@@ -1,11 +1,8 @@
 #[cfg(feature = "debug")]
+use std::fmt::{self, Debug, Display, Formatter};
+#[cfg(feature = "debug")]
 use std::thread;
-use std::{
-    borrow::Cow,
-    fmt,
-    fmt::{Debug, Display, Formatter, Write},
-    time::Instant,
-};
+use std::{borrow::Cow, fmt::Write, time::Instant};
 
 #[cfg(feature = "pretty_assertions")]
 use pretty_assertions::assert_eq;
@@ -191,6 +188,9 @@ impl Compressor<'_> {
 
             let start_time = now();
 
+            #[cfg(feature = "debug")]
+            let start = n.dump();
+
             let mut visitor = expr_simplifier(self.marks.unresolved_mark, ExprSimplifierConfig {});
             n.apply(&mut visitor);
 
@@ -199,7 +199,10 @@ impl Compressor<'_> {
                 debug!("compressor: Simplified expressions");
                 #[cfg(feature = "debug")]
                 {
-                    debug!("===== Simplified =====\n{}", dump(&*n, false));
+                    debug!(
+                        "===== Simplified =====\n{start}===== ===== ===== =====\n{}",
+                        n.dump()
+                    );
                 }
             }
 
@@ -232,7 +235,6 @@ impl Compressor<'_> {
 
             let mut visitor = pure_optimizer(
                 self.options,
-                None,
                 self.marks,
                 PureOptimizerConfig {
                     enable_join_vars: self.pass > 1,
@@ -322,7 +324,7 @@ impl Compressor<'_> {
 }
 
 impl VisitMut for Compressor<'_> {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_script(&mut self, n: &mut Script) {
         self.optimize_unit_repeatedly(n);
@@ -357,9 +359,11 @@ impl VisitMut for Compressor<'_> {
     }
 }
 
+#[cfg(feature = "debug")]
 #[derive(PartialEq, Eq)]
 struct DebugUsingDisplay<'a>(pub &'a str);
 
+#[cfg(feature = "debug")]
 impl<'a> Debug for DebugUsingDisplay<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
         Display::fmt(self.0, f)

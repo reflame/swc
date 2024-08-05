@@ -13,7 +13,7 @@ struct BlockScopedFns;
 
 #[swc_trace]
 impl VisitMut for BlockScopedFns {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_function(&mut self, n: &mut Function) {
         let Some(body) = &mut n.body else { return };
@@ -40,7 +40,7 @@ impl VisitMut for BlockScopedFns {
 
             if let Stmt::Decl(Decl::Fn(decl)) = stmt {
                 if IdentUsageFinder::find(&decl.ident.to_id(), &decl.function) {
-                    extra_stmts.push(Stmt::Decl(Decl::Fn(decl)));
+                    extra_stmts.push(decl.into());
                     continue;
                 }
                 stmts.push(
@@ -56,7 +56,7 @@ impl VisitMut for BlockScopedFns {
                             }))),
                             definite: false,
                         }],
-                        declare: false,
+                        ..Default::default()
                     }
                     .into(),
                 )

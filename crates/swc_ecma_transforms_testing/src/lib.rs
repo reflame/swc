@@ -7,7 +7,7 @@ use std::{
     env,
     fs::{self, create_dir_all, read_to_string, OpenOptions},
     io::Write,
-    mem::take,
+    mem::{take, transmute},
     panic,
     path::{Path, PathBuf},
     process::Command,
@@ -21,15 +21,14 @@ use serde::de::DeserializeOwned;
 use sha2::{Digest, Sha256};
 use swc_common::{
     chain,
-    comments::SingleThreadedComments,
+    comments::{Comments, SingleThreadedComments},
     errors::{Handler, HANDLER},
     source_map::SourceMapGenConfig,
     sync::Lrc,
-    util::take::Take,
     FileName, Mark, SourceMap, DUMMY_SP,
 };
-use swc_ecma_ast::{Pat, *};
-use swc_ecma_codegen::Emitter;
+use swc_ecma_ast::*;
+use swc_ecma_codegen::to_code_default;
 use swc_ecma_parser::{lexer::Lexer, Parser, StringInput, Syntax};
 use swc_ecma_testing::{exec_node_js, JsExecOptions};
 use swc_ecma_transforms_base::{
@@ -39,7 +38,7 @@ use swc_ecma_transforms_base::{
     pass::noop,
 };
 use swc_ecma_utils::{quote_ident, quote_str, ExprFactory};
-use swc_ecma_visit::{as_folder, noop_visit_mut_type, Fold, FoldWith, VisitMut, VisitMutWith};
+use swc_ecma_visit::{as_folder, noop_visit_mut_type, Fold, FoldWith, VisitMut};
 use tempfile::tempdir_in;
 use testing::{
     assert_eq, find_executable, NormalizedOutput, CARGO_TARGET_DIR, CARGO_WORKSPACE_ROOT,
@@ -64,13 +63,22 @@ impl<'a> Tester<'a> {
     where
         F: FnOnce(&mut Tester<'_>) -> Result<Ret, ()>,
     {
+        let comments = Rc::new(SingleThreadedComments::default());
+
         let out = ::testing::run_test(false, |cm, handler| {
             HANDLER.set(handler, || {
                 HELPERS.set(&Default::default(), || {
-                    op(&mut Tester {
-                        cm,
-                        handler,
-                        comments: Default::default(),
+                    let cmts = comments.clone();
+                    let c = Box::new(unsafe {
+                        // Safety: This is unsafe but it's used only for testing.
+                        transmute::<&dyn Comments, &'static dyn Comments>(&*cmts)
+                    }) as Box<dyn Comments>;
+                    swc_common::comments::COMMENTS.set(&c, || {
+                        op(&mut Tester {
+                            cm,
+                            handler,
+                            comments,
+                        })
                     })
                 })
             })
@@ -123,7 +131,7 @@ impl<'a> Tester<'a> {
     {
         let fm = self
             .cm
-            .new_source_file(FileName::Real(file_name.into()), src.into());
+            .new_source_file(FileName::Real(file_name.into()).into(), src.into());
 
         let mut p = Parser::new(syntax, StringInput::from(&*fm), Some(&self.comments));
         let res = op(&mut p).map_err(|e| e.into_diagnostic(self.handler).emit());
@@ -163,7 +171,7 @@ impl<'a> Tester<'a> {
     ) -> Result<Module, ()> {
         let fm = self
             .cm
-            .new_source_file(FileName::Real(name.into()), src.into());
+            .new_source_file(FileName::Real(name.into()).into(), src.into());
 
         let module = {
             let mut p = Parser::new_from(Lexer::new(
@@ -183,34 +191,13 @@ impl<'a> Tester<'a> {
             res?
         };
 
-        let module = Program::Module(module)
-            .fold_with(&mut tr)
-            .fold_with(&mut as_folder(Normalizer));
+        let module = Program::Module(module).fold_with(&mut tr);
 
         Ok(module.expect_module())
     }
 
     pub fn print(&mut self, module: &Module, comments: &Rc<SingleThreadedComments>) -> String {
-        let mut buf = vec![];
-        {
-            let mut emitter = Emitter {
-                cfg: Default::default(),
-                cm: self.cm.clone(),
-                wr: Box::new(swc_ecma_codegen::text_writer::JsWriter::new(
-                    self.cm.clone(),
-                    "\n",
-                    &mut buf,
-                    None,
-                )),
-                comments: Some(comments),
-            };
-
-            // println!("Emitting: {:?}", module);
-            emitter.emit_module(module).unwrap();
-        }
-
-        let s = String::from_utf8_lossy(&buf);
-        s.to_string()
+        to_code_default(self.cm.clone(), Some(comments), module)
     }
 }
 
@@ -235,12 +222,13 @@ impl VisitMut for RegeneratorHandler {
                 _ => return,
             };
 
-            let init = Box::new(Expr::Call(CallExpr {
+            let init = CallExpr {
                 span: DUMMY_SP,
                 callee: quote_ident!("require").as_callee(),
                 args: vec![quote_str!("regenerator-runtime").as_arg()],
-                type_args: Default::default(),
-            }));
+                ..Default::default()
+            }
+            .into();
 
             let decl = VarDeclarator {
                 span: DUMMY_SP,
@@ -248,12 +236,14 @@ impl VisitMut for RegeneratorHandler {
                 init: Some(init),
                 definite: Default::default(),
             };
-            *item = ModuleItem::Stmt(Stmt::Decl(Decl::Var(Box::new(VarDecl {
+            *item = VarDecl {
                 span: import.span,
                 kind: VarDeclKind::Var,
                 declare: false,
                 decls: vec![decl],
-            }))))
+                ..Default::default()
+            }
+            .into()
         }
     }
 }
@@ -279,9 +269,7 @@ pub fn test_transform<F, P>(
 {
     Tester::run(|tester| {
         let expected = tester.apply_transform(
-            as_folder(::swc_ecma_utils::DropSpan {
-                preserve_ctxt: true,
-            }),
+            as_folder(::swc_ecma_utils::DropSpan),
             "output.js",
             syntax,
             expected,
@@ -306,9 +294,7 @@ pub fn test_transform<F, P>(
         }
 
         let actual = actual
-            .fold_with(&mut as_folder(::swc_ecma_utils::DropSpan {
-                preserve_ctxt: true,
-            }))
+            .fold_with(&mut as_folder(::swc_ecma_utils::DropSpan))
             .fold_with(&mut hygiene::hygiene())
             .fold_with(&mut fixer::fixer(Some(&tester.comments)));
 
@@ -354,13 +340,75 @@ pub fn test_transform<F, P>(
 /// NOT A PUBLIC API. DO NOT USE.
 #[doc(hidden)]
 #[track_caller]
-pub fn test_inlined_transform<F, P>(
-    test_name: &str,
-    syntax: Syntax,
-    tr: F,
-    input: &str,
-    _always_ok_if_code_eq: bool,
-) where
+pub fn test_inline_input_output<F, P>(syntax: Syntax, tr: F, input: &str, output: &str)
+where
+    F: FnOnce(&mut Tester) -> P,
+    P: Fold,
+{
+    let _logger = testing::init();
+
+    let expected = output;
+
+    let expected_src = Tester::run(|tester| {
+        let expected_module = tester.apply_transform(noop(), "expected.js", syntax, expected)?;
+
+        let expected_src = tester.print(&expected_module, &Default::default());
+
+        println!(
+            "----- {} -----\n{}",
+            Color::Green.paint("Expected"),
+            expected_src
+        );
+
+        Ok(expected_src)
+    });
+
+    let actual_src = Tester::run_captured(|tester| {
+        println!("----- {} -----\n{}", Color::Green.paint("Input"), input);
+
+        let tr = tr(tester);
+
+        println!("----- {} -----", Color::Green.paint("Actual"));
+
+        let actual = tester.apply_transform(tr, "input.js", syntax, input)?;
+
+        match ::std::env::var("PRINT_HYGIENE") {
+            Ok(ref s) if s == "1" => {
+                let hygiene_src = tester.print(
+                    &actual.clone().fold_with(&mut HygieneVisualizer),
+                    &Default::default(),
+                );
+                println!(
+                    "----- {} -----\n{}",
+                    Color::Green.paint("Hygiene"),
+                    hygiene_src
+                );
+            }
+            _ => {}
+        }
+
+        let actual = actual
+            .fold_with(&mut crate::hygiene::hygiene())
+            .fold_with(&mut crate::fixer::fixer(Some(&tester.comments)));
+
+        let actual_src = tester.print(&actual, &Default::default());
+
+        Ok(actual_src)
+    })
+    .0
+    .unwrap();
+
+    assert_eq!(
+        expected_src, actual_src,
+        "Exepcted:\n{expected_src}\nActual:\n{actual_src}\n",
+    );
+}
+
+/// NOT A PUBLIC API. DO NOT USE.
+#[doc(hidden)]
+#[track_caller]
+pub fn test_inlined_transform<F, P>(test_name: &str, syntax: Syntax, tr: F, input: &str)
+where
     F: FnOnce(&mut Tester) -> P,
     P: Fold,
 {
@@ -394,28 +442,68 @@ macro_rules! test_location {
     }};
 }
 
-/// Test transformation.
+#[macro_export]
+macro_rules! test_inline {
+    (ignore, $syntax:expr, $tr:expr, $test_name:ident, $input:expr, $output:expr) => {
+        #[test]
+        #[ignore]
+        fn $test_name() {
+            $crate::test_inline_input_output($syntax, $tr, $input, $output)
+        }
+    };
+
+    ($syntax:expr, $tr:expr, $test_name:ident, $input:expr, $output:expr) => {
+        #[test]
+        fn $test_name() {
+            $crate::test_inline_input_output($syntax, $tr, $input, $output)
+        }
+    };
+}
+
+test_inline!(
+    ignore,
+    Syntax::default(),
+    |_| noop(),
+    test_inline_ignored,
+    "class Foo {}",
+    "class Foo {}"
+);
+
+test_inline!(
+    Syntax::default(),
+    |_| noop(),
+    test_inline_pass,
+    "class Foo {}",
+    "class Foo {}"
+);
+
+#[test]
+#[should_panic]
+fn test_inline_should_fail() {
+    test_inline_input_output(Default::default(), |_| noop(), "class Foo {}", "");
+}
+
 #[macro_export]
 macro_rules! test {
     (ignore, $syntax:expr, $tr:expr, $test_name:ident, $input:expr) => {
         #[test]
         #[ignore]
         fn $test_name() {
-            $crate::test_inlined_transform(stringify!($test_name), $syntax, $tr, $input, false)
+            $crate::test_inlined_transform(stringify!($test_name), $syntax, $tr, $input)
         }
     };
 
     ($syntax:expr, $tr:expr, $test_name:ident, $input:expr) => {
         #[test]
         fn $test_name() {
-            $crate::test_inlined_transform(stringify!($test_name), $syntax, $tr, $input, false)
+            $crate::test_inlined_transform(stringify!($test_name), $syntax, $tr, $input)
         }
     };
 
     ($syntax:expr, $tr:expr, $test_name:ident, $input:expr, ok_if_code_eq) => {
         #[test]
         fn $test_name() {
-            $crate::test_inlined_transform(stringify!($test_name), $syntax, $tr, $input, true)
+            $crate::test_inlined_transform(stringify!($test_name), $syntax, $tr, $input)
         }
     };
 }
@@ -553,6 +641,7 @@ fn exec_with_node_test_runner(src: &str) -> Result<(), ()> {
 
     let mut tmp = OpenOptions::new()
         .create(true)
+        .truncate(true)
         .write(true)
         .open(&path)
         .expect("failed to create a temp file");
@@ -570,7 +659,7 @@ fn exec_with_node_test_runner(src: &str) -> Result<(), ()> {
     };
 
     let output = base_cmd
-        .arg(&format!("{}", path.display()))
+        .arg(format!("{}", path.display()))
         .arg("--color")
         .current_dir(root)
         .output()
@@ -636,25 +725,12 @@ macro_rules! compare_stdout {
     };
 }
 
-struct Normalizer;
-impl VisitMut for Normalizer {
-    fn visit_mut_pat_or_expr(&mut self, node: &mut PatOrExpr) {
-        node.visit_mut_children_with(self);
-
-        if let PatOrExpr::Pat(pat) = node {
-            if let Pat::Expr(e) = &mut **pat {
-                *node = PatOrExpr::Expr(e.take());
-            }
-        }
-    }
-}
-
 /// Converts `foo#1` to `foo__1` so it can be verified by the test.
 pub struct HygieneTester;
 impl Fold for HygieneTester {
     fn fold_ident(&mut self, ident: Ident) -> Ident {
         Ident {
-            sym: format!("{}__{}", ident.sym, ident.span.ctxt.as_u32()).into(),
+            sym: format!("{}__{}", ident.sym, ident.ctxt.as_u32()).into(),
             ..ident
         }
     }
@@ -678,7 +754,7 @@ pub struct HygieneVisualizer;
 impl Fold for HygieneVisualizer {
     fn fold_ident(&mut self, ident: Ident) -> Ident {
         Ident {
-            sym: format!("{}{:?}", ident.sym, ident.span.ctxt()).into(),
+            sym: format!("{}{:?}", ident.sym, ident.ctxt).into(),
             ..ident
         }
     }
@@ -790,18 +866,25 @@ fn test_fixture_inner<'a>(
         Ok(expected_src)
     });
 
-    let mut src_map = if config.sourcemap { Some(vec![]) } else { None };
+    let mut src_map = if config.sourcemap {
+        Some(Vec::new())
+    } else {
+        None
+    };
 
     let mut sourcemap = None;
 
     let (actual_src, stderr) = Tester::run_captured(|tester| {
-        println!("----- {} -----\n{}", Color::Green.paint("Input"), input);
+        eprintln!("----- {} -----\n{}", Color::Green.paint("Input"), input);
 
         let tr = tr(tester);
 
-        println!("----- {} -----", Color::Green.paint("Actual"));
+        eprintln!("----- {} -----", Color::Green.paint("Actual"));
 
         let actual = tester.apply_transform(tr, "input.js", syntax, input)?;
+
+        eprintln!("----- {} -----", Color::Green.paint("Comments"));
+        eprintln!("{:?}", tester.comments);
 
         match ::std::env::var("PRINT_HYGIENE") {
             Ok(ref s) if s == "1" => {
@@ -825,23 +908,6 @@ fn test_fixture_inner<'a>(
         let actual_src = {
             let module = &actual;
             let comments: &Rc<SingleThreadedComments> = &tester.comments.clone();
-            let mut buf = vec![];
-            {
-                let mut emitter = Emitter {
-                    cfg: Default::default(),
-                    cm: tester.cm.clone(),
-                    wr: Box::new(swc_ecma_codegen::text_writer::JsWriter::new(
-                        tester.cm.clone(),
-                        "\n",
-                        &mut buf,
-                        src_map.as_mut(),
-                    )),
-                    comments: Some(comments),
-                };
-
-                // println!("Emitting: {:?}", module);
-                emitter.emit_module(module).unwrap();
-            }
 
             if let Some(src_map) = &mut src_map {
                 sourcemap = Some(tester.cm.build_source_map_with_config(
@@ -851,8 +917,7 @@ fn test_fixture_inner<'a>(
                 ));
             }
 
-            let s = String::from_utf8_lossy(&buf);
-            s.to_string()
+            to_code_default(tester.cm.clone(), Some(comments), module)
         };
 
         Ok(actual_src)
@@ -867,11 +932,11 @@ fn test_fixture_inner<'a>(
     }
 
     if let Some(actual_src) = actual_src {
-        println!("{}", actual_src);
+        eprintln!("{}", actual_src);
 
         if let Some(sourcemap) = &sourcemap {
-            println!("----- ----- ----- ----- -----");
-            println!("SourceMap: {}", visualizer_url(&actual_src, sourcemap));
+            eprintln!("----- ----- ----- ----- -----");
+            eprintln!("SourceMap: {}", visualizer_url(&actual_src, sourcemap));
         }
 
         if actual_src != expected_src {
@@ -883,7 +948,7 @@ fn test_fixture_inner<'a>(
 
     if let Some(sourcemap) = sourcemap {
         let map = {
-            let mut buf = vec![];
+            let mut buf = Vec::new();
             sourcemap.to_writer(&mut buf).unwrap();
             String::from_utf8(buf).unwrap()
         };
@@ -896,7 +961,7 @@ fn test_fixture_inner<'a>(
 /// Creates a url for https://evanw.github.io/source-map-visualization/
 fn visualizer_url(code: &str, map: &sourcemap::SourceMap) -> String {
     let map = {
-        let mut buf = vec![];
+        let mut buf = Vec::new();
         map.to_writer(&mut buf).unwrap();
         String::from_utf8(buf).unwrap()
     };

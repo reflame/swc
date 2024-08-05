@@ -1,4 +1,4 @@
-use swc_common::{sync::Lrc, FilePathMapping};
+use swc_common::FilePathMapping;
 use swc_ecma_transforms_testing::{test, test_exec};
 
 use super::*;
@@ -10,7 +10,7 @@ fn tr() -> impl Fold {
 
 test_exec!(
     ignore,
-    ::swc_ecma_parser::Syntax::Es(::swc_ecma_parser::EsConfig {
+    ::swc_ecma_parser::Syntax::Es(::swc_ecma_parser::EsSyntax {
         jsx: true,
         ..Default::default()
     }),
@@ -35,7 +35,7 @@ expect(actual).toBe(expected);
 );
 
 test!(
-    ::swc_ecma_parser::Syntax::Es(::swc_ecma_parser::EsConfig {
+    ::swc_ecma_parser::Syntax::Es(::swc_ecma_parser::EsSyntax {
         jsx: true,
         ..Default::default()
     }),
@@ -46,7 +46,7 @@ test!(
 
 test_exec!(
     ignore,
-    ::swc_ecma_parser::Syntax::Es(::swc_ecma_parser::EsConfig {
+    ::swc_ecma_parser::Syntax::Es(::swc_ecma_parser::EsSyntax {
         jsx: true,
         ..Default::default()
     }),

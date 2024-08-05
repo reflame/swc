@@ -8,7 +8,7 @@
 use std::{fs, path::PathBuf};
 
 use swc_common::{chain, Mark};
-use swc_ecma_parser::{EsConfig, Syntax, TsConfig};
+use swc_ecma_parser::{EsSyntax, Syntax, TsSyntax};
 use swc_ecma_transforms_base::resolver;
 use swc_ecma_transforms_compat::{
     class_fields_use_set::class_fields_use_set,
@@ -22,14 +22,14 @@ use swc_ecma_transforms_typescript::{strip, typescript};
 use swc_ecma_visit::Fold;
 
 fn ts() -> Syntax {
-    Syntax::Typescript(TsConfig {
+    Syntax::Typescript(TsSyntax {
         decorators: true,
         ..Default::default()
     })
 }
 
 fn syntax(decorators_before_export: bool) -> Syntax {
-    Syntax::Es(EsConfig {
+    Syntax::Es(EsSyntax {
         decorators_before_export,
         decorators: true,
         ..Default::default()
@@ -74,6 +74,7 @@ fn simple_strip(t: &Tester, config: Config) -> impl Fold {
                 no_empty_export: true,
                 ..Default::default()
             },
+            unresolved_mark,
             top_level_mark
         ),
         class_fields_use_set(true),
@@ -3657,7 +3658,7 @@ c = 456;
 );
 
 fn issue_395_syntax() -> ::swc_ecma_parser::Syntax {
-    ::swc_ecma_parser::Syntax::Es(::swc_ecma_parser::EsConfig {
+    ::swc_ecma_parser::Syntax::Es(::swc_ecma_parser::EsSyntax {
         decorators: true,
         ..Default::default()
     })
@@ -4001,7 +4002,7 @@ test!(
 );
 
 test_exec!(
-    Syntax::Typescript(TsConfig {
+    Syntax::Typescript(TsSyntax {
         decorators: true,
         ..Default::default()
     }),
@@ -4030,7 +4031,7 @@ fn fixture_exec(input: PathBuf) {
 
     swc_ecma_transforms_testing::exec_tr(
         "decorator",
-        Syntax::Typescript(TsConfig {
+        Syntax::Typescript(TsSyntax {
             decorators: true,
             ..Default::default()
         }),
@@ -4045,7 +4046,7 @@ fn fixture_exec(input: PathBuf) {
                     emit_metadata: true,
                     use_define_for_class_fields: false,
                 }),
-                strip(top_level_mark),
+                strip(unresolved_mark, top_level_mark),
                 class_fields_use_set(true),
             )
         },

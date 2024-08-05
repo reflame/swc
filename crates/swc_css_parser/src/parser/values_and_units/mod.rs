@@ -13,7 +13,7 @@ where
     I: ParserInput,
 {
     pub(super) fn parse_generic_values(&mut self) -> PResult<Vec<ComponentValue>> {
-        let mut values = vec![];
+        let mut values = Vec::new();
 
         loop {
             self.input.skip_ws();
@@ -119,8 +119,8 @@ where
 
     /// Parse value as <any-value>.
     pub(super) fn parse_any_value(&mut self) -> PResult<Vec<TokenAndSpan>> {
-        let mut tokens = vec![];
-        let mut balance_stack: Vec<Option<char>> = vec![];
+        let mut tokens = Vec::new();
+        let mut balance_stack: Vec<Option<char>> = Vec::new();
 
         // The <any-value> production matches any sequence of one or more tokens,
         // so long as the sequence ...
@@ -146,10 +146,7 @@ where
                         }
                     };
 
-                    let balance_close_type = match balance_stack.pop() {
-                        Some(v) => v,
-                        None => None,
-                    };
+                    let balance_close_type = balance_stack.pop().unwrap_or_default();
 
                     if Some(value) != balance_close_type {
                         break;
@@ -195,9 +192,11 @@ where
             }
         };
 
-        let mut values = vec![];
+        let mut values = Vec::new();
 
-        match &**function_name {
+        let lower_fname = function_name.to_ascii_lowercase();
+
+        match &*lower_fname {
             "calc" | "-moz-calc" | "-webkit-calc" | "sin" | "cos" | "tan" | "asin" | "acos"
             | "atan" | "sqrt" | "exp" | "abs" | "sign" => {
                 self.input.skip_ws();
@@ -402,7 +401,7 @@ where
                     _ => {}
                 }
 
-                match &**function_name {
+                match &*lower_fname {
                     "rgb" | "rgba" => {
                         let percentage_or_number_or_none = self.try_parse_variable_function(
                             |parser, has_variable_before| match cur!(parser) {
@@ -515,7 +514,7 @@ where
                     is_legacy_syntax = false;
                 }
 
-                match &**function_name {
+                match &*lower_fname {
                     "rgb" | "rgba" => {
                         let percentage_or_number = self.try_parse_variable_function(
                             |parser, has_variable_before| match cur!(parser) {
@@ -631,7 +630,7 @@ where
                     }
                 }
 
-                match &**function_name {
+                match &*lower_fname {
                     "rgb" | "rgba" => {
                         let percentage_or_number = self.try_parse_variable_function(
                             |parser, has_variable_before| match cur!(parser) {
@@ -819,7 +818,7 @@ where
                 match cur!(self) {
                     Token::Ident { value, .. }
                         if matches_eq_ignore_ascii_case!(value, "from")
-                            && *function_name != "device-cmyk" =>
+                            && lower_fname != "device-cmyk" =>
                     {
                         values.push(ComponentValue::Ident(self.parse()?));
 
@@ -839,7 +838,7 @@ where
                     _ => {}
                 }
 
-                match &**function_name {
+                match &*lower_fname {
                     "hwb" => {
                         let hue_or_none = self.try_parse_variable_function(
                             |parser, has_variable_before| match cur!(parser) {
@@ -947,7 +946,7 @@ where
                 }
 
                 if !is_one_of!(self, EOF, "/") {
-                    match &**function_name {
+                    match &*lower_fname {
                         "hwb" => {
                             let percentage_or_none = self.try_parse_variable_function(
                                 |parser, has_variable_before| match cur!(parser) {
@@ -1064,7 +1063,7 @@ where
                 }
 
                 if !is_one_of!(self, EOF, "/") {
-                    match &**function_name {
+                    match &*lower_fname {
                         "hwb" => {
                             let percentage_or_none = self.try_parse_variable_function(
                                 |parser, has_variable_before| match cur!(parser) {
@@ -1226,7 +1225,7 @@ where
                     }
                 }
 
-                if !is_one_of!(self, EOF, "/") && function_name == "device-cmyk" {
+                if !is_one_of!(self, EOF, "/") && lower_fname == "device-cmyk" {
                     let cmyk_component = self.try_parse_variable_function(
                         |parser, _| Ok(Some(ComponentValue::CmykComponent(parser.parse()?))),
                         &mut has_variable,
@@ -1252,7 +1251,7 @@ where
                             Token::Function { value, .. } if is_math_function(value) => {
                                 Ok(Some(ComponentValue::Function(parser.parse()?)))
                             }
-                            tok!("ident") if !matches!(&**function_name, "device-cmyk") => {
+                            tok!("ident") if !matches!(&*lower_fname, "device-cmyk") => {
                                 let ident: Box<Ident> = parser.parse()?;
 
                                 if ident.value.eq_ignore_ascii_case("none") {
@@ -1539,7 +1538,7 @@ where
                             Token::Function { value, .. } if is_math_function(value) => {
                                 Ok(Some(ComponentValue::Function(parser.parse()?)))
                             }
-                            tok!("ident") if !matches!(&**function_name, "device-cmyk") => {
+                            tok!("ident") if !matches!(&*lower_fname, "device-cmyk") => {
                                 let ident: Box<Ident> = parser.parse()?;
 
                                 if ident.value.eq_ignore_ascii_case("none") {
@@ -2021,13 +2020,13 @@ where
                 Ok(Length {
                     span,
                     value: Number {
-                        span: Span::new(span.lo, span.hi - BytePos(unit_len), Default::default()),
+                        span: Span::new(span.lo, span.hi - BytePos(unit_len)),
                         value,
                         raw: Some(raw_value),
                     },
                     unit: Ident {
-                        span: Span::new(span.hi - BytePos(unit_len), span.hi, Default::default()),
-                        value: unit.to_ascii_lowercase(),
+                        span: Span::new(span.hi - BytePos(unit_len), span.hi),
+                        value: unit,
                         raw: Some(raw_unit),
                     },
                 })
@@ -2072,13 +2071,13 @@ where
                 Ok(Angle {
                     span,
                     value: Number {
-                        span: Span::new(span.lo, span.hi - BytePos(unit_len), Default::default()),
+                        span: Span::new(span.lo, span.hi - BytePos(unit_len)),
                         value,
                         raw: Some(raw_value),
                     },
                     unit: Ident {
-                        span: Span::new(span.hi - BytePos(unit_len), span.hi, Default::default()),
-                        value: unit.to_ascii_lowercase(),
+                        span: Span::new(span.hi - BytePos(unit_len), span.hi),
+                        value: unit,
                         raw: Some(raw_unit),
                     },
                 })
@@ -2120,13 +2119,13 @@ where
                 Ok(Time {
                     span,
                     value: Number {
-                        span: Span::new(span.lo, span.hi - BytePos(unit_len), Default::default()),
+                        span: Span::new(span.lo, span.hi - BytePos(unit_len)),
                         value,
                         raw: Some(raw_value),
                     },
                     unit: Ident {
-                        span: Span::new(span.hi - BytePos(unit_len), span.hi, Default::default()),
-                        value: unit.to_ascii_lowercase(),
+                        span: Span::new(span.hi - BytePos(unit_len), span.hi),
+                        value: unit,
                         raw: Some(raw_unit),
                     },
                 })
@@ -2168,13 +2167,13 @@ where
                 Ok(Frequency {
                     span,
                     value: Number {
-                        span: Span::new(span.lo, span.hi - BytePos(unit_len), Default::default()),
+                        span: Span::new(span.lo, span.hi - BytePos(unit_len)),
                         value,
                         raw: Some(raw_value),
                     },
                     unit: Ident {
-                        span: Span::new(span.hi - BytePos(unit_len), span.hi, Default::default()),
-                        value: unit.to_ascii_lowercase(),
+                        span: Span::new(span.hi - BytePos(unit_len), span.hi),
+                        value: unit,
                         raw: Some(raw_unit),
                     },
                 })
@@ -2219,13 +2218,13 @@ where
                 Ok(Resolution {
                     span,
                     value: Number {
-                        span: Span::new(span.lo, span.hi - BytePos(unit_len), Default::default()),
+                        span: Span::new(span.lo, span.hi - BytePos(unit_len)),
                         value,
                         raw: Some(raw_value),
                     },
                     unit: Ident {
-                        span: Span::new(span.hi - BytePos(unit_len), span.hi, Default::default()),
-                        value: unit.to_ascii_lowercase(),
+                        span: Span::new(span.hi - BytePos(unit_len), span.hi),
+                        value: unit,
                         raw: Some(raw_unit),
                     },
                 })
@@ -2267,13 +2266,13 @@ where
                 Ok(Flex {
                     span,
                     value: Number {
-                        span: Span::new(span.lo, span.hi - BytePos(unit_len), Default::default()),
+                        span: Span::new(span.lo, span.hi - BytePos(unit_len)),
                         value,
                         raw: Some(raw_value),
                     },
                     unit: Ident {
-                        span: Span::new(span.hi - BytePos(unit_len), span.hi, Default::default()),
-                        value: unit.to_ascii_lowercase(),
+                        span: Span::new(span.hi - BytePos(unit_len), span.hi),
+                        value: unit,
                         raw: Some(raw_unit),
                     },
                 })
@@ -2311,12 +2310,12 @@ where
                 Ok(UnknownDimension {
                     span,
                     value: Number {
-                        span: Span::new(span.lo, span.hi - BytePos(unit_len), Default::default()),
+                        span: Span::new(span.lo, span.hi - BytePos(unit_len)),
                         value,
                         raw: Some(raw_value),
                     },
                     unit: Ident {
-                        span: Span::new(span.hi - BytePos(unit_len), span.hi, Default::default()),
+                        span: Span::new(span.hi - BytePos(unit_len), span.hi),
                         value: self.input.atom(unit.to_lowercase()),
                         raw: Some(raw_unit),
                     },
@@ -2424,7 +2423,7 @@ where
 
                 Ok(HexColor {
                     span,
-                    value: value.to_ascii_lowercase(),
+                    value,
                     raw: Some(raw),
                 })
             }
@@ -2530,7 +2529,7 @@ where
         match bump!(self) {
             Token::Percentage { value, raw } => {
                 let value = Number {
-                    span: Span::new(span.lo, span.hi - BytePos(1), Default::default()),
+                    span: Span::new(span.lo, span.hi - BytePos(1)),
                     value,
                     raw: Some(raw),
                 };
@@ -2586,16 +2585,12 @@ where
             Token::Url { value, raw } => {
                 let name_length = raw.0.len() as u32;
                 let name = Ident {
-                    span: Span::new(span.lo, span.lo + BytePos(name_length), Default::default()),
+                    span: Span::new(span.lo, span.lo + BytePos(name_length)),
                     value: self.input.atom("url"),
                     raw: Some(raw.0),
                 };
                 let value = Some(Box::new(UrlValue::Raw(UrlValueRaw {
-                    span: Span::new(
-                        span.lo + BytePos(name_length + 1),
-                        span.hi - BytePos(1),
-                        Default::default(),
-                    ),
+                    span: Span::new(span.lo + BytePos(name_length + 1), span.hi - BytePos(1)),
                     value,
                     raw: Some(raw.1),
                 })));
@@ -2619,8 +2614,8 @@ where
                 }
 
                 let name = Ident {
-                    span: Span::new(span.lo, span.hi - BytePos(1), Default::default()),
-                    value: function_name.to_ascii_lowercase(),
+                    span: Span::new(span.lo, span.hi - BytePos(1)),
+                    value: function_name,
                     raw: Some(raw_function_name),
                 };
 
@@ -2633,7 +2628,7 @@ where
 
                 self.input.skip_ws();
 
-                let mut modifiers = vec![];
+                let mut modifiers = Vec::new();
 
                 loop {
                     if is!(self, ")") {
@@ -2905,7 +2900,7 @@ where
                     next = chars.next();
                 }
                 Some(c @ 'A'..='F') | Some(c @ 'a'..='f') => {
-                    start.push(c.to_ascii_lowercase());
+                    start.push(c);
 
                     next = chars.next();
                 }
@@ -3005,7 +3000,7 @@ where
                     next = chars.next();
                 }
                 Some(c @ 'A'..='F') | Some(c @ 'a'..='f') => {
-                    end.push(c.to_ascii_lowercase());
+                    end.push(c);
                     next = chars.next();
                 }
                 _ => {
@@ -3047,7 +3042,7 @@ where
 {
     fn parse(&mut self) -> PResult<CalcSum> {
         let start = self.input.cur_span().lo;
-        let mut expressions = vec![];
+        let mut expressions = Vec::new();
         let calc_product = CalcProductOrOperator::Product(self.parse()?);
         let mut end = match calc_product {
             CalcProductOrOperator::Product(ref calc_product) => calc_product.span.hi,
@@ -3091,7 +3086,7 @@ where
         }
 
         Ok(CalcSum {
-            span: Span::new(start, end, Default::default()),
+            span: Span::new(start, end),
             expressions,
         })
     }
@@ -3103,7 +3098,7 @@ where
 {
     fn parse(&mut self) -> PResult<CalcProduct> {
         let start = self.input.cur_span().lo;
-        let mut expressions = vec![];
+        let mut expressions = Vec::new();
         let calc_value = CalcValueOrOperator::Value(self.parse()?);
         let mut end = match calc_value {
             CalcValueOrOperator::Value(ref calc_value) => match calc_value {
@@ -3177,7 +3172,7 @@ where
         }
 
         Ok(CalcProduct {
-            span: Span::new(start, end, Default::default()),
+            span: Span::new(start, end),
             expressions,
         })
     }

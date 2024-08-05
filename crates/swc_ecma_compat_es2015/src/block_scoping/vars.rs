@@ -236,7 +236,7 @@ impl ParentScope<'_> {
 
 #[swc_trace]
 impl VisitMut for BlockScopedVars {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_arrow_expr(&mut self, n: &mut ArrowExpr) {
         self.with_scope(ScopeKind::Fn, |v| {
@@ -263,6 +263,14 @@ impl VisitMut for BlockScopedVars {
             self.scope.vars.insert(n.key.to_id(), kind);
         } else if !self.is_param {
             self.add_usage(n.key.to_id())
+        }
+    }
+
+    fn visit_mut_binding_ident(&mut self, i: &mut BindingIdent) {
+        if let Some(kind) = self.var_decl_kind {
+            self.scope.vars.insert(i.to_id(), kind);
+        } else if !self.is_param {
+            self.add_usage(i.to_id())
         }
     }
 
@@ -414,18 +422,6 @@ impl VisitMut for BlockScopedVars {
 
         self.var_decl_kind = old_var_decl_kind;
         self.is_param = old_is_param;
-    }
-
-    fn visit_mut_pat(&mut self, n: &mut Pat) {
-        n.visit_mut_children_with(self);
-
-        if let Pat::Ident(i) = n {
-            if let Some(kind) = self.var_decl_kind {
-                self.scope.vars.insert(i.to_id(), kind);
-            } else if !self.is_param {
-                self.add_usage(i.to_id())
-            }
-        }
     }
 
     fn visit_mut_prop(&mut self, n: &mut Prop) {

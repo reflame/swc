@@ -218,8 +218,13 @@ expect(foo()).toBe(false);
 test!(
     Syntax::default(),
     |Tester { comments, .. }| {
-        let mark = Mark::fresh(Mark::root());
-        es2015::es2015(mark, Some(comments.clone()), Default::default())
+        let unresolved_mark = Mark::new();
+        let top_level_mark = Mark::new();
+
+        chain!(
+            resolver(unresolved_mark, top_level_mark, false),
+            es2015::es2015(unresolved_mark, Some(comments.clone()), Default::default())
+        )
     },
     issue_1022_1,
     "
@@ -232,8 +237,13 @@ test!(
 test!(
     Syntax::default(),
     |Tester { comments, .. }| {
-        let mark = Mark::fresh(Mark::root());
-        es2015::es2015(mark, Some(comments.clone()), Default::default())
+        let unresolved_mark = Mark::new();
+        let top_level_mark = Mark::new();
+
+        chain!(
+            resolver(unresolved_mark, top_level_mark, false),
+            es2015::es2015(unresolved_mark, Some(comments.clone()), Default::default())
+        )
     },
     issue_1022_2,
     "
@@ -247,8 +257,13 @@ test!(
 test!(
     Syntax::default(),
     |Tester { comments, .. }| {
-        let mark = Mark::fresh(Mark::root());
-        es2015::es2015(mark, Some(comments.clone()), Default::default())
+        let unresolved_mark = Mark::new();
+        let top_level_mark = Mark::new();
+
+        chain!(
+            resolver(unresolved_mark, top_level_mark, false),
+            es2015::es2015(unresolved_mark, Some(comments.clone()), Default::default())
+        )
     },
     issue_1022_3,
     "
@@ -676,14 +691,14 @@ impl VisitMut for TsHygiene {
     visit_mut_obj_and_computed!();
 
     fn visit_mut_ident(&mut self, i: &mut Ident) {
-        if SyntaxContext::empty().apply_mark(self.unresolved_mark) == i.span.ctxt {
+        if SyntaxContext::empty().apply_mark(self.unresolved_mark) == i.ctxt {
             println!("ts_hygiene: {} is unresolved", i.sym);
             return;
         }
 
-        let ctxt = format!("{:?}", i.span.ctxt).replace('#', "");
+        let ctxt = format!("{:?}", i.ctxt).replace('#', "");
         i.sym = format!("{}__{}", i.sym, ctxt).into();
-        i.span = i.span.with_ctxt(SyntaxContext::empty());
+        i.ctxt = SyntaxContext::empty();
     }
 
     fn visit_mut_prop_name(&mut self, n: &mut PropName) {

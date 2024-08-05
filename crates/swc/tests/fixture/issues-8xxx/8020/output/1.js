@@ -1,16 +1,14 @@
-import { _ as _dispose } from "@swc/helpers/_/_dispose";
-import { _ as _using } from "@swc/helpers/_/_using";
-function baz() {
-    return bar;
-}
+var _using_ctx = require("@swc/helpers/_/_using_ctx");
 try {
-    var _stack = [];
-    var foo = _using(_stack, null);
-    var bar = 1;
+    var _usingCtx = _using_ctx._();
+    const foo = _usingCtx.u(null);
+    const bar = 1;
     console.log(baz());
+    function baz() {
+        return bar;
+    }
 } catch (_) {
-    var _error = _;
-    var _hasError = true;
+    _usingCtx.e = _;
 } finally{
-    _dispose(_stack, _error, _hasError);
+    _usingCtx.d();
 }

@@ -1,4 +1,4 @@
-use swc_common::Span;
+use swc_common::{Span, SyntaxContext};
 use swc_ecma_ast::*;
 use syn::{parse_quote, ExprBlock};
 
@@ -42,7 +42,7 @@ macro_rules! impl_enum {
     ($E:ident, [ $($v:ident),* ], true) => {
         impl crate::ast::ToCode for $E {
             fn to_code(&self, cx: &crate::ctxt::Ctx) -> syn::Expr {
-                if let Self::Ident(i) = self {
+                if let Some(i) = self.as_ident() {
                     if let Some(var_name) = i.sym.strip_prefix('$') {
                         if let Some(var) = cx.var(crate::ctxt::VarPos::$E, var_name) {
                             return var.get_expr();
@@ -65,10 +65,12 @@ macro_rules! impl_struct {
             fn to_code(&self, cx: &crate::ctxt::Ctx) -> syn::Expr {
                 let mut builder = crate::builder::Builder::new(stringify!($name));
 
+                let Self { $($v,)* } = self;
+
                 $(
                     builder.add(
                         stringify!($v),
-                        crate::ast::ToCode::to_code(&self.$v, cx),
+                        crate::ast::ToCode::to_code($v, cx),
                     );
                 )*
 
@@ -126,6 +128,12 @@ impl_struct!(Invalid, [span]);
 impl ToCode for Span {
     fn to_code(&self, _: &Ctx) -> syn::Expr {
         parse_quote!(swc_common::DUMMY_SP)
+    }
+}
+
+impl ToCode for SyntaxContext {
+    fn to_code(&self, _: &Ctx) -> syn::Expr {
+        parse_quote!(swc_core::common::SyntaxContext::empty())
     }
 }
 

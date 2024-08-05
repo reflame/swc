@@ -1,6 +1,6 @@
 //! Parser for object literal.
 
-use swc_common::Spanned;
+use swc_common::{Spanned, DUMMY_SP};
 
 use super::*;
 use crate::parser::class_and_fn::is_not_this;
@@ -22,7 +22,7 @@ impl<I: Tokens> Parser<I> {
             let mut trailing_comma = None;
             assert_and_bump!(p, '{');
 
-            let mut props = vec![];
+            let mut props = Vec::new();
 
             while !eat!(p, '}') {
                 props.push(p.parse_object_prop()?);
@@ -51,7 +51,7 @@ impl<I: Tokens> Parser<I> {
         .parse_with(|p| {
             let start = cur_pos!(p);
 
-            let v = match *cur!(p, true)? {
+            let v = match *cur!(p, true) {
                 Token::Str { .. } => match bump!(p) {
                     Token::Str { value, raw } => PropName::Str(Str {
                         span: span!(p, start),
@@ -77,7 +77,7 @@ impl<I: Tokens> Parser<I> {
                     _ => unreachable!(),
                 },
                 Word(..) => match bump!(p) {
-                    Word(w) => PropName::Ident(Ident::new(w.into(), span!(p, start))),
+                    Word(w) => PropName::Ident(IdentName::new(w.into(), span!(p, start))),
                     _ => unreachable!(),
                 },
                 tok!('[') => {
@@ -134,7 +134,7 @@ impl<I: Tokens> ParseObject<Box<Expr>> for Parser<I> {
         if let Some(trailing_comma) = trailing_comma {
             self.state.trailing_commas.insert(span.lo, trailing_comma);
         }
-        Ok(Box::new(Expr::Object(ObjectLit { span, props })))
+        Ok(ObjectLit { span, props }.into())
     }
 
     /// spec: 'PropertyDefinition'
@@ -163,7 +163,7 @@ impl<I: Tokens> ParseObject<Box<Expr>> for Parser<I> {
                 })
                 .parse_fn_args_body(
                     // no decorator in an object literal
-                    vec![],
+                    Vec::new(),
                     start,
                     |p| p.parse_unique_formal_params(),
                     false,
@@ -192,9 +192,10 @@ impl<I: Tokens> ParseObject<Box<Expr>> for Parser<I> {
             self.emit_err(self.input.cur_span(), SyntaxError::TS1005);
             return Ok(PropOrSpread::Prop(Box::new(Prop::KeyValue(KeyValueProp {
                 key,
-                value: Box::new(Expr::Invalid(Invalid {
+                value: Invalid {
                     span: span!(self, start),
-                })),
+                }
+                .into(),
             }))));
         }
         //
@@ -220,7 +221,7 @@ impl<I: Tokens> ParseObject<Box<Expr>> for Parser<I> {
                 })
                 .parse_fn_args_body(
                     // no decorator in an object literal
-                    vec![],
+                    Vec::new(),
                     start,
                     |p| p.parse_unique_formal_params(),
                     false,
@@ -250,8 +251,10 @@ impl<I: Tokens> ParseObject<Box<Expr>> for Parser<I> {
 
             if eat!(self, '=') {
                 let value = self.include_in_expr(true).parse_assignment_expr()?;
+                let span = span!(self, start);
                 return Ok(PropOrSpread::Prop(Box::new(Prop::Assign(AssignProp {
-                    key: ident,
+                    span,
+                    key: ident.into(),
                     value,
                 }))));
             }
@@ -284,7 +287,7 @@ impl<I: Tokens> ParseObject<Box<Expr>> for Parser<I> {
                         "get" => parser
                             .parse_fn_args_body(
                                 // no decorator in an object literal
-                                vec![],
+                                Vec::new(),
                                 start,
                                 |p| {
                                     let params = p.parse_formal_params()?;
@@ -321,7 +324,7 @@ impl<I: Tokens> ParseObject<Box<Expr>> for Parser<I> {
                             parser
                                 .parse_fn_args_body(
                                     // no decorator in an object literal
-                                    vec![],
+                                    Vec::new(),
                                     start,
                                     |p| {
                                         let params = p.parse_formal_params()?;
@@ -355,21 +358,33 @@ impl<I: Tokens> ParseObject<Box<Expr>> for Parser<I> {
                                     |Function {
                                          mut params, body, ..
                                      }| {
-                                        params.retain(|p| match &p.pat {
-                                            Pat::Ident(p) => p.sym != "this",
-                                            _ => true,
-                                        });
+                                        let mut this = None;
+                                        if params.len() >= 2 {
+                                            this = Some(params.remove(0).pat);
+                                        }
+
+                                        let param = Box::new(
+                                            params
+                                                .into_iter()
+                                                .next()
+                                                .map(|v| v.pat)
+                                                .unwrap_or_else(|| {
+                                                    parser.emit_err(
+                                                        key_span,
+                                                        SyntaxError::SetterParam,
+                                                    );
+
+                                                    Invalid { span: DUMMY_SP }.into()
+                                                }),
+                                        );
 
                                         // debug_assert_eq!(params.len(), 1);
                                         PropOrSpread::Prop(Box::new(Prop::Setter(SetterProp {
                                             span: span!(parser, start),
                                             key,
                                             body,
-                                            param: Box::new(
-                                                params.into_iter().map(|p| p.pat).next().unwrap_or(
-                                                    Pat::Invalid(Invalid { span: key_span }),
-                                                ),
-                                            ),
+                                            param,
+                                            this_param: this,
                                         })))
                                     },
                                 )
@@ -377,7 +392,7 @@ impl<I: Tokens> ParseObject<Box<Expr>> for Parser<I> {
                         "async" => parser
                             .parse_fn_args_body(
                                 // no decorator in an object literal
-                                vec![],
+                                Vec::new(),
                                 start,
                                 |p| p.parse_unique_formal_params(),
                                 true,
@@ -440,12 +455,13 @@ impl<I: Tokens> ParseObject<Pat> for Parser<I> {
 
         let optional = (self.input.syntax().dts() || self.ctx().in_declare) && eat!(self, '?');
 
-        Ok(Pat::Object(ObjectPat {
+        Ok(ObjectPat {
             span,
             props,
             optional,
             type_ann: None,
-        }))
+        }
+        .into())
     }
 
     /// Production 'BindingProperty'
@@ -491,7 +507,7 @@ impl<I: Tokens> ParseObject<Pat> for Parser<I> {
 
         Ok(ObjectPatProp::Assign(AssignPatProp {
             span: span!(self, start),
-            key,
+            key: key.into(),
             value,
         }))
     }

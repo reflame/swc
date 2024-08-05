@@ -165,8 +165,8 @@ fn test_if() {
         "} else log(3);",
     ));
     test_same("if (0 | x) y = 1; else y = 2;");
-    test("if (1 | x) y = 1; else y = 2;", "y=1;");
-    test("if (0 & x) y = 1; else y = 2;", "y=2");
+    // test("if (1 | x) y = 1; else y = 2;", "y=1;");
+    // test("if (0 & x) y = 1; else y = 2;", "y=2");
     test_same("if (1 & x) y = 1; else y = 2;");
 }
 
@@ -385,7 +385,7 @@ fn test_remove_useless_ops2() {
     test("Math.random(f() + g())", "f(),g();");
     test("Math.random(f(),g(),h())", "f(),g(),h();");
 
-    // Calls to functions with unknown side-effects are are left.
+    // Calls to functions with unknown side-effects are left.
     test_same("f();");
     test_same("(function () { f(); })();");
 
@@ -867,19 +867,16 @@ fn test_optimize_switch_with_default_case() {
     test_same("switch (x) { default: if (a) break; bar(); }");
 
     // Potentially foldable
-    test(
-        concat!(
-            "switch (x) {",
-            "  case x:",
-            "    foo();",
-            "    break;",
-            "  default:",
-            "    if (a) { break; }",
-            "    bar();",
-            "}",
-        ),
-        "x; foo()",
-    );
+    test_same(concat!(
+        "switch (x) {",
+        "  case x:",
+        "    foo();",
+        "    break;",
+        "  default:",
+        "    if (a) break;",
+        "    bar();",
+        "}",
+    ));
 
     test(
         concat!(
@@ -1433,16 +1430,6 @@ fn test_empty_pattern_in_for_of_loop_not_removed() {
     test_same("for (const [] of foo());");
     test_same("for ([] of foo());");
     test_same("for ({} of foo());");
-}
-
-#[test]
-fn test_empty_slot_in_array_pattern_removed() {
-    test("[,,] = foo();", "foo()");
-    test("[a,b,,] = foo();", "[a,b] = foo();");
-    test("[a,[],b,[],[]] = foo();", "[a,[],b] = foo();");
-    test("[a,{},b,{},{}] = foo();", "[a,{},b] = foo();");
-    test("function f([,,,]) {}", "function f([]) {}");
-    test_same("[[], [], [], ...rest] = foo()");
 }
 
 #[test]

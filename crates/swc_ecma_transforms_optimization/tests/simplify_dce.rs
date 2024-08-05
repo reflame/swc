@@ -1,5 +1,5 @@
 use swc_common::{chain, pass::Repeat, Mark};
-use swc_ecma_parser::{EsConfig, Syntax, TsConfig};
+use swc_ecma_parser::{EsSyntax, Syntax, TsSyntax};
 use swc_ecma_transforms_base::resolver;
 use swc_ecma_transforms_compat::es2022::class_properties;
 use swc_ecma_transforms_optimization::simplify::dce::{dce, Config};
@@ -21,7 +21,7 @@ fn tr() -> impl Fold {
 macro_rules! to {
     ($name:ident, $src:expr) => {
         test!(
-            Syntax::Es(EsConfig {
+            Syntax::Es(EsSyntax {
                 decorators: true,
                 ..Default::default()
             }),
@@ -367,7 +367,7 @@ export default class X {
 );
 
 test!(
-    Syntax::Typescript(TsConfig {
+    Syntax::Typescript(TsSyntax {
         decorators: true,
         ..Default::default()
     }),
@@ -382,7 +382,7 @@ test!(
                 use_define_for_class_fields: false,
             }),
             resolver(unresolved_mark, top_level_mark, false),
-            strip(top_level_mark),
+            strip(unresolved_mark, top_level_mark),
             tr()
         )
     },
@@ -399,7 +399,7 @@ test!(
 );
 
 test!(
-    Syntax::Typescript(TsConfig {
+    Syntax::Typescript(TsSyntax {
         decorators: true,
         ..Default::default()
     }),
@@ -414,7 +414,7 @@ test!(
                 use_define_for_class_fields: false,
             }),
             resolver(unresolved_mark, top_level_mark, false),
-            strip(top_level_mark),
+            strip(unresolved_mark, top_level_mark),
             tr()
         )
     },
@@ -426,7 +426,7 @@ test!(
 );
 
 test!(
-    Syntax::Typescript(TsConfig {
+    Syntax::Typescript(TsSyntax {
         decorators: true,
         ..Default::default()
     }),
@@ -439,7 +439,7 @@ test!(
     issue_1150_1,
     "
 class A {
-    constructor(o: AOptions = {}) {
+    constructor(o = {}) {
         const {
             a = defaultA,
             c,
@@ -461,7 +461,7 @@ new A();
 );
 
 test!(
-    Syntax::Typescript(TsConfig {
+    Syntax::Typescript(TsSyntax {
         decorators: true,
         ..Default::default()
     }),
@@ -471,7 +471,7 @@ test!(
 
         chain!(
             resolver(unresolved_mark, top_level_mark, false),
-            strip(top_level_mark),
+            strip(unresolved_mark, top_level_mark),
             class_properties(
                 Some(t.comments.clone()),
                 class_properties::Config {
@@ -501,7 +501,7 @@ test!(
 );
 
 test!(
-    Syntax::Typescript(TsConfig {
+    Syntax::Typescript(TsSyntax {
         decorators: true,
         ..Default::default()
     }),
@@ -511,7 +511,7 @@ test!(
 
         chain!(
             resolver(unresolved_mark, top_level_mark, false),
-            strip(top_level_mark),
+            strip(unresolved_mark, top_level_mark),
             class_properties(
                 Some(t.comments.clone()),
                 class_properties::Config {
@@ -555,7 +555,7 @@ test!(
 );
 
 test!(
-    Syntax::Typescript(TsConfig {
+    Syntax::Typescript(TsSyntax {
         decorators: true,
         ..Default::default()
     }),
@@ -565,7 +565,7 @@ test!(
 
         chain!(
             resolver(unresolved_mark, top_level_mark, false),
-            strip(top_level_mark),
+            strip(unresolved_mark, top_level_mark),
             tr(),
         )
     },
@@ -584,7 +584,7 @@ test!(
 );
 
 test!(
-    Syntax::Typescript(TsConfig {
+    Syntax::Typescript(TsSyntax {
         decorators: true,
         ..Default::default()
     }),
@@ -594,7 +594,7 @@ test!(
 
         chain!(
             resolver(unresolved_mark, top_level_mark, false),
-            strip(top_level_mark),
+            strip(unresolved_mark, top_level_mark),
             class_properties(
                 Some(t.comments.clone()),
                 class_properties::Config {

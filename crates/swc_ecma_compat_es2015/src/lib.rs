@@ -68,6 +68,7 @@ where
             sticky_regex: true,
             unicode_property_regex: false,
             unicode_regex: true,
+            unicode_sets_regex: false,
         }),
         block_scoped_functions(),
         template_literal(c.template_literal),
@@ -78,11 +79,11 @@ where
         Optional::new(object_super(), !c.typescript),
         shorthand(),
         function_name(),
-        exprs(unresolved_mark),
         for_of(c.for_of),
         // Should come before parameters
         // See: https://github.com/swc-project/swc/issues/1036
         parameters(c.parameters, unresolved_mark),
+        exprs(unresolved_mark),
         computed_properties(c.computed_props),
         destructuring(c.destructuring),
         block_scoping(unresolved_mark),
@@ -123,7 +124,6 @@ pub struct Config {
 
 #[cfg(test)]
 mod tests {
-    use swc_common::Mark;
     use swc_ecma_transforms_base::resolver;
     use swc_ecma_transforms_testing::{test, test_exec};
 
@@ -346,5 +346,23 @@ export class Foo {
 	let() {}
 }
 "#
+    );
+
+    test!(
+        ::swc_ecma_parser::Syntax::default(),
+        |t| es2015(
+            Mark::fresh(Mark::root()),
+            Some(t.comments.clone()),
+            Config {
+                ..Default::default()
+            }
+        ),
+        issue_8871,
+        r#"
+        const x = "</" + "script>";
+        const y = "<\/script>";
+        const z = "\/\/   \\";
+        export { x, y, z };
+        "#
     );
 }

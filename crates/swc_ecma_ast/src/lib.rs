@@ -9,9 +9,10 @@
 #![allow(clippy::clone_on_copy)]
 #![recursion_limit = "1024"]
 
+pub use num_bigint::BigInt as BigIntValue;
 #[cfg(feature = "serde")]
 use serde::{Deserialize, Serialize};
-use swc_common::{ast_node, EqIgnoreSpan, Span};
+use swc_common::{ast_node, util::take::Take, EqIgnoreSpan, Span};
 
 pub use self::{
     class::{
@@ -19,15 +20,9 @@ pub use self::{
         MethodKind, PrivateMethod, PrivateProp, StaticBlock,
     },
     decl::{ClassDecl, Decl, FnDecl, UsingDecl, VarDecl, VarDeclKind, VarDeclarator},
-    expr::{
-        ArrayLit, ArrowExpr, AssignExpr, AwaitExpr, BinExpr, BlockStmtOrExpr, CallExpr, Callee,
-        ClassExpr, CondExpr, Expr, ExprOrSpread, FnExpr, Import, MemberExpr, MemberProp,
-        MetaPropExpr, MetaPropKind, NewExpr, ObjectLit, OptCall, OptChainBase, OptChainExpr,
-        ParenExpr, PatOrExpr, PropOrSpread, SeqExpr, SpreadElement, Super, SuperProp,
-        SuperPropExpr, TaggedTpl, ThisExpr, Tpl, TplElement, UnaryExpr, UpdateExpr, YieldExpr,
-    },
+    expr::*,
     function::{Function, Param, ParamOrTsParamProp},
-    ident::{BindingIdent, Id, Ident, IdentExt, PrivateName},
+    ident::{BindingIdent, EsReserved, Id, Ident, IdentName, PrivateName},
     jsx::{
         JSXAttr, JSXAttrName, JSXAttrOrSpread, JSXAttrValue, JSXClosingElement, JSXClosingFragment,
         JSXElement, JSXElementChild, JSXElementName, JSXEmptyExpr, JSXExpr, JSXExprContainer,
@@ -40,7 +35,7 @@ pub use self::{
     module_decl::{
         DefaultDecl, ExportAll, ExportDecl, ExportDefaultDecl, ExportDefaultExpr,
         ExportDefaultSpecifier, ExportNamedSpecifier, ExportNamespaceSpecifier, ExportSpecifier,
-        ImportDecl, ImportDefaultSpecifier, ImportNamedSpecifier, ImportSpecifier,
+        ImportDecl, ImportDefaultSpecifier, ImportNamedSpecifier, ImportPhase, ImportSpecifier,
         ImportStarAsSpecifier, ModuleDecl, ModuleExportName, NamedExport,
     },
     operators::{AssignOp, BinaryOp, UnaryOp, UpdateOp},
@@ -97,52 +92,67 @@ mod typescript;
 
 /// Represents a invalid node.
 #[ast_node("Invalid")]
-#[derive(Eq, Hash, Copy, EqIgnoreSpan)]
+#[derive(Eq, Default, Hash, Copy, EqIgnoreSpan)]
 #[cfg_attr(feature = "arbitrary", derive(arbitrary::Arbitrary))]
 pub struct Invalid {
     pub span: Span,
 }
 
-/// Note: This type implements `Serailize` and `Deserialize` if `serde` is
-/// enabled, instead of requiring `serde-impl` feature.
-#[derive(Debug, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
-#[cfg_attr(feature = "serde", derive(Serialize, Deserialize))]
-pub enum EsVersion {
-    #[cfg_attr(feature = "serde", serde(rename = "es3"))]
-    Es3,
-    #[cfg_attr(feature = "serde", serde(rename = "es5"))]
-    Es5,
-    #[cfg_attr(feature = "serde", serde(rename = "es2015"))]
-    Es2015,
-    #[cfg_attr(feature = "serde", serde(rename = "es2016"))]
-    Es2016,
-    #[cfg_attr(feature = "serde", serde(rename = "es2017"))]
-    Es2017,
-    #[cfg_attr(feature = "serde", serde(rename = "es2018"))]
-    Es2018,
-    #[cfg_attr(feature = "serde", serde(rename = "es2019"))]
-    Es2019,
-    #[cfg_attr(feature = "serde", serde(rename = "es2020"))]
-    Es2020,
-    #[cfg_attr(feature = "serde", serde(rename = "es2021"))]
-    Es2021,
-    #[cfg_attr(feature = "serde", serde(rename = "es2022"))]
-    Es2022,
-    #[cfg_attr(feature = "serde", serde(rename = "esnext"))]
-    EsNext,
-}
-
-impl EsVersion {
-    /// Get the latest version. This is `es2022` for now, but it will be changed
-    /// if a new version of specification is released.
-    pub const fn latest() -> Self {
-        EsVersion::Es2022
+impl Take for Invalid {
+    fn dummy() -> Self {
+        Invalid::default()
     }
 }
 
-impl Default for EsVersion {
-    fn default() -> Self {
-        EsVersion::Es5
+/// Note: This type implements `Serailize` and `Deserialize` if `serde` is
+/// enabled, instead of requiring `serde-impl` feature.
+#[derive(Debug, Default, Clone, Copy, PartialOrd, Ord, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(Serialize))]
+#[cfg_attr(feature = "serde", serde(rename_all = "lowercase"))]
+pub enum EsVersion {
+    Es3,
+    #[default]
+    Es5,
+    Es2015,
+    Es2016,
+    Es2017,
+    Es2018,
+    Es2019,
+    Es2020,
+    Es2021,
+    Es2022,
+    EsNext,
+}
+
+#[cfg(feature = "serde")]
+impl<'de> Deserialize<'de> for EsVersion {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde::de::Error;
+
+        let s = String::deserialize(deserializer)?;
+        match s.to_lowercase().as_str() {
+            "es3" => Ok(EsVersion::Es3),
+            "es5" => Ok(EsVersion::Es5),
+            "es2015" | "es6" => Ok(EsVersion::Es2015),
+            "es2016" => Ok(EsVersion::Es2016),
+            "es2017" => Ok(EsVersion::Es2017),
+            "es2018" => Ok(EsVersion::Es2018),
+            "es2019" => Ok(EsVersion::Es2019),
+            "es2020" => Ok(EsVersion::Es2020),
+            "es2021" => Ok(EsVersion::Es2021),
+            "es2022" => Ok(EsVersion::Es2022),
+            "esnext" => Ok(EsVersion::EsNext),
+            _ => Err(D::Error::custom(format!("Unknown ES version: {}", s))),
+        }
+    }
+}
+
+impl EsVersion {
+    pub const fn latest() -> Self {
+        EsVersion::EsNext
     }
 }
 
@@ -164,18 +174,18 @@ pub use self::{
         ArchivedVarDeclKind, ArchivedVarDeclarator,
     },
     expr::{
-        ArchivedArrayLit, ArchivedArrowExpr, ArchivedAssignExpr, ArchivedAwaitExpr,
-        ArchivedBinExpr, ArchivedBlockStmtOrExpr, ArchivedCallExpr, ArchivedCallee,
-        ArchivedClassExpr, ArchivedCondExpr, ArchivedExpr, ArchivedExprOrSpread, ArchivedFnExpr,
-        ArchivedImport, ArchivedMemberExpr, ArchivedMemberProp, ArchivedMetaPropExpr,
-        ArchivedMetaPropKind, ArchivedNewExpr, ArchivedObjectLit, ArchivedOptCall,
-        ArchivedOptChainBase, ArchivedOptChainExpr, ArchivedParenExpr, ArchivedPatOrExpr,
+        ArchivedArrayLit, ArchivedArrowExpr, ArchivedAssignExpr, ArchivedAssignTarget,
+        ArchivedAwaitExpr, ArchivedBinExpr, ArchivedBlockStmtOrExpr, ArchivedCallExpr,
+        ArchivedCallee, ArchivedClassExpr, ArchivedCondExpr, ArchivedExpr, ArchivedExprOrSpread,
+        ArchivedFnExpr, ArchivedImport, ArchivedMemberExpr, ArchivedMemberProp,
+        ArchivedMetaPropExpr, ArchivedMetaPropKind, ArchivedNewExpr, ArchivedObjectLit,
+        ArchivedOptCall, ArchivedOptChainBase, ArchivedOptChainExpr, ArchivedParenExpr,
         ArchivedPropOrSpread, ArchivedSeqExpr, ArchivedSpreadElement, ArchivedSuper,
         ArchivedSuperProp, ArchivedSuperPropExpr, ArchivedTaggedTpl, ArchivedThisExpr, ArchivedTpl,
         ArchivedTplElement, ArchivedUnaryExpr, ArchivedUpdateExpr, ArchivedYieldExpr,
     },
     function::{ArchivedFunction, ArchivedParam, ArchivedParamOrTsParamProp},
-    ident::{ArchivedBindingIdent, ArchivedIdent, ArchivedPrivateName},
+    ident::{ArchivedBindingIdent, ArchivedIdent, ArchivedIdentName, ArchivedPrivateName},
     jsx::{
         ArchivedJSXAttr, ArchivedJSXAttrName, ArchivedJSXAttrOrSpread, ArchivedJSXAttrValue,
         ArchivedJSXClosingElement, ArchivedJSXClosingFragment, ArchivedJSXElement,

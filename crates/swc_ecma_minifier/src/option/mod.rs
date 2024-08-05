@@ -2,9 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 use swc_atoms::JsWord;
-use swc_cached::regex::CachedRegex;
 use swc_common::{collections::AHashMap, Mark};
-use swc_config::merge::Merge;
+use swc_config::{merge::Merge, CachedRegex};
 use swc_ecma_ast::{EsVersion, Expr};
 
 /// Implement default using serde.
@@ -76,6 +75,7 @@ pub struct MangleOptions {
     #[serde(default, alias = "ie8")]
     pub ie8: bool,
 
+    #[deprecated = "This field is no longer required to work around bugs in Safari 10."]
     #[serde(default, alias = "safari10")]
     pub safari10: bool,
 
@@ -353,7 +353,7 @@ impl CompressOptions {
             return true;
         }
 
-        self.top_level.map(|v| v.functions).unwrap_or(false)
+        self.top_level.map(|v| v.functions).unwrap_or(false) || self.module
     }
 }
 

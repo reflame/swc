@@ -3,7 +3,6 @@ use std::{
     env,
     path::{Path, PathBuf},
     sync::Arc,
-    usize,
 };
 
 use anyhow::{bail, Context, Error};
@@ -42,7 +41,8 @@ pub use swc_ecma_minifier::js::*;
 use swc_ecma_minifier::option::terser::TerserTopLevelOptions;
 #[allow(deprecated)]
 pub use swc_ecma_parser::JscTarget;
-use swc_ecma_parser::{parse_file_as_expr, Syntax, TsConfig};
+use swc_ecma_parser::{parse_file_as_expr, Syntax, TsSyntax};
+pub use swc_ecma_transforms::proposals::DecoratorVersion;
 use swc_ecma_transforms::{
     feature::FeatureFlag,
     hygiene, modules,
@@ -138,7 +138,7 @@ pub struct Options {
     #[serde(skip_deserializing, default)]
     pub unresolved_mark: Option<Mark>,
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(all(target_arch = "wasm32", not(target_os = "wasi"))))]
     #[serde(default = "default_cwd")]
     pub cwd: PathBuf,
 
@@ -160,7 +160,7 @@ pub struct Options {
     #[serde(default = "default_swcrc")]
     pub swcrc: bool,
 
-    #[cfg(not(target_arch = "wasm32"))]
+    #[cfg(not(all(target_arch = "wasm32", not(target_os = "wasi"))))]
     #[serde(default)]
     pub swcrc_roots: Option<PathBuf>,
 
@@ -205,7 +205,7 @@ pub enum InputSourceMap {
 
 impl Default for InputSourceMap {
     fn default() -> Self {
-        InputSourceMap::Bool(false)
+        InputSourceMap::Bool(true)
     }
 }
 
@@ -220,6 +220,7 @@ impl Options {
         base: &FileName,
         parse: impl FnOnce(Syntax, EsVersion, IsModule) -> Result<Program, Error>,
         output_path: Option<&Path>,
+        source_root: Option<String>,
         source_file_name: Option<String>,
         handler: &Handler,
         config: Option<Config>,
@@ -302,54 +303,58 @@ impl Options {
             syntax.typescript(),
         ));
 
-        if program.is_module() {
-            js_minify = js_minify.map(|c| {
-                let compress = c
-                    .compress
-                    .unwrap_as_option(|default| match default {
-                        Some(true) => Some(Default::default()),
-                        _ => None,
-                    })
-                    .map(|mut c| {
-                        if c.toplevel.is_none() {
-                            c.toplevel = Some(TerserTopLevelOptions::Bool(true));
-                        }
+        let default_top_level = program.is_module();
 
-                        if matches!(
-                            cfg.module,
-                            None | Some(ModuleConfig::Es6(..) | ModuleConfig::NodeNext(..))
-                        ) {
-                            c.module = true;
-                        }
+        js_minify = js_minify.map(|mut c| {
+            let compress = c
+                .compress
+                .unwrap_as_option(|default| match default {
+                    Some(true) => Some(Default::default()),
+                    _ => None,
+                })
+                .map(|mut c| {
+                    if c.toplevel.is_none() {
+                        c.toplevel = Some(TerserTopLevelOptions::Bool(default_top_level));
+                    }
 
-                        c
-                    })
-                    .map(BoolOrDataConfig::from_obj)
-                    .unwrap_or_else(|| BoolOrDataConfig::from_bool(false));
+                    if matches!(
+                        cfg.module,
+                        None | Some(ModuleConfig::Es6(..) | ModuleConfig::NodeNext(..))
+                    ) {
+                        c.module = true;
+                    }
 
-                let mangle = c
-                    .mangle
-                    .unwrap_as_option(|default| match default {
-                        Some(true) => Some(Default::default()),
-                        _ => None,
-                    })
-                    .map(|mut c| {
-                        if c.top_level.is_none() {
-                            c.top_level = Some(true);
-                        }
+                    c
+                })
+                .map(BoolOrDataConfig::from_obj)
+                .unwrap_or_else(|| BoolOrDataConfig::from_bool(false));
 
-                        c
-                    })
-                    .map(BoolOrDataConfig::from_obj)
-                    .unwrap_or_else(|| BoolOrDataConfig::from_bool(false));
+            let mangle = c
+                .mangle
+                .unwrap_as_option(|default| match default {
+                    Some(true) => Some(Default::default()),
+                    _ => None,
+                })
+                .map(|mut c| {
+                    if c.top_level.is_none() {
+                        c.top_level = Some(default_top_level);
+                    }
 
-                JsMinifyOptions {
-                    compress,
-                    mangle,
-                    ..c
-                }
-            });
-        }
+                    c
+                })
+                .map(BoolOrDataConfig::from_obj)
+                .unwrap_or_else(|| BoolOrDataConfig::from_bool(false));
+
+            if c.toplevel.is_none() {
+                c.toplevel = Some(default_top_level);
+            }
+
+            JsMinifyOptions {
+                compress,
+                mangle,
+                ..c
+            }
+        });
 
         if js_minify.is_some() && js_minify.as_ref().unwrap().keep_fnames {
             js_minify = js_minify.map(|c| {
@@ -619,7 +624,7 @@ impl Options {
                                 &plugin_name,
                             )?;
 
-                            let path = if let FileName::Real(value) = resolved_path {
+                            let path = if let FileName::Real(value) = resolved_path.filename {
                                 value
                             } else {
                                 anyhow::bail!("Failed to resolve plugin path: {:?}", resolved_path);
@@ -672,6 +677,18 @@ impl Options {
         {
             Box::new(plugin_transforms)
         } else {
+            let decorator_pass: Box<dyn Fold> =
+                match transform.decorator_version.unwrap_or_default() {
+                    DecoratorVersion::V202112 => Box::new(decorators(decorators::Config {
+                        legacy: transform.legacy_decorator.into_bool(),
+                        emit_metadata: transform.decorator_metadata.into_bool(),
+                        use_define_for_class_fields: !assumptions.set_public_class_fields,
+                    })),
+                    DecoratorVersion::V202203 => Box::new(
+                        swc_ecma_transforms::proposals::decorator_2022_03::decorator_2022_03(),
+                    ),
+                };
+
             Box::new(chain!(
                 lint_to_fold(swc_ecma_lints::rules::all(LintParams {
                     program: &program,
@@ -682,23 +699,7 @@ impl Options {
                     source_map: cm.clone(),
                 })),
                 // Decorators may use type information
-                Optional::new(
-                    match transform.decorator_version.unwrap_or_default() {
-                        DecoratorVersion::V202112 => {
-                            Either::Left(decorators(decorators::Config {
-                                legacy: transform.legacy_decorator.into_bool(),
-                                emit_metadata: transform.decorator_metadata.into_bool(),
-                                use_define_for_class_fields: !assumptions.set_public_class_fields,
-                            }))
-                        }
-                        DecoratorVersion::V202203 => {
-                            Either::Right(
-                            swc_ecma_transforms::proposals::decorator_2022_03::decorator_2022_03(),
-                        )
-                        }
-                    },
-                    syntax.decorators()
-                ),
+                Optional::new(decorator_pass, syntax.decorators()),
                 Optional::new(
                     explicit_resource_management(),
                     syntax.explicit_resource_management()
@@ -731,6 +732,7 @@ impl Options {
                             ),
                         },
                         comments.map(|v| v as _),
+                        unresolved_mark,
                         top_level_mark
                     ),
                     syntax.typescript()
@@ -769,6 +771,7 @@ impl Options {
             inline_sources_content: cfg.inline_sources_content.into_bool(),
             input_source_map: cfg.input_source_map.clone().unwrap_or_default(),
             output_path: output_path.map(|v| v.to_path_buf()),
+            source_root,
             source_file_name,
             comments: comments.cloned(),
             preserve_comments,
@@ -777,12 +780,14 @@ impl Options {
             emit_assert_for_import_attributes: experimental
                 .emit_assert_for_import_attributes
                 .into_bool(),
+            emit_isolated_dts: experimental.emit_isolated_dts.into_bool(),
         })
     }
 }
 
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq, Default)]
 pub enum RootMode {
+    #[default]
     #[serde(rename = "root")]
     Root,
     #[serde(rename = "upward")]
@@ -791,11 +796,6 @@ pub enum RootMode {
     UpwardOptional,
 }
 
-impl Default for RootMode {
-    fn default() -> Self {
-        RootMode::Root
-    }
-}
 const fn default_swcrc() -> bool {
     true
 }
@@ -819,7 +819,7 @@ pub struct CallerOptions {
     pub name: String,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
+#[cfg(not(all(target_arch = "wasm32", not(target_os = "wasi"))))]
 fn default_cwd() -> PathBuf {
     ::std::env::current_dir().unwrap()
 }
@@ -851,7 +851,7 @@ impl Default for Rc {
                 test: Some(FileMatcher::Regex("\\.tsx$".into())),
                 exclude: None,
                 jsc: JscConfig {
-                    syntax: Some(Syntax::Typescript(TsConfig {
+                    syntax: Some(Syntax::Typescript(TsSyntax {
                         tsx: true,
                         ..Default::default()
                     })),
@@ -864,7 +864,7 @@ impl Default for Rc {
                 test: Some(FileMatcher::Regex("\\.(cts|mts)$".into())),
                 exclude: None,
                 jsc: JscConfig {
-                    syntax: Some(Syntax::Typescript(TsConfig {
+                    syntax: Some(Syntax::Typescript(TsSyntax {
                         tsx: false,
                         disallow_ambiguous_jsx_like: true,
                         ..Default::default()
@@ -878,7 +878,7 @@ impl Default for Rc {
                 test: Some(FileMatcher::Regex("\\.ts$".into())),
                 exclude: None,
                 jsc: JscConfig {
-                    syntax: Some(Syntax::Typescript(TsConfig {
+                    syntax: Some(Syntax::Typescript(TsSyntax {
                         tsx: false,
                         ..Default::default()
                     })),
@@ -979,7 +979,7 @@ impl Config {
     ///
     /// - typescript: `tsx` will be modified if file extension is `ts`.
     pub fn adjust(&mut self, file: &Path) {
-        if let Some(Syntax::Typescript(TsConfig { tsx, dts, .. })) = &mut self.jsc.syntax {
+        if let Some(Syntax::Typescript(TsSyntax { tsx, dts, .. })) = &mut self.jsc.syntax {
             let is_dts = file
                 .file_name()
                 .and_then(|f| f.to_str())
@@ -1076,6 +1076,7 @@ pub struct BuiltInput<P: swc_ecma_visit::Fold> {
     pub is_module: IsModule,
     pub output_path: Option<PathBuf>,
 
+    pub source_root: Option<String>,
     pub source_file_name: Option<String>,
 
     pub comments: Option<SingleThreadedComments>,
@@ -1086,6 +1087,8 @@ pub struct BuiltInput<P: swc_ecma_visit::Fold> {
 
     pub output: JscOutputConfig,
     pub emit_assert_for_import_attributes: bool,
+
+    pub emit_isolated_dts: bool,
 }
 
 impl<P> BuiltInput<P>
@@ -1107,6 +1110,7 @@ where
             input_source_map: self.input_source_map,
             is_module: self.is_module,
             output_path: self.output_path,
+            source_root: self.source_root,
             source_file_name: self.source_file_name,
             preserve_comments: self.preserve_comments,
             inline_sources_content: self.inline_sources_content,
@@ -1114,6 +1118,7 @@ where
             emit_source_map_columns: self.emit_source_map_columns,
             output: self.output,
             emit_assert_for_import_attributes: self.emit_assert_for_import_attributes,
+            emit_isolated_dts: self.emit_isolated_dts,
         }
     }
 }
@@ -1175,19 +1180,14 @@ pub struct JscOutputConfig {
     pub preamble: String,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, Default)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub enum OutputCharset {
+    #[default]
     #[serde(rename = "utf8")]
     Utf8,
     #[serde(rename = "ascii")]
     Ascii,
-}
-
-impl Default for OutputCharset {
-    fn default() -> Self {
-        OutputCharset::Utf8
-    }
 }
 
 /// `jsc.experimental` in `.swcrc`
@@ -1213,6 +1213,12 @@ pub struct JscExperimental {
 
     #[serde(default)]
     pub disable_builtin_transforms_for_internal_testing: BoolConfig<false>,
+
+    /// Emit TypeScript definitions for `.ts`, `.tsx` files.
+    ///
+    /// This requires `isolatedDeclartion` feature of TypeScript 5.5.
+    #[serde(default)]
+    pub emit_isolated_dts: BoolConfig<false>,
 }
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize)]
@@ -1438,17 +1444,6 @@ pub struct TransformConfig {
     pub decorator_version: Option<DecoratorVersion>,
 }
 
-#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
-#[serde(deny_unknown_fields, rename_all = "camelCase")]
-pub enum DecoratorVersion {
-    #[default]
-    #[serde(rename = "2021-12")]
-    V202112,
-
-    #[serde(rename = "2022-03")]
-    V202203,
-}
-
 #[derive(Debug, Default, Clone, Serialize, Deserialize, Merge)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 pub struct HiddenTransformConfig {
@@ -1551,9 +1546,9 @@ impl GlobalPassOption {
         type ValuesMap = Arc<AHashMap<JsWord, Expr>>;
 
         fn expr(cm: &SourceMap, handler: &Handler, src: String) -> Box<Expr> {
-            let fm = cm.new_source_file(FileName::Anon, src);
+            let fm = cm.new_source_file(FileName::Anon.into(), src);
 
-            let mut errors = vec![];
+            let mut errors = Vec::new();
             let expr = parse_file_as_expr(
                 &fm,
                 Syntax::Es(Default::default()),
@@ -1743,12 +1738,16 @@ fn build_resolver(
     }
 
     let r = {
-        let r = TsConfigResolver::new(
-            NodeModulesResolver::without_node_modules(Default::default(), Default::default(), true),
-            base_url.clone(),
-            paths.clone(),
+        let r = NodeModulesResolver::without_node_modules(
+            swc_ecma_loader::TargetEnv::Node,
+            Default::default(),
+            true,
         );
-        let r = CachingResolver::new(40, r);
+
+        let r = CachingResolver::new(1024, r);
+
+        let r = TsConfigResolver::new(r, base_url.clone(), paths.clone());
+        let r = CachingResolver::new(256, r);
 
         let r = NodeImportResolver::with_config(
             r,

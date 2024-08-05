@@ -1,9 +1,9 @@
 use std::mem::take;
 
 use serde::Deserialize;
-use swc_common::{util::take::Take, Span, Spanned, DUMMY_SP};
+use swc_common::{util::take::Take, Span, DUMMY_SP};
 use swc_ecma_ast::*;
-use swc_ecma_utils::{alias_if_required, undefined, StmtLike};
+use swc_ecma_utils::{alias_ident_for_simple_assign_tatget, alias_if_required, StmtLike};
 use swc_ecma_visit::{as_folder, noop_visit_mut_type, Fold, VisitMut, VisitMutWith};
 use swc_trace_macro::swc_trace;
 
@@ -39,12 +39,13 @@ impl NullishCoalescing {
             stmt.visit_mut_with(self);
 
             if !self.vars.is_empty() {
-                buf.push(T::from_stmt(
+                buf.push(T::from(
                     VarDecl {
                         span: DUMMY_SP,
                         kind: VarDeclKind::Var,
                         decls: take(&mut self.vars),
                         declare: false,
+                        ..Default::default()
                     }
                     .into(),
                 ));
@@ -59,7 +60,7 @@ impl NullishCoalescing {
 
 #[swc_trace]
 impl VisitMut for NullishCoalescing {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     /// Prevents #1123
     fn visit_mut_block_stmt(&mut self, s: &mut BlockStmt) {
@@ -108,14 +109,15 @@ impl VisitMut for NullishCoalescing {
                 }
 
                 let var_expr = if aliased {
-                    Expr::Assign(AssignExpr {
+                    AssignExpr {
                         span: DUMMY_SP,
                         op: op!("="),
-                        left: PatOrExpr::Pat(l.clone().into()),
+                        left: l.clone().into(),
                         right: left.take(),
-                    })
+                    }
+                    .into()
                 } else {
-                    Expr::Ident(l.clone())
+                    l.clone().into()
                 };
 
                 *e = make_cond(self.c, *span, &l, var_expr, right.take());
@@ -123,44 +125,52 @@ impl VisitMut for NullishCoalescing {
 
             Expr::Assign(ref mut assign @ AssignExpr { op: op!("??="), .. }) => {
                 match &mut assign.left {
-                    PatOrExpr::Expr(left) => {
-                        let (alias, aliased) = alias_if_required(left, "ref$");
-                        if aliased {
-                            self.vars.push(VarDeclarator {
-                                span: DUMMY_SP,
-                                name: alias.clone().into(),
-                                init: None,
-                                definite: false,
-                            });
-                        }
-
-                        // TODO: Check for computed.
-                        let right_expr = if aliased {
-                            Box::new(Expr::Assign(AssignExpr {
-                                span: assign.span,
-                                left: PatOrExpr::Expr(left.clone()),
-                                op: op!("="),
-                                right: assign.right.take(),
-                            }))
-                        } else {
-                            assign.right.take()
-                        };
-
-                        let var_expr = if aliased {
-                            Expr::Assign(AssignExpr {
-                                span: DUMMY_SP,
-                                op: op!("="),
-                                left: PatOrExpr::Pat(alias.clone().into()),
-                                right: left.take(),
-                            })
-                        } else {
-                            Expr::Ident(alias.clone())
-                        };
-
-                        *e = Expr::Assign(AssignExpr {
+                    AssignTarget::Simple(SimpleAssignTarget::Ident(i)) => {
+                        *e = AssignExpr {
                             span: assign.span,
                             op: op!("="),
-                            left: PatOrExpr::Pat(alias.clone().into()),
+                            left: i.clone().into(),
+                            right: Box::new(make_cond(
+                                self.c,
+                                assign.span,
+                                &Ident::from(&*i),
+                                Expr::Ident(Ident::from(&*i)),
+                                assign.right.take(),
+                            )),
+                        }
+                        .into();
+                    }
+
+                    AssignTarget::Simple(left) => {
+                        let alias = alias_ident_for_simple_assign_tatget(left, "refs");
+                        self.vars.push(VarDeclarator {
+                            span: DUMMY_SP,
+                            name: alias.clone().into(),
+                            init: None,
+                            definite: false,
+                        });
+
+                        // TODO: Check for computed.
+                        let right_expr = AssignExpr {
+                            span: assign.span,
+                            left: left.clone().into(),
+                            op: op!("="),
+                            right: assign.right.take(),
+                        }
+                        .into();
+
+                        let var_expr = AssignExpr {
+                            span: DUMMY_SP,
+                            op: op!("="),
+                            left: alias.clone().into(),
+                            right: left.take().into(),
+                        }
+                        .into();
+
+                        *e = AssignExpr {
+                            span: assign.span,
+                            op: op!("="),
+                            left: alias.clone().into(),
                             right: Box::new(make_cond(
                                 self.c,
                                 assign.span,
@@ -168,24 +178,11 @@ impl VisitMut for NullishCoalescing {
                                 var_expr,
                                 right_expr,
                             )),
-                        });
-                    }
-                    PatOrExpr::Pat(left) => {
-                        if let Pat::Ident(i) = &mut **left {
-                            *e = Expr::Assign(AssignExpr {
-                                span: assign.span,
-                                op: op!("="),
-                                left: PatOrExpr::Pat(i.clone().into()),
-                                right: Box::new(make_cond(
-                                    self.c,
-                                    assign.span,
-                                    &i.id,
-                                    Expr::Ident(i.id.clone()),
-                                    assign.right.take(),
-                                )),
-                            });
                         }
+                        .into();
                     }
+
+                    _ => {}
                 }
             }
 
@@ -201,13 +198,13 @@ impl VisitMut for NullishCoalescing {
             if let BlockStmtOrExpr::Expr(expr) = n {
                 // expr
                 // { var decl = init; return expr; }
-                let span = expr.span();
                 let stmts = vec![
                     VarDecl {
                         span: DUMMY_SP,
                         kind: VarDeclKind::Var,
                         decls: self.vars.take(),
                         declare: false,
+                        ..Default::default()
                     }
                     .into(),
                     Stmt::Return(ReturnStmt {
@@ -215,7 +212,11 @@ impl VisitMut for NullishCoalescing {
                         arg: Some(expr.take()),
                     }),
                 ];
-                *n = BlockStmtOrExpr::BlockStmt(BlockStmt { span, stmts });
+                *n = BlockStmtOrExpr::BlockStmt(BlockStmt {
+                    span: DUMMY_SP,
+                    stmts,
+                    ..Default::default()
+                });
             }
         }
 
@@ -225,22 +226,23 @@ impl VisitMut for NullishCoalescing {
 
 #[tracing::instrument(level = "info", skip_all)]
 fn make_cond(c: Config, span: Span, alias: &Ident, var_expr: Expr, init: Box<Expr>) -> Expr {
-    Expr::Cond(if c.no_document_all {
+    if c.no_document_all {
         CondExpr {
             span,
-            test: Box::new(Expr::Bin(BinExpr {
+            test: BinExpr {
                 span: DUMMY_SP,
                 left: Box::new(var_expr),
                 op: op!("!="),
                 right: Box::new(Expr::Lit(Lit::Null(Null { span: DUMMY_SP }))),
-            })),
-            cons: Box::new(Expr::Ident(alias.clone())),
+            }
+            .into(),
+            cons: alias.clone().into(),
             alt: init,
         }
     } else {
         CondExpr {
             span,
-            test: Box::new(Expr::Bin(BinExpr {
+            test: BinExpr {
                 span: DUMMY_SP,
                 left: Box::new(Expr::Bin(BinExpr {
                     span: DUMMY_SP,
@@ -253,11 +255,13 @@ fn make_cond(c: Config, span: Span, alias: &Ident, var_expr: Expr, init: Box<Exp
                     span: DUMMY_SP,
                     left: Box::new(Expr::Ident(alias.clone())),
                     op: op!("!=="),
-                    right: undefined(DUMMY_SP),
+                    right: Expr::undefined(DUMMY_SP),
                 })),
-            })),
-            cons: Box::new(Expr::Ident(alias.clone())),
+            }
+            .into(),
+            cons: alias.clone().into(),
             alt: init,
         }
-    })
+    }
+    .into()
 }

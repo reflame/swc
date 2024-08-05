@@ -12,7 +12,7 @@ struct ExportNamespaceFrom;
 
 #[swc_trace]
 impl VisitMut for ExportNamespaceFrom {
-    noop_visit_mut_type!();
+    noop_visit_mut_type!(fail);
 
     fn visit_mut_module_items(&mut self, items: &mut Vec<ModuleItem>) {
         let count = items
@@ -42,10 +42,10 @@ impl VisitMut for ExportNamespaceFrom {
                     type_only: false,
                     with,
                 })) if specifiers.iter().any(|s| s.is_namespace()) => {
-                    let mut origin_specifiers = vec![];
+                    let mut origin_specifiers = Vec::new();
 
-                    let mut import_specifiers = vec![];
-                    let mut export_specifiers = vec![];
+                    let mut import_specifiers = Vec::new();
+                    let mut export_specifiers = Vec::new();
 
                     for s in specifiers.into_iter() {
                         match s {
@@ -74,34 +74,40 @@ impl VisitMut for ExportNamespaceFrom {
                         }
                     }
 
-                    stmts.push(ModuleItem::ModuleDecl(ModuleDecl::Import(ImportDecl {
-                        span,
-                        specifiers: import_specifiers,
-                        src: src.clone(),
-                        type_only: false,
-                        with: with.clone(),
-                    })));
+                    stmts.push(
+                        ImportDecl {
+                            span,
+                            specifiers: import_specifiers,
+                            src: src.clone(),
+                            type_only: false,
+                            with: with.clone(),
+                            phase: Default::default(),
+                        }
+                        .into(),
+                    );
 
-                    stmts.push(ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(
+                    stmts.push(
                         NamedExport {
                             span,
                             specifiers: export_specifiers,
                             src: None,
                             type_only: false,
                             with: None,
-                        },
-                    )));
+                        }
+                        .into(),
+                    );
 
                     if !origin_specifiers.is_empty() {
-                        stmts.push(ModuleItem::ModuleDecl(ModuleDecl::ExportNamed(
+                        stmts.push(
                             NamedExport {
                                 span,
                                 specifiers: origin_specifiers,
                                 src: Some(src),
                                 type_only: false,
                                 with,
-                            },
-                        )));
+                            }
+                            .into(),
+                        );
                     }
                 }
                 _ => {
