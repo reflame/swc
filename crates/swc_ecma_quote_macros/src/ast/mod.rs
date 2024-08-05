@@ -133,7 +133,7 @@ impl ToCode for Span {
 
 impl ToCode for SyntaxContext {
     fn to_code(&self, _: &Ctx) -> syn::Expr {
-        parse_quote!(swc_core::common::SyntaxContext::empty())
+        parse_quote!(swc_common::SyntaxContext::empty())
     }
 }
 

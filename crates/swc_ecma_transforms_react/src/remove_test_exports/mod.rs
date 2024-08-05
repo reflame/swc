@@ -63,16 +63,17 @@ impl VisitMut for RemoveTestExports {
             ModuleItem::Stmt(Stmt::Expr(ExprStmt { expr, .. })) => match &**expr {
                 Expr::Assign(AssignExpr {
                     op: AssignOp::Assign,
-                    left: PatOrExpr::Pat(pat),
+                    left: AssignTarget::Simple(target),
                     ..
-                }) => match &**pat {
-                    Pat::Expr(expr) => match &**expr {
-                        Expr::Member(MemberExpr { obj, .. }) => match &**obj {
-                            Expr::Ident(Ident { sym, .. }) => !sym.ends_with("_test"),
-                            _ => true,
-                        },
+                }) => match target {
+                    SimpleAssignTarget::Member(MemberExpr { obj, .. }) => match &**obj {
+                        Expr::Ident(Ident { sym, .. }) => !sym.ends_with("_test"),
                         _ => true,
                     },
+                    SimpleAssignTarget::Ident(BindingIdent {
+                        id: Ident { sym, .. },
+                        ..
+                    }) => !sym.ends_with("_test"),
                     _ => true,
                 },
                 _ => true,

@@ -69,7 +69,7 @@ impl VisitMut for RefreshSetup {
             ModuleItem::Stmt(internal_quote!(
                 r#"
             import.meta.url = new URL($pathname, location.origin)"# as Stmt,
-                pathname = Ident::new(format!("\"{pathname}\"",).into(), DUMMY_SP),
+                pathname = Ident::new_no_ctxt(format!("\"{pathname}\"",).into(), DUMMY_SP),
             )),
             ModuleItem::Stmt(internal_quote!(
                 r#"
