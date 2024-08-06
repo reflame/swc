@@ -17,7 +17,7 @@ on:
     inputs:
       version:
         description: "Version to publish"
-        required: true
+        required: false
         type: string
       skipBuild:
         description: "Skip build. Used to debug swc-ecosystem-ci."
