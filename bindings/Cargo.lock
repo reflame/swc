@@ -233,7 +233,7 @@ dependencies = [
 
 [[package]]
 name = "binding_core_wasm"
-version = "1.7.7-nightly-20240806.2"
+version = "1.7.7-nightly-20240806.4"
 dependencies = [
  "anyhow",
  "getrandom",
@@ -291,7 +291,7 @@ dependencies = [
 
 [[package]]
 name = "binding_minifier_wasm"
-version = "1.7.7-nightly-20240806.2"
+version = "1.7.7-nightly-20240806.4"
 dependencies = [
  "anyhow",
  "getrandom",
@@ -304,7 +304,7 @@ dependencies = [
 
 [[package]]
 name = "binding_typescript_wasm"
-version = "1.7.7-nightly-20240806.2"
+version = "1.7.7-nightly-20240806.4"
 dependencies = [
  "anyhow",
  "getrandom",
@@ -3052,7 +3052,7 @@ dependencies = [
 
 [[package]]
 name = "swc_cli"
-version = "0.91.354"
+version = "0.91.356"
 dependencies = [
  "anyhow",
  "swc_cli_impl",
@@ -3081,7 +3081,7 @@ dependencies = [
 
 [[package]]
 name = "swc_common"
-version = "0.37.0"
+version = "0.37.1"
 dependencies = [
  "ahash 0.8.11",
  "anyhow",
@@ -3782,7 +3782,7 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_visit"
-version = "0.104.0"
+version = "0.104.1"
 dependencies = [
  "new_debug_unreachable",
  "num-bigint",
