@@ -23,6 +23,7 @@ use self::static_check::should_use_create_element;
 use crate::{
     refresh::options::{deserialize_refresh, RefreshOptions},
     refresh_setup::{deserialize_refresh_setup, RefreshSetupOptions},
+    rewrite_relative_imports::RewriteRelativeImportsOptions,
 };
 
 mod static_check;
@@ -98,6 +99,10 @@ pub struct Options {
     #[serde(default, deserialize_with = "deserialize_refresh_setup")]
     // default to disabled since this is still considered as experimental by now
     pub refresh_setup: Option<RefreshSetupOptions>,
+
+    #[serde(default)]
+    // default to disabled since this is still considered as experimental by now
+    pub rewrite_relative_imports: Option<RewriteRelativeImportsOptions>,
 
     #[serde(default)]
     pub remove_test_exports: Option<bool>,

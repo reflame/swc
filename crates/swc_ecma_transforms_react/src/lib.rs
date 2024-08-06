@@ -4,6 +4,7 @@
 #![allow(rustc::untranslatable_diagnostic_trivial)]
 
 use swc_common::{chain, comments::Comments, sync::Lrc, Mark, SourceMap};
+use swc_ecma_transforms_base::pass::noop;
 use swc_ecma_visit::{Fold, VisitMut};
 
 pub use self::{
@@ -14,8 +15,9 @@ pub use self::{
     pure_annotations::pure_annotations,
     refresh::{options::RefreshOptions, refresh},
     refresh_setup::{refresh_setup, RefreshSetupOptions},
+    remove_test_exports::remove_test_exports,
+    rewrite_relative_imports::{rewrite_relative_imports, RewriteRelativeImportsOptions},
 };
-use crate::remove_test_exports::remove_test_exports;
 
 mod display_name;
 mod jsx;
@@ -25,6 +27,7 @@ mod pure_annotations;
 mod refresh;
 mod refresh_setup;
 mod remove_test_exports;
+mod rewrite_relative_imports;
 
 /// `@babel/preset-react`
 ///
@@ -54,6 +57,7 @@ where
 
     let refresh_options = options.refresh.take();
     let refresh_setup_options = options.refresh_setup.take();
+    let rewrite_relative_imports_options = options.rewrite_relative_imports.take();
     let remove_test_exports_options = options.remove_test_exports.take();
 
     chain!(
@@ -68,6 +72,7 @@ where
             top_level_mark
         ),
         refresh_setup(development, refresh_setup_options),
+        rewrite_relative_imports(rewrite_relative_imports_options),
         jsx(
             cm,
             comments.clone(),
