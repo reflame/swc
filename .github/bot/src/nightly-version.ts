@@ -10,6 +10,8 @@ async function main() {
   // Default to the core version in packages/core/package.json
   const coreVersion = require("../../../packages/core/package.json").version;
 
+  return coreVersion;
+
   const latest: string = process.argv[2] || coreVersion;
 
   process.stderr.write(`Previous version: ${latest}\n`);
