@@ -1,10 +1,17 @@
 {
 	"name": "@lewisl9029/swc-core-darwin-x64",
 	"version": "1.7.7-nightly-20240806.2",
-	"os": ["darwin"],
-	"cpu": ["x64"],
+	"os": [
+		"darwin"
+	],
+	"cpu": [
+		"x64"
+	],
 	"main": "swc.darwin-x64.node",
-	"files": ["swc.darwin-x64.node", "swc"],
+	"files": [
+		"swc.darwin-x64.node",
+		"swc"
+	],
 	"description": "Super-fast alternative for babel",
 	"keywords": [
 		"swc",

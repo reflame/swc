@@ -1,10 +1,17 @@
 {
 	"name": "@lewisl9029/swc-core-win32-ia32-msvc",
 	"version": "1.7.7-nightly-20240806.2",
-	"os": ["win32"],
-	"cpu": ["ia32"],
+	"os": [
+		"win32"
+	],
+	"cpu": [
+		"ia32"
+	],
 	"main": "swc.win32-ia32-msvc.node",
-	"files": ["swc.win32-ia32-msvc.node", "swc.exe"],
+	"files": [
+		"swc.win32-ia32-msvc.node",
+		"swc.exe"
+	],
 	"description": "Super-fast alternative for babel",
 	"keywords": [
 		"swc",

@@ -1,10 +1,17 @@
 {
 	"name": "@lewisl9029/swc-core-linux-arm-gnueabihf",
 	"version": "1.7.7-nightly-20240806.2",
-	"os": ["linux"],
-	"cpu": ["arm"],
+	"os": [
+		"linux"
+	],
+	"cpu": [
+		"arm"
+	],
 	"main": "swc.linux-arm-gnueabihf.node",
-	"files": ["swc.linux-arm-gnueabihf.node", "swc"],
+	"files": [
+		"swc.linux-arm-gnueabihf.node",
+		"swc"
+	],
 	"description": "Super-fast alternative for babel",
 	"keywords": [
 		"swc",
