@@ -42,17 +42,9 @@ impl ImportResolver for Resolver {
         }
 
         match base {
-            FileName::Custom(base) => {
-                dbg!(
-                    self.enable,
-                    base,
-                    module_specifier,
-                    resolve_relative_path(base, module_specifier)
-                );
-                Ok(resolve_relative_path(base, module_specifier)
-                    .to_string_lossy()
-                    .into())
-            }
+            FileName::Custom(base) => Ok(resolve_relative_path(base, module_specifier)
+                .to_string_lossy()
+                .into()),
             _ => Ok(module_specifier.into()),
         }
     }
@@ -75,7 +67,6 @@ fn resolve_relative_path(base: &str, relative: &str) -> PathBuf {
     }
 
     let base_directory = base_path.parent().unwrap_or_else(|| Path::new(""));
-
     let combined_path = base_directory.join(relative_path);
 
     let mut parts = Vec::new();
@@ -102,5 +93,11 @@ fn resolve_relative_path(base: &str, relative: &str) -> PathBuf {
         normalized_path.push(part);
     }
 
+    #[cfg(windows)]
+    let normalized_str = normalized_path.to_str().unwrap_or("").replace("\\", "/");
+    #[cfg(windows)]
+    return PathBuf::from(normalized_str);
+
+    #[cfg(not(windows))]
     normalized_path
 }

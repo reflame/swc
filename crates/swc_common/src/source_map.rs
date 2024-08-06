@@ -1365,9 +1365,9 @@ impl SourceMap {
         if let Some(orig) = orig {
             map.adjust_mappings(orig)
         }
-        for token in map.tokens() {
-            dbg!(&token);
-        }
+        // for token in map.tokens() {
+        //     dbg!(&token);
+        // }
 
         map
     }
