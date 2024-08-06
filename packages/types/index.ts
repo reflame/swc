@@ -888,6 +888,21 @@ export interface ReactConfig {
      * Declares the module specifier to be used for importing the `jsx` and `jsxs` factory functions when using `runtime` 'automatic'
      */
     importSource?: string;
+
+    /**
+     * Reflame React Fast Refresh setup
+     */
+    refreshSetup?: boolean | { pathname: string };
+
+    /**
+     * Reflame remove test exports
+     */
+    removeTestExports?: boolean;
+
+    /**
+     * Reflame rewrite relative imports
+     */
+    rewriteRelativeImports?: { pathname: string };
 }
 /**
  *  - `import { DEBUG } from '@ember/env-flags';`

@@ -1,8 +1,8 @@
-import swc from "../../..";
+import swc from "../..";
 
 it("should support refreshSetup option", async () => {
-  const { code } = await swc.transform(
-      `import '../blah.ts'
+	const { code } = await swc.transform(
+		`import '../blah.ts'
 
 export const test_test = 1234
 
@@ -10,39 +10,39 @@ export const Test = () => {
   return <div>Test</div>
 }
 `,
-      {
-          module: {
-            type: 'es6'
-          },
-          filename: 'index.tsx',
-          jsc: {
-            target: "es2022",
-            parser: {
-              syntax: 'typescript',
-              tsx: true,
-              dynamicImport: true,
-            },
-            transform: {
-              react: {
-                runtime: 'automatic',
-                throwIfNamespace: true,
-                development: true,
-                useBuiltins: true,
-                refresh: true,
-                refreshSetup: {
-                  pathname: '/test/index.ts'
-                },
-                // refresh: {
-                //   // refreshReg: String;
-                //   // refreshSig: String;
-                //   // emitFullSignatures: boolean;
-                // },
-              },
-            }
-          }
-      }
-  );
-  expect(code).toEqual(`import { jsxDEV as _jsxDEV } from "react/jsx-dev-runtime";
+		{
+			module: {
+				type: "es6",
+			},
+			filename: "index.tsx",
+			jsc: {
+				target: "es2022",
+				parser: {
+					syntax: "typescript",
+					tsx: true,
+					dynamicImport: true,
+				},
+				transform: {
+					react: {
+						runtime: "automatic",
+						throwIfNamespace: true,
+						development: true,
+						useBuiltins: true,
+						refresh: true,
+						refreshSetup: {
+							pathname: "/test/index.ts",
+						},
+						// refresh: {
+						//   // refreshReg: String;
+						//   // refreshSig: String;
+						//   // emitFullSignatures: boolean;
+						// },
+					},
+				},
+			},
+		},
+	);
+	expect(code).toEqual(`import { jsxDEV as _jsxDEV } from "react/jsx-dev-runtime";
 import.meta.url = new URL("/test/index.ts", location.origin);
 const $reflamePathname = new URL(import.meta.url).pathname;
 const $reflamePreviousRefreshReg = self.$RefreshReg$;
@@ -82,8 +82,8 @@ self.$reflame.registerAcceptCallback({
 });
 
 it("should support removeTestExports option", async () => {
-  const { code } = await swc.transform(
-      `import '../blah.ts'
+	const { code } = await swc.transform(
+		`import '../blah.ts'
 
 export const Test = () => {
   return <div>Test</div>
@@ -92,36 +92,36 @@ export const Test = () => {
 export const Test_test = <Test />
 Test_test.run = () => console.log('test')
 `,
-      {
-          module: {
-            type: 'es6'
-          },
-          filename: 'index.tsx',
-          jsc: {
-            target: "es2022",
-            parser: {
-              syntax: 'typescript',
-              tsx: true,
-              dynamicImport: true,
-            },
-            transform: {
-              react: {
-                runtime: 'automatic',
-                throwIfNamespace: true,
-                development: true,
-                useBuiltins: true,
-                removeTestExports: true,
-                // refresh: {
-                //   // refreshReg: String;
-                //   // refreshSig: String;
-                //   // emitFullSignatures: boolean;
-                // },
-              },
-            }
-          }
-      }
-  );
-  expect(code).toEqual(`import { jsxDEV as _jsxDEV } from "react/jsx-dev-runtime";
+		{
+			module: {
+				type: "es6",
+			},
+			filename: "index.tsx",
+			jsc: {
+				target: "es2022",
+				parser: {
+					syntax: "typescript",
+					tsx: true,
+					dynamicImport: true,
+				},
+				transform: {
+					react: {
+						runtime: "automatic",
+						throwIfNamespace: true,
+						development: true,
+						useBuiltins: true,
+						removeTestExports: true,
+						// refresh: {
+						//   // refreshReg: String;
+						//   // refreshSig: String;
+						//   // emitFullSignatures: boolean;
+						// },
+					},
+				},
+			},
+		},
+	);
+	expect(code).toEqual(`import { jsxDEV as _jsxDEV } from "react/jsx-dev-runtime";
 import '../blah.ts';
 export const Test = ()=>{
     return /*#__PURE__*/ _jsxDEV("div", {
@@ -135,8 +135,8 @@ export const Test = ()=>{
 });
 
 it("should support removeTestExports option in production mode", async () => {
-  const { code } = await swc.transform(
-      `import '../blah.ts'
+	const { code } = await swc.transform(
+		`import '../blah.ts'
 
 export const Test = () => {
   return <div>Test</div>
@@ -145,36 +145,36 @@ export const Test = () => {
 export const Test_test = <Test />
 Test_test.run = () => console.log('test')
 `,
-      {
-          module: {
-            type: 'es6'
-          },
-          filename: 'index.tsx',
-          jsc: {
-            target: "es2022",
-            parser: {
-              syntax: 'typescript',
-              tsx: true,
-              dynamicImport: true,
-            },
-            transform: {
-              react: {
-                runtime: 'automatic',
-                throwIfNamespace: true,
-                development: false,
-                useBuiltins: true,
-                removeTestExports: true,
-                // refresh: {
-                //   // refreshReg: String;
-                //   // refreshSig: String;
-                //   // emitFullSignatures: boolean;
-                // },
-              },
-            }
-          }
-      }
-  );
-  expect(code).toEqual(`import { jsx as _jsx } from "react/jsx-runtime";
+		{
+			module: {
+				type: "es6",
+			},
+			filename: "index.tsx",
+			jsc: {
+				target: "es2022",
+				parser: {
+					syntax: "typescript",
+					tsx: true,
+					dynamicImport: true,
+				},
+				transform: {
+					react: {
+						runtime: "automatic",
+						throwIfNamespace: true,
+						development: false,
+						useBuiltins: true,
+						removeTestExports: true,
+						// refresh: {
+						//   // refreshReg: String;
+						//   // refreshSig: String;
+						//   // emitFullSignatures: boolean;
+						// },
+					},
+				},
+			},
+		},
+	);
+	expect(code).toEqual(`import { jsx as _jsx } from "react/jsx-runtime";
 import '../blah.ts';
 export const Test = ()=>{
     return /*#__PURE__*/ _jsx("div", {
@@ -184,8 +184,8 @@ export const Test = ()=>{
 });
 
 it("should preserve tests when removeTestExports is off", async () => {
-  const { code } = await swc.transform(
-      `import '../blah.ts'
+	const { code } = await swc.transform(
+		`import '../blah.ts'
 
 export const Test = () => {
   return <div>Test</div>
@@ -194,36 +194,36 @@ export const Test = () => {
 export const Test_test = <Test />
 Test_test.run = () => console.log('test')
 `,
-      {
-          module: {
-            type: 'es6'
-          },
-          filename: 'index.tsx',
-          jsc: {
-            target: "es2022",
-            parser: {
-              syntax: 'typescript',
-              tsx: true,
-              dynamicImport: true,
-            },
-            transform: {
-              react: {
-                runtime: 'automatic',
-                throwIfNamespace: true,
-                development: false,
-                useBuiltins: true,
-                removeTestExports: false,
-                // refresh: {
-                //   // refreshReg: String;
-                //   // refreshSig: String;
-                //   // emitFullSignatures: boolean;
-                // },
-              },
-            }
-          }
-      }
-  );
-  expect(code).toEqual(`import { jsx as _jsx } from "react/jsx-runtime";
+		{
+			module: {
+				type: "es6",
+			},
+			filename: "index.tsx",
+			jsc: {
+				target: "es2022",
+				parser: {
+					syntax: "typescript",
+					tsx: true,
+					dynamicImport: true,
+				},
+				transform: {
+					react: {
+						runtime: "automatic",
+						throwIfNamespace: true,
+						development: false,
+						useBuiltins: true,
+						removeTestExports: false,
+						// refresh: {
+						//   // refreshReg: String;
+						//   // refreshSig: String;
+						//   // emitFullSignatures: boolean;
+						// },
+					},
+				},
+			},
+		},
+	);
+	expect(code).toEqual(`import { jsx as _jsx } from "react/jsx-runtime";
 import '../blah.ts';
 export const Test = ()=>{
     return /*#__PURE__*/ _jsx("div", {
