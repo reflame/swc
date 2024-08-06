@@ -3036,6 +3036,24 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@lewisl9029/swc-core@workspace:packages/core":
+  version: 0.0.0-use.local
+  resolution: "@lewisl9029/swc-core@workspace:packages/core"
+  dependencies:
+    "@napi-rs/cli": "npm:^3.0.0-alpha.43"
+    "@swc/counter": "npm:^0.1.3"
+    "@swc/types": "workspace:^"
+    cross-env: "npm:^7.0.3"
+    jest: "npm:^29.7.0"
+    typescript: "npm:^5.3.3"
+  peerDependencies:
+    "@swc/helpers": "*"
+  peerDependenciesMeta:
+    "@swc/helpers":
+      optional: true
+  languageName: unknown
+  linkType: soft
+
 "@ljharb/through@npm:^2.3.11":
   version: 2.3.11
   resolution: "@ljharb/through@npm:2.3.11"
@@ -4117,24 +4135,6 @@ __metadata:
 "@swc/core-win32-x64-msvc@workspace:packages/core/scripts/npm/win32-x64-msvc":
   version: 0.0.0-use.local
   resolution: "@swc/core-win32-x64-msvc@workspace:packages/core/scripts/npm/win32-x64-msvc"
-  languageName: unknown
-  linkType: soft
-
-"@swc/core@workspace:packages/core":
-  version: 0.0.0-use.local
-  resolution: "@swc/core@workspace:packages/core"
-  dependencies:
-    "@napi-rs/cli": "npm:^3.0.0-alpha.43"
-    "@swc/counter": "npm:^0.1.3"
-    "@swc/types": "workspace:^"
-    cross-env: "npm:^7.0.3"
-    jest: "npm:^29.7.0"
-    typescript: "npm:^5.3.3"
-  peerDependencies:
-    "@swc/helpers": "*"
-  peerDependenciesMeta:
-    "@swc/helpers":
-      optional: true
   languageName: unknown
   linkType: soft
 
