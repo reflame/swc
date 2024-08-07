@@ -257,6 +257,7 @@ jobs:
         shell: bash
         run: |
           corepack enable
+          cd packages/core && node scripts/update-package-jsons.mjs ${{ inputs.version }} && cd ../..
           yarn install
           curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
           echo '/usr/local/cargo/bin' >> $GITHUB_PATH
