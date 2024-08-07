@@ -3924,7 +3924,7 @@ dependencies = [
 
 [[package]]
 name = "swc_common"
-version = "0.37.1"
+version = "0.37.2"
 dependencies = [
  "ahash 0.8.11",
  "anyhow",
@@ -4009,7 +4009,7 @@ dependencies = [
 
 [[package]]
 name = "swc_core"
-version = "0.100.1"
+version = "0.100.2"
 dependencies = [
  "anyhow",
  "binding_macros",
@@ -4940,7 +4940,7 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_transforms_typescript"
-version = "0.195.0"
+version = "0.195.1"
 dependencies = [
  "codspeed-criterion-compat",
  "criterion",
@@ -4978,7 +4978,7 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_utils"
-version = "0.134.0"
+version = "0.134.1"
 dependencies = [
  "indexmap 2.2.6",
  "num_cpus",
@@ -4999,7 +4999,7 @@ dependencies = [
 
 [[package]]
 name = "swc_ecma_visit"
-version = "0.104.1"
+version = "0.104.2"
 dependencies = [
  "new_debug_unreachable",
  "num-bigint",
