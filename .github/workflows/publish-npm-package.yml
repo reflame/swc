@@ -43,18 +43,18 @@ on:
         required: true
 
 jobs:
-  check-if-build-required:
-    name: Check if build is required
-    runs-on: ubuntu-latest
-    outputs:
-      need-build: ${{ steps.check.outputs.need-build }}
-    steps:
-      - uses: actions/checkout@v4
-      # TODO: Check for existing artifacts
-      - id: check
-        if: ${{ !inputs.skipBuild }}
-        run: |
-          echo "need-build=true" >> $GITHUB_OUTPUT
+  # check-if-build-required:
+  #   name: Check if build is required
+  #   runs-on: ubuntu-latest
+  #   outputs:
+  #     need-build: ${{ steps.check.outputs.need-build }}
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     # TODO: Check for existing artifacts
+  #     - id: check
+  #       if: ${{ !inputs.skipBuild }}
+  #       run: |
+  #         echo "need-build=true" >> $GITHUB_OUTPUT
 
   # create-git-tag-commit:
   #   name: Create git tag commit
@@ -96,9 +96,9 @@ jobs:
   #         ./scripts/publish.sh ${{ inputs.version }}
 
   build:
-    if: needs.check-if-build-required.outputs.need-build == 'true'
-    needs:
-      - check-if-build-required
+    # if: needs.check-if-build-required.outputs.need-build == 'true'
+    # needs:
+      # - check-if-build-required
       # - create-git-tag-commit
     strategy:
       fail-fast: false
@@ -258,7 +258,7 @@ jobs:
         run: |
           corepack enable
           cd packages/core && node scripts/update-package-jsons.mjs ${{ inputs.version }} && cd ../..
-          yarn install
+          yarn install --no-immutable
           curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
           echo '/usr/local/cargo/bin' >> $GITHUB_PATH
       - name: Setup node x86
