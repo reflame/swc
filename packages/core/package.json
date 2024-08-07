@@ -1,6 +1,6 @@
 {
 	"name": "@swc/core",
-	"version": "1.7.7-nightly-20240806.4-3",
+	"version": "1.7.7-nightly-20240806.4-4",
 	"description": "Super-fast alternative for babel",
 	"homepage": "https://swc.rs",
 	"main": "./index.js",
@@ -41,7 +41,7 @@
 	"scripts": {
 		"postinstall": "node postinstall.js",
 		"artifacts": "napi artifacts --npm-dir scripts/npm",
-		"prepack": "tsc -d && node scripts/update-package-jsons.mjs && napi prepublish -p scripts/npm --tag-style npm",
+		"prepack": "tsc -d && node scripts/update-package-jsons.mjs && cat package.json && yarn install && napi prepublish -p scripts/npm --tag-style npm && cat package.json",
 		"pack": "wasm-pack",
 		"build:ts": "tsc -d",
 		"build:wasm": "npm-run-all \"pack -- build ../../bindings/binding_core_wasm --scope swc {1} -t {2} --features plugin\" --",
