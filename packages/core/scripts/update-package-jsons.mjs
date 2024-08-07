@@ -1,5 +1,7 @@
 import * as fs from "fs/promises";
 
+const version = process.argv[2];
+
 const path = "./package.json";
 const packageJsonCore = JSON.parse(
 	await fs.readFile(path, {
@@ -14,13 +16,24 @@ await fs.writeFile(
 			...packageJsonCore,
 			name:
 				"@lewisl9029/swc-core" + packageJsonCore.name.slice("@swc/core".length),
+			version,
 			repository: {
 				...packageJsonCore.repository,
 				url: "git+https://github.com/reflame/swc.git",
 			},
+			napi: {
+				...packageJsonCore.napi,
+				targets: [
+					"x86_64-pc-windows-msvc",
+					"x86_64-unknown-linux-musl",
+					"aarch64-apple-darwin",
+				],
+			},
+			dependencies: (({ ["@swc/types"]: _types, ...dependencies }) =>
+				dependencies)(packageJsonCore.dependencies),
 		},
 		null,
-		2,
+		4,
 	),
 );
 
@@ -45,14 +58,14 @@ await Promise.all(
 					...packageJson,
 					name:
 						"@lewisl9029/swc-core" + packageJson.name.slice("@swc/core".length),
-					version: packageJsonCore.version,
+					version,
 					repository: {
 						...packageJson.repository,
 						url: "git+https://github.com/reflame/swc.git",
 					},
 				},
 				null,
-				2,
+				4,
 			),
 		);
 	}),

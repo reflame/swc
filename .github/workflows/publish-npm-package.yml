@@ -206,7 +206,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: "v${{ inputs.version }}"
+          ref: "ci-fork"
 
       - name: Corepack
         shell: bash
@@ -309,7 +309,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: "v${{ inputs.version }}"
+          ref: "ci-fork"
 
       - run: corepack enable
         shell: bash
@@ -351,7 +351,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: "v${{ inputs.version }}"
+          ref: "ci-fork"
 
       - name: Corepack
         run: corepack enable
@@ -388,7 +388,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: "v${{ inputs.version }}"
+          ref: "ci-fork"
 
       - run: corepack enable
         shell: bash
@@ -422,7 +422,7 @@ jobs:
   #   steps:
   #     - uses: actions/checkout@v4
   # with:
-  #   ref: "v${{ inputs.version }}"
+  #   ref: "ci-fork"
   #     - name: Corepack
   #       run: corepack enable
   #     - name: Download artifacts
@@ -470,7 +470,7 @@ jobs:
   #   steps:
   #     - uses: actions/checkout@v4
   # with:
-  #   ref: "v${{ inputs.version }}"
+  #   ref: "ci-fork"
   #     - name: Corepack
   #       run: corepack enable
   #     - name: Download artifacts
@@ -515,7 +515,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: "v${{ inputs.version }}"
+          ref: "ci-fork"
 
       - uses: ./.github/actions/setup-node
 
@@ -564,7 +564,7 @@ jobs:
           echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
           echo "npmAlwaysAuth:true\n npmAuthToken: '$NPM_TOKEN'\n" >> ~/.yarnrc
           cd packages/core
-          node scripts/update-package-jsons.mjs
+          node scripts/update-package-jsons.mjs ${{ inputs.version }}
           cat package.json && npm publish --tolerate-republish --tag $NPM_TAG
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -606,7 +606,7 @@ jobs:
   #   steps:
   #     - uses: actions/checkout@v4
   #       with:
-  #         ref: "v${{ inputs.version }}"
+  #         ref: "ci-fork"
 
   #     - name: Corepack
   #       run: corepack enable

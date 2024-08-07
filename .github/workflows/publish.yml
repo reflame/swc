@@ -17,7 +17,7 @@ on:
     inputs:
       version:
         description: "Version to publish"
-        required: true
+        required: false
         type: string
       skipBuild:
         description: "Skip build. Used to debug swc-ecosystem-ci."
@@ -106,30 +106,31 @@ jobs:
   #       run: |
   #         cargo mono publish --no-verify
 
-  determine-nightly-version:
-    name: "Determine nightly version"
-    runs-on: ubuntu-latest
+  # determine-nightly-version:
+  #   name: "Determine nightly version"
+  #   runs-on: ubuntu-latest
 
-    outputs:
-      version: ${{ steps.determine-nightly-version.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: ./.github/actions/setup-node
-      - name: Determine nightly version
-        id: determine-nightly-version
-        run: |
-          npx ts-node .github/bot/src/nightly-version.ts ${{ github.event.inputs.version }} >> $GITHUB_OUTPUT
+  #   outputs:
+  #     version: ${{ steps.determine-nightly-version.outputs.version }}
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - uses: ./.github/actions/setup-node
+  #     - name: Determine nightly version
+  #       id: determine-nightly-version
+  #       run: |
+  #         npx ts-node .github/bot/src/nightly-version.ts ${{ github.event.inputs.version }} >> $GITHUB_OUTPUT
 
   publish-npm-nightly:
-    name: "Publish ${{ needs.determine-nightly-version.outputs.version }}"
-    needs:
+    name: "Publish nightly version"
+    # name: "Publish ${{ needs.determine-nightly-version.outputs.version }}"
+    # needs:
       # - publish-cargo
-      - determine-nightly-version
+      # - determine-nightly-version
     uses: ./.github/workflows/publish-npm-package.yml
     secrets: inherit
     with:
       package: "core"
-      version: ${{ needs.determine-nightly-version.outputs.version }}
+      version: "1.7.8-nightly-20240807.2-1"
       buildCli: true
       skipBuild: ${{ inputs.skipBuild || false }}
       skipPublishing: false
