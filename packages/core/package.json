@@ -83,8 +83,7 @@
 		"bindings/binding_core_wasm/pkg/binding_core_wasm.d.ts"
 	],
 	"dependencies": {
-		"@swc/counter": "^0.1.3",
-		"@swc/types": "workspace:^"
+		"@swc/counter": "^0.1.3"
 	},
 	"devDependencies": {
 		"@napi-rs/cli": "^3.0.0-alpha.43",

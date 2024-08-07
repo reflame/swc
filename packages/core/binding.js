@@ -65,7 +65,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-android-arm64')
+        return require('@swc/core-android-arm64')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -77,7 +77,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-android-arm-eabi')
+        return require('@swc/core-android-arm-eabi')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -93,7 +93,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-win32-x64-msvc')
+        return require('@swc/core-win32-x64-msvc')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -105,7 +105,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-win32-ia32-msvc')
+        return require('@swc/core-win32-ia32-msvc')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -117,7 +117,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-win32-arm64-msvc')
+        return require('@swc/core-win32-arm64-msvc')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -132,7 +132,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-darwin-universal')
+        return require('@swc/core-darwin-universal')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -144,7 +144,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-darwin-x64')
+        return require('@swc/core-darwin-x64')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -156,7 +156,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-darwin-arm64')
+        return require('@swc/core-darwin-arm64')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -172,7 +172,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-freebsd-x64')
+        return require('@swc/core-freebsd-x64')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -184,7 +184,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-freebsd-arm64')
+        return require('@swc/core-freebsd-arm64')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -201,7 +201,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-linux-x64-musl')
+        return require('@swc/core-linux-x64-musl')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -213,7 +213,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-linux-x64-gnu')
+        return require('@swc/core-linux-x64-gnu')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -227,7 +227,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-linux-arm64-musl')
+        return require('@swc/core-linux-arm64-musl')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -239,7 +239,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-linux-arm64-gnu')
+        return require('@swc/core-linux-arm64-gnu')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -252,7 +252,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-linux-arm-gnueabihf')
+        return require('@swc/core-linux-arm-gnueabihf')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -265,7 +265,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-linux-riscv64-musl')
+        return require('@swc/core-linux-riscv64-musl')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -277,7 +277,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-linux-riscv64-gnu')
+        return require('@swc/core-linux-riscv64-gnu')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -290,7 +290,7 @@ function requireNative() {
         loadErrors.push(e)
       }
       try {
-        return require('@lewisl9029/swc-core-linux-s390x-gnu')
+        return require('@swc/core-linux-s390x-gnu')
       } catch (e) {
         loadErrors.push(e)
       }
@@ -315,7 +315,7 @@ if (!nativeBinding || process.env.NAPI_RS_FORCE_WASI) {
   }
   if (!nativeBinding) {
     try {
-      nativeBinding = require('@lewisl9029/swc-core-wasm32-wasi')
+      nativeBinding = require('@swc/core-wasm32-wasi')
     } catch (err) {
       if (process.env.NAPI_RS_FORCE_WASI) {
         console.error(err)
