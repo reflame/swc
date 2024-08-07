@@ -4066,51 +4066,9 @@ __metadata:
   languageName: unknown
   linkType: soft
 
-"@swc/core-darwin-x64@workspace:packages/core/scripts/npm/darwin-x64":
-  version: 0.0.0-use.local
-  resolution: "@swc/core-darwin-x64@workspace:packages/core/scripts/npm/darwin-x64"
-  languageName: unknown
-  linkType: soft
-
-"@swc/core-linux-arm-gnueabihf@workspace:packages/core/scripts/npm/linux-arm-gnueabihf":
-  version: 0.0.0-use.local
-  resolution: "@swc/core-linux-arm-gnueabihf@workspace:packages/core/scripts/npm/linux-arm-gnueabihf"
-  languageName: unknown
-  linkType: soft
-
-"@swc/core-linux-arm64-gnu@workspace:packages/core/scripts/npm/linux-arm64-gnu":
-  version: 0.0.0-use.local
-  resolution: "@swc/core-linux-arm64-gnu@workspace:packages/core/scripts/npm/linux-arm64-gnu"
-  languageName: unknown
-  linkType: soft
-
-"@swc/core-linux-arm64-musl@workspace:packages/core/scripts/npm/linux-arm64-musl":
-  version: 0.0.0-use.local
-  resolution: "@swc/core-linux-arm64-musl@workspace:packages/core/scripts/npm/linux-arm64-musl"
-  languageName: unknown
-  linkType: soft
-
-"@swc/core-linux-x64-gnu@workspace:packages/core/scripts/npm/linux-x64-gnu":
-  version: 0.0.0-use.local
-  resolution: "@swc/core-linux-x64-gnu@workspace:packages/core/scripts/npm/linux-x64-gnu"
-  languageName: unknown
-  linkType: soft
-
 "@swc/core-linux-x64-musl@workspace:packages/core/scripts/npm/linux-x64-musl":
   version: 0.0.0-use.local
   resolution: "@swc/core-linux-x64-musl@workspace:packages/core/scripts/npm/linux-x64-musl"
-  languageName: unknown
-  linkType: soft
-
-"@swc/core-win32-arm64-msvc@workspace:packages/core/scripts/npm/win32-arm64-msvc":
-  version: 0.0.0-use.local
-  resolution: "@swc/core-win32-arm64-msvc@workspace:packages/core/scripts/npm/win32-arm64-msvc"
-  languageName: unknown
-  linkType: soft
-
-"@swc/core-win32-ia32-msvc@workspace:packages/core/scripts/npm/win32-ia32-msvc":
-  version: 0.0.0-use.local
-  resolution: "@swc/core-win32-ia32-msvc@workspace:packages/core/scripts/npm/win32-ia32-msvc"
   languageName: unknown
   linkType: soft
 
