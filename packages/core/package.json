@@ -1,6 +1,6 @@
 {
 	"name": "@swc/core",
-	"version": "1.7.7-nightly-20240806.4-2",
+	"version": "1.7.7-nightly-20240806.4-3",
 	"description": "Super-fast alternative for babel",
 	"homepage": "https://swc.rs",
 	"main": "./index.js",
@@ -28,16 +28,9 @@
 	"napi": {
 		"binaryName": "swc",
 		"targets": [
-			"x86_64-apple-darwin",
 			"x86_64-pc-windows-msvc",
-			"x86_64-unknown-linux-gnu",
 			"x86_64-unknown-linux-musl",
-			"i686-pc-windows-msvc",
-			"armv7-unknown-linux-gnueabihf",
-			"aarch64-unknown-linux-gnu",
-			"aarch64-apple-darwin",
-			"aarch64-unknown-linux-musl",
-			"aarch64-pc-windows-msvc"
+			"aarch64-apple-darwin"
 		]
 	},
 	"publishConfig": {
