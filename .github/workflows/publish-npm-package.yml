@@ -566,6 +566,7 @@ jobs:
           echo "npmAlwaysAuth:true\n npmAuthToken: '$NPM_TOKEN'\n" >> ~/.yarnrc
           cd packages/core
           node scripts/update-package-jsons.mjs ${{ inputs.version }}
+          node scripts/update-binding.mjs
           cat package.json && npm publish --tolerate-republish --tag $NPM_TAG
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
