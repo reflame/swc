@@ -54,7 +54,7 @@ use swc_ecma_transforms::{
         export_default_from, import_assertions,
     },
     react::{self, default_pragma, default_pragma_frag},
-    resolver,
+    reflame, resolver,
     typescript::{self, TsImportExportAssignConfig},
     Assumptions,
 };
@@ -259,6 +259,13 @@ impl Options {
             preserve_all_comments,
             ..
         } = cfg.jsc;
+        let reflame_options = cfg.reflame.unwrap_or(reflame::Options {
+            pathname: "".into(),
+            pathname_scoped: "".into(),
+            refresh_setup: None,
+            rewrite_relative_imports: None,
+            remove_test_exports: None,
+        });
         let loose = loose.into_bool();
         let preserve_all_comments = preserve_all_comments.into_bool();
         let keep_class_names = keep_class_names.into_bool();
@@ -739,6 +746,13 @@ impl Options {
                 ),
                 plugin_transforms,
                 custom_before_pass(&program),
+                Optional::new(
+                    reflame::remove_test_exports(),
+                    reflame_options
+                        .remove_test_exports
+                        .is_some_and(|value| value)
+                ),
+                // TODO: add a cleanup pass here, possibly with drop_unused_decl
                 // handle jsx
                 Optional::new(
                     react::react::<&dyn Comments>(
@@ -749,6 +763,16 @@ impl Options {
                         unresolved_mark
                     ),
                     syntax.jsx()
+                ),
+                Optional::new(
+                    reflame::refresh_setup(reflame_options.pathname_scoped),
+                    reflame_options.refresh_setup.is_some_and(|value| value)
+                ),
+                Optional::new(
+                    reflame::rewrite_relative_imports(reflame_options.pathname),
+                    reflame_options
+                        .rewrite_relative_imports
+                        .is_some_and(|value| value)
                 ),
                 pass,
                 Optional::new(jest::jest(), transform.hidden.jest.into_bool()),
@@ -942,6 +966,9 @@ pub struct Config {
 
     #[serde(default)]
     pub jsc: JscConfig,
+
+    #[serde(default)]
+    pub reflame: Option<reflame::Options>,
 
     #[serde(default)]
     pub module: Option<ModuleConfig>,

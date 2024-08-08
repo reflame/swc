@@ -4702,6 +4702,7 @@ dependencies = [
  "swc_ecma_transforms_optimization",
  "swc_ecma_transforms_proposal",
  "swc_ecma_transforms_react",
+ "swc_ecma_transforms_reflame",
  "swc_ecma_transforms_testing",
  "swc_ecma_transforms_typescript",
  "swc_ecma_utils",
@@ -4887,6 +4888,36 @@ dependencies = [
 [[package]]
 name = "swc_ecma_transforms_react"
 version = "0.190.0"
+dependencies = [
+ "base64",
+ "dashmap",
+ "indexmap 2.2.6",
+ "once_cell",
+ "rayon",
+ "serde",
+ "sha1",
+ "string_enum",
+ "swc_allocator",
+ "swc_atoms",
+ "swc_common",
+ "swc_config",
+ "swc_ecma_ast",
+ "swc_ecma_codegen",
+ "swc_ecma_parser",
+ "swc_ecma_quote_macros",
+ "swc_ecma_transforms_base",
+ "swc_ecma_transforms_compat",
+ "swc_ecma_transforms_macros",
+ "swc_ecma_transforms_module",
+ "swc_ecma_transforms_testing",
+ "swc_ecma_utils",
+ "swc_ecma_visit",
+ "testing",
+]
+
+[[package]]
+name = "swc_ecma_transforms_reflame"
+version = "0.0.1"
 dependencies = [
  "base64",
  "dashmap",

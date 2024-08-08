@@ -23,6 +23,7 @@ pub use swc_ecma_transforms_optimization::const_modules;
 pub use swc_ecma_transforms_proposal as proposals;
 #[cfg(feature = "swc_ecma_transforms_react")]
 pub use swc_ecma_transforms_react as react;
+pub use swc_ecma_transforms_reflame as reflame;
 #[cfg_attr(docsrs, doc(cfg(feature = "react")))]
 #[cfg(feature = "swc_ecma_transforms_typescript")]
 #[cfg_attr(docsrs, doc(cfg(feature = "typescript")))]
