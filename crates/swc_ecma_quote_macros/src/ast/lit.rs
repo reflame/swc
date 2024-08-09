@@ -32,7 +32,7 @@ impl_struct!(Regex, [span, exp, flags]);
 impl ToCode for Atom {
     fn to_code(&self, _: &Ctx) -> syn::Expr {
         let val = &**self;
-        parse_quote!(swc_core::atoms::atom!(#val))
+        parse_quote!(swc_atoms::atom!(#val))
     }
 }
 

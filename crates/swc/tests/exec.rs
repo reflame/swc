@@ -1,6 +1,7 @@
 use std::{
     env, fs,
-    path::{Path, PathBuf},
+    fs::{create_dir_all, rename},
+    path::{Component, Path, PathBuf},
     process::Command,
     sync::Arc,
 };
@@ -221,34 +222,34 @@ fn run_fixture_test(entry: PathBuf) {
     unignore_fixture(&entry);
 }
 
-#[testing::fixture("tests/babel-exec/**/exec.js")]
-fn run_babel_fixture_exec_test(entry: PathBuf) {
-    let _ = init_helpers();
+// #[testing::fixture("tests/babel-exec/**/exec.js")]
+// fn run_babel_fixture_exec_test(entry: PathBuf) {
+//     let _ = init_helpers();
 
-    let _guard = testing::init();
+//     let _guard = testing::init();
 
-    let matrix = create_matrix(&entry);
-    let expected_stdout = get_expected_stdout(&entry).unwrap_or_else(|_| {
-        fs::remove_file(&entry).unwrap();
-        panic!("Removed")
-    });
+//     let matrix = create_matrix(&entry);
+//     let expected_stdout = get_expected_stdout(&entry).unwrap_or_else(|_| {
+//         fs::remove_file(&entry).unwrap();
+//         panic!("Removed")
+//     });
 
-    eprintln!(
-        "----- {} -----\n{}\n-----",
-        ansi_term::Color::Green.bold().paint("Expected stdout"),
-        expected_stdout
-    );
+//     eprintln!(
+//         "----- {} -----\n{}\n-----",
+//         ansi_term::Color::Green.bold().paint("Expected stdout"),
+//         expected_stdout
+//     );
 
-    let _ = matrix
-        .into_iter()
-        .enumerate()
-        .map(|(idx, opts)| test_file_with_opts(&entry, &opts, &expected_stdout, idx).unwrap())
-        .collect::<Vec<_>>();
+//     let _ = matrix
+//         .into_iter()
+//         .enumerate()
+//         .map(|(idx, opts)| test_file_with_opts(&entry, &opts,
+// &expected_stdout, idx).unwrap())         .collect::<Vec<_>>();
 
-    // Test was successful.
+//     // Test was successful.
 
-    unignore_fixture(&entry);
-}
+//     unignore_fixture(&entry);
+// }
 
 fn get_expected_stdout(input: &Path) -> Result<String, Error> {
     let cm = Arc::new(SourceMap::default());

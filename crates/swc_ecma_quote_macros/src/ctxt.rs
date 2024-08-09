@@ -61,7 +61,7 @@ impl VarData {
         if use_clone {
             let var_ref_expr = self.expr_for_var_ref();
 
-            parse_quote!(swc_core::quote::ImplicitClone::clone_quote_var(&#var_ref_expr))
+            parse_quote!(&#var_ref_expr.clone())
         } else {
             self.expr_for_var_ref()
         }
@@ -146,7 +146,7 @@ pub(super) fn prepare_vars(
             call_site(),
         );
         stmts.push(parse_quote! {
-            let #var_ident: swc_core::ecma::ast::#type_name = #value;
+            let #var_ident: swc_ecma_ast::#type_name = #value;
         });
     }
 

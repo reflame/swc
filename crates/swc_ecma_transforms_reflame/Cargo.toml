@@ -1,0 +1,47 @@
+[package]
+authors       = ["강동윤 <kdy1997.dev@gmail.com>"]
+description   = "rust port of babel and closure compiler."
+documentation = "https://rustdoc.swc.rs/swc_ecma_transforms_reflame/"
+edition       = "2021"
+include       = ["Cargo.toml", "src/**/*.rs"]
+license       = "Apache-2.0"
+name          = "swc_ecma_transforms_reflame"
+repository    = "https://github.com/swc-project/swc.git"
+version       = "0.0.1"
+
+[lib]
+bench = false
+
+[features]
+concurrent = ["rayon"]
+default    = ["serde-impl"]
+serde-impl = ["serde"]
+
+[dependencies]
+base64    = { workspace = true }
+dashmap   = { workspace = true }
+indexmap  = { workspace = true }
+once_cell = { workspace = true }
+rayon     = { workspace = true, optional = true }
+serde     = { workspace = true, features = ["derive"], optional = true }
+sha1      = { workspace = true }
+
+string_enum                = { path = "../string_enum" }
+swc_allocator              = { path = "../swc_allocator", default-features = false }
+swc_atoms                  = { path = "../swc_atoms" }
+swc_common                 = { path = "../swc_common" }
+swc_config                 = { path = "../swc_config" }
+swc_ecma_ast               = { path = "../swc_ecma_ast" }
+swc_ecma_parser            = { path = "../swc_ecma_parser" }
+swc_ecma_transforms_module   = { path = "../swc_ecma_transforms_module" }
+swc_ecma_transforms_base   = { path = "../swc_ecma_transforms_base" }
+swc_ecma_transforms_macros = { path = "../swc_ecma_transforms_macros" }
+swc_ecma_utils             = { path = "../swc_ecma_utils" }
+swc_ecma_visit             = { path = "../swc_ecma_visit" }
+swc_ecma_quote_macros      = { path = "../swc_ecma_quote_macros" }
+
+[dev-dependencies]
+swc_ecma_codegen            = { path = "../swc_ecma_codegen/" }
+swc_ecma_transforms_compat  = { path = "../swc_ecma_transforms_compat/" }
+swc_ecma_transforms_testing = { path = "../swc_ecma_transforms_testing" }
+testing                     = { path = "../testing" }

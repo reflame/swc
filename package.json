@@ -1,5 +1,50 @@
 {
     "name": "@swc/workspace",
+    "version": "1.5.30-nightly-20240614.2",
+    "description": "Super-fast alternative for babel",
+    "homepage": "https://swc.rs",
+    "main": "./index.js",
+    "author": "강동윤 <kdy1997.dev@gmail.com>",
+    "license": "Apache-2.0",
+    "keywords": [
+        "swc",
+        "swcpack",
+        "babel",
+        "typescript",
+        "rust",
+        "webpack",
+        "tsc"
+    ],
+    "engines": {
+        "node": ">=10"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/reflame/swc.git"
+    },
+    "bugs": {
+        "url": "https://github.com/swc-project/swc/issues"
+    },
+    "napi": {
+        "binaryName": "swc",
+        "targets": [
+            "x86_64-apple-darwin",
+            "x86_64-pc-windows-msvc",
+            "x86_64-unknown-linux-gnu",
+            "x86_64-unknown-linux-musl",
+            "i686-pc-windows-msvc",
+            "armv7-unknown-linux-gnueabihf",
+            "aarch64-unknown-linux-gnu",
+            "aarch64-apple-darwin",
+            "aarch64-unknown-linux-musl",
+            "aarch64-pc-windows-msvc"
+        ]
+    },
+    "publishConfig": {
+        "registry": "https://registry.npmjs.org/",
+        "access": "public"
+    },
+    "types": "./index.d.ts",
     "packageManager": "yarn@4.0.2",
     "private": true,
     "workspaces": [
@@ -94,6 +139,5 @@
         "!(**/tests/**/*)*.tsx": [
             "prettier --write"
         ]
-    },
-    "version": "1.5.30-nightly-20240614.2"
+    }
 }

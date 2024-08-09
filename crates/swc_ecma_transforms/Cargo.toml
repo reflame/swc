@@ -40,6 +40,7 @@ swc_ecma_transforms_module       = { version = "0.187.0", path = "../swc_ecma_tr
 swc_ecma_transforms_optimization = { version = "0.205.0", path = "../swc_ecma_transforms_optimization", optional = true }
 swc_ecma_transforms_proposal     = { version = "0.178.0", path = "../swc_ecma_transforms_proposal", optional = true }
 swc_ecma_transforms_react        = { version = "0.190.0", path = "../swc_ecma_transforms_react", optional = true }
+swc_ecma_transforms_reflame        = { path = "../swc_ecma_transforms_reflame" }
 swc_ecma_transforms_typescript   = { version = "0.195.0", path = "../swc_ecma_transforms_typescript", optional = true }
 swc_ecma_utils                   = { version = "0.134.0", path = "../swc_ecma_utils" }
 swc_ecma_visit                   = { version = "0.104.0", path = "../swc_ecma_visit" }

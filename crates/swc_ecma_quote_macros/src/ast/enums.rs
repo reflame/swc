@@ -8,7 +8,7 @@ macro_rules! impl_simple_enum {
                 match self {
                     $(
                         $E::$v => parse_quote!(
-                             swc_core::ecma::ast::$E::$v
+                            swc_ecma_ast::$E::$v
                         ),
                     )*
                 }

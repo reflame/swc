@@ -43,75 +43,75 @@ on:
         required: true
 
 jobs:
-  check-if-build-required:
-    name: Check if build is required
-    runs-on: ubuntu-latest
-    outputs:
-      need-build: ${{ steps.check.outputs.need-build }}
-    steps:
-      - uses: actions/checkout@v4
-      # TODO: Check for existing artifacts
-      - id: check
-        if: ${{ !inputs.skipBuild }}
-        run: |
-          echo "need-build=true" >> $GITHUB_OUTPUT
+  # check-if-build-required:
+  #   name: Check if build is required
+  #   runs-on: ubuntu-latest
+  #   outputs:
+  #     need-build: ${{ steps.check.outputs.need-build }}
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     # TODO: Check for existing artifacts
+  #     - id: check
+  #       if: ${{ !inputs.skipBuild }}
+  #       run: |
+  #         echo "need-build=true" >> $GITHUB_OUTPUT
 
-  create-git-tag-commit:
-    name: Create git tag commit
-    runs-on: ubuntu-latest
-    needs:
-      - check-if-build-required
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-          ref: "main"
+  # create-git-tag-commit:
+  #   name: Create git tag commit
+  #   runs-on: ubuntu-latest
+  #   needs:
+  #     - check-if-build-required
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         fetch-depth: 0
+  #         ref: "main"
 
-      - uses: ./.github/actions/setup-node
+  #     - uses: ./.github/actions/setup-node
 
-      - name: Install git-cliff
-        uses: taiki-e/install-action@v2
-        with:
-          tool: git-cliff@1.3.1
+  #     - name: Install git-cliff
+  #       uses: taiki-e/install-action@v2
+  #       with:
+  #         tool: git-cliff@1.3.1
 
-      - name: Install cargo-edit
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-edit@0.12.2
+  #     - name: Install cargo-edit
+  #       uses: taiki-e/install-action@v2
+  #       with:
+  #         tool: cargo-edit@0.12.2
 
-      - name: "Setup jq"
-        uses: dcarbone/install-jq-action@v2
-        with:
-          version: "1.7"
-          force: true
+  #     - name: "Setup jq"
+  #       uses: dcarbone/install-jq-action@v2
+  #       with:
+  #         version: "1.7"
+  #         force: true
 
-      - uses: webfactory/ssh-agent@v0.9.0
-        if: needs.check-if-build-required.outputs.need-build == 'true' && !inputs.skipPublishing
-        with:
-          ssh-private-key: ${{ secrets.SWC_BOT_SSH }}
+  #     - uses: webfactory/ssh-agent@v0.9.0
+  #       if: needs.check-if-build-required.outputs.need-build == 'true' && !inputs.skipPublishing
+  #       with:
+  #         ssh-private-key: ${{ secrets.SWC_BOT_SSH }}
 
-      - name: Create git tag commit
-        if: needs.check-if-build-required.outputs.need-build == 'true' && !inputs.skipPublishing
-        run: |
-          ./scripts/publish.sh ${{ inputs.version }}
+  #     - name: Create git tag commit
+  #       if: needs.check-if-build-required.outputs.need-build == 'true' && !inputs.skipPublishing
+  #       run: |
+  #         ./scripts/publish.sh ${{ inputs.version }}
 
   build:
-    if: needs.check-if-build-required.outputs.need-build == 'true'
-    needs:
-      - check-if-build-required
-      - create-git-tag-commit
+    # if: needs.check-if-build-required.outputs.need-build == 'true'
+    # needs:
+      # - check-if-build-required
+      # - create-git-tag-commit
     strategy:
       fail-fast: false
       matrix:
         settings:
-          - host: macos-latest
-            target: x86_64-apple-darwin
-            build: |
-              cargo build --manifest-path ../../bindings/swc_cli/Cargo.toml --release --features plugin --target x86_64-apple-darwin
-              cp ../../bindings/target/x86_64-apple-darwin/release/swc .
-              chmod +x ./swc
-              yarn build --target x86_64-apple-darwin
-              strip -x *.node
+          # - host: macos-latest
+          #   target: x86_64-apple-darwin
+          #   build: |
+          #     cargo build --manifest-path ../../bindings/swc_cli/Cargo.toml --release --features plugin --target x86_64-apple-darwin
+          #     cp ../../bindings/target/x86_64-apple-darwin/release/swc .
+          #     chmod +x ./swc
+          #     yarn build --target x86_64-apple-darwin
+          #     strip -x *.node
           - host: windows-latest
             build: |
               export CARGO_PROFILE_RELEASE_LTO=false
@@ -119,25 +119,25 @@ jobs:
               cargo build --manifest-path ../../bindings/swc_cli/Cargo.toml --release --features plugin --target x86_64-pc-windows-msvc
               cp ../../bindings/target/x86_64-pc-windows-msvc/release/swc .
             target: x86_64-pc-windows-msvc
-          - host: windows-latest
-            # use npm to run test, because of corepack link the yarn with x64 Node.js
-            build: |
-              export DISABLE_PLUGIN_E2E_TESTS=true
-              export CARGO_PROFILE_RELEASE_LTO=false
-              cargo build --manifest-path ../../bindings/swc_cli/Cargo.toml --release --target i686-pc-windows-msvc
-              cp ../../bindings/target/i686-pc-windows-msvc/release/swc .
-              yarn build --target i686-pc-windows-msvc --no-default-features --features swc_v1
-              npm run test
-            target: i686-pc-windows-msvc
-          - host: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian
-            build: >-
-              set -e &&
-              unset CC_x86_64_unknown_linux_gnu && unset CC && RUSTFLAGS='-C target-feature=+sse2' cargo build --manifest-path ../../bindings/swc_cli/Cargo.toml --release --features plugin --target x86_64-unknown-linux-gnu &&
-              rm -rf ../../bindings/target/target/x86_64-unknown-linux-gnu/release/.cargo-lock &&
-              cp ../../bindings/target/x86_64-unknown-linux-gnu/release/swc . && chmod +x ./swc &&
-              yarn build --target x86_64-unknown-linux-gnu
+          # - host: windows-latest
+          #   # use npm to run test, because of corepack link the yarn with x64 Node.js
+          #   build: |
+          #     export DISABLE_PLUGIN_E2E_TESTS=true
+          #     export CARGO_PROFILE_RELEASE_LTO=false
+          #     cargo build --manifest-path ../../bindings/swc_cli/Cargo.toml --release --target i686-pc-windows-msvc
+          #     cp ../../bindings/target/i686-pc-windows-msvc/release/swc .
+          #     yarn build --target i686-pc-windows-msvc --no-default-features --features swc_v1
+          #     npm run test
+          #   target: i686-pc-windows-msvc
+          # - host: ubuntu-latest
+          #   target: x86_64-unknown-linux-gnu
+          #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian
+          #   build: >-
+          #     set -e &&
+          #     unset CC_x86_64_unknown_linux_gnu && unset CC && RUSTFLAGS='-C target-feature=+sse2' cargo build --manifest-path ../../bindings/swc_cli/Cargo.toml --release --features plugin --target x86_64-unknown-linux-gnu &&
+          #     rm -rf ../../bindings/target/target/x86_64-unknown-linux-gnu/release/.cargo-lock &&
+          #     cp ../../bindings/target/x86_64-unknown-linux-gnu/release/swc . && chmod +x ./swc &&
+          #     yarn build --target x86_64-unknown-linux-gnu
           - host: ubuntu-latest
             target: x86_64-unknown-linux-musl
             # musl build is slow, let's disable the LTO
@@ -161,52 +161,52 @@ jobs:
               cp ../../bindings/target/aarch64-apple-darwin/release/swc .
               chmod +x ./swc
               yarn build --target aarch64-apple-darwin
-          - host: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian-aarch64
-            build: >-
-              set -e &&
-              export JEMALLOC_SYS_WITH_LG_PAGE=16 &&
-              rustup target add aarch64-unknown-linux-gnu &&
-              RUSTFLAGS='' cargo build --manifest-path ../../bindings/swc_cli/Cargo.toml --release --features plugin --target aarch64-unknown-linux-gnu &&
-              cp ../../bindings/target/aarch64-unknown-linux-gnu/release/swc . && chmod +x ./swc &&
-              export CC_aarch64_unknown_linux_gnu=/usr/aarch64-unknown-linux-gnu/bin/aarch64-unknown-linux-gnu-gcc &&
-              yarn build --target aarch64-unknown-linux-gnu
-          - host: ubuntu-latest
-            target: armv7-unknown-linux-gnueabihf
-            build: |
-              export DISABLE_PLUGIN_E2E_TESTS=true
-              yarn napi build --bin swc --release --target armv7-unknown-linux-gnueabihf --manifest-path ../../bindings/swc_cli/Cargo.toml -x --target-dir ../release -o .
-              chmod +x ./swc
-              yarn build --target armv7-unknown-linux-gnueabihf --no-default-features --features swc_v1 --use-napi-cross
-          - host: ubuntu-latest
-            target: aarch64-unknown-linux-musl
-            downloadTarget: aarch64-unknown-linux-musl
-            docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
-            build: >-
-              export JEMALLOC_SYS_WITH_LG_PAGE=16 &&
-              rustup toolchain install $(cat ../../rust-toolchain) &&
-              rustup target add aarch64-unknown-linux-musl &&
-              RUSTFLAGS='-C target-feature=+crt-static -C link-arg=-lgcc' cargo build --manifest-path ../../bindings/swc_cli/Cargo.toml --release --features plugin --target aarch64-unknown-linux-musl &&
-              rm -rf target/release/.cargo-lock &&
-              cp ../../bindings/target/aarch64-unknown-linux-musl/release/swc . && chmod +x ./swc &&
-              env RUSTFLAGS='-C target-feature=-crt-static' yarn build --target=aarch64-unknown-linux-musl
-          - host: windows-latest
-            target: aarch64-pc-windows-msvc
-            # Disable `LTO` and increase `codegen-units` to avoid llvm `OOM` on GitHub Actions.
-            build: |
-              export DISABLE_PLUGIN_E2E_TESTS=true
-              export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256
-              export CARGO_PROFILE_RELEASE_LTO=false
-              cargo build --manifest-path ../../bindings/swc_cli/Cargo.toml --release --target aarch64-pc-windows-msvc
-              cp ../../bindings/target/aarch64-pc-windows-msvc/release/swc.exe .
-              yarn build --target aarch64-pc-windows-msvc --no-default-features --features swc_v1
+          # - host: ubuntu-latest
+          #   target: aarch64-unknown-linux-gnu
+          #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-debian-aarch64
+          #   build: >-
+          #     set -e &&
+          #     export JEMALLOC_SYS_WITH_LG_PAGE=16 &&
+          #     rustup target add aarch64-unknown-linux-gnu &&
+          #     RUSTFLAGS='' cargo build --manifest-path ../../bindings/swc_cli/Cargo.toml --release --features plugin --target aarch64-unknown-linux-gnu &&
+          #     cp ../../bindings/target/aarch64-unknown-linux-gnu/release/swc . && chmod +x ./swc &&
+          #     export CC_aarch64_unknown_linux_gnu=/usr/aarch64-unknown-linux-gnu/bin/aarch64-unknown-linux-gnu-gcc &&
+          #     yarn build --target aarch64-unknown-linux-gnu
+          # - host: ubuntu-latest
+          #   target: armv7-unknown-linux-gnueabihf
+          #   build: |
+          #     export DISABLE_PLUGIN_E2E_TESTS=true
+          #     yarn napi build --bin swc --release --target armv7-unknown-linux-gnueabihf --manifest-path ../../bindings/swc_cli/Cargo.toml -x --target-dir ../release -o .
+          #     chmod +x ./swc
+          #     yarn build --target armv7-unknown-linux-gnueabihf --no-default-features --features swc_v1 --use-napi-cross
+          # - host: ubuntu-latest
+          #   target: aarch64-unknown-linux-musl
+          #   downloadTarget: aarch64-unknown-linux-musl
+          #   docker: ghcr.io/napi-rs/napi-rs/nodejs-rust:lts-alpine
+          #   build: >-
+          #     export JEMALLOC_SYS_WITH_LG_PAGE=16 &&
+          #     rustup toolchain install $(cat ../../rust-toolchain) &&
+          #     rustup target add aarch64-unknown-linux-musl &&
+          #     RUSTFLAGS='-C target-feature=+crt-static -C link-arg=-lgcc' cargo build --manifest-path ../../bindings/swc_cli/Cargo.toml --release --features plugin --target aarch64-unknown-linux-musl &&
+          #     rm -rf target/release/.cargo-lock &&
+          #     cp ../../bindings/target/aarch64-unknown-linux-musl/release/swc . && chmod +x ./swc &&
+          #     env RUSTFLAGS='-C target-feature=-crt-static' yarn build --target=aarch64-unknown-linux-musl
+          # - host: windows-latest
+          #   target: aarch64-pc-windows-msvc
+          #   # Disable `LTO` and increase `codegen-units` to avoid llvm `OOM` on GitHub Actions.
+          #   build: |
+          #     export DISABLE_PLUGIN_E2E_TESTS=true
+          #     export CARGO_PROFILE_RELEASE_CODEGEN_UNITS=256
+          #     export CARGO_PROFILE_RELEASE_LTO=false
+          #     cargo build --manifest-path ../../bindings/swc_cli/Cargo.toml --release --target aarch64-pc-windows-msvc
+          #     cp ../../bindings/target/aarch64-pc-windows-msvc/release/swc.exe .
+          #     yarn build --target aarch64-pc-windows-msvc --no-default-features --features swc_v1
     name: "Build ${{ inputs.package }} - ${{ matrix.settings.target }} - node@20"
     runs-on: ${{ matrix.settings.host }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: "v${{ inputs.version }}"
+          ref: "ci-fork"
 
       - name: Corepack
         shell: bash
@@ -257,7 +257,8 @@ jobs:
         shell: bash
         run: |
           corepack enable
-          yarn install
+          cd packages/core && node scripts/update-package-jsons.mjs ${{ inputs.version }} && cd ../..
+          yarn install --no-immutable
           curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
           echo '/usr/local/cargo/bin' >> $GITHUB_PATH
       - name: Setup node x86
@@ -300,16 +301,16 @@ jobs:
         settings:
           - host: windows-latest
             target: x86_64-pc-windows-msvc
-          - host: macos-latest
-            target: x86_64-apple-darwin
+          # - host: macos-latest
+          #   target: x86_64-apple-darwin
         node:
-          - "18"
+          # - "18"
           - "20"
     runs-on: ${{ matrix.settings.host }}
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: "v${{ inputs.version }}"
+          ref: "ci-fork"
 
       - run: corepack enable
         shell: bash
@@ -336,6 +337,8 @@ jobs:
         working-directory: ./packages/core
         run: yarn test
   test-linux-x64-gnu-binding:
+    if: false
+    # if: ${{ startsWith(github.ref, 'refs/tags/v') || startsWith(github.ref, 'refs/heads/ci') }}
     name: Test bindings on Linux-x64-gnu - node@${{ matrix.node }}
     needs:
       - build
@@ -343,13 +346,13 @@ jobs:
       fail-fast: false
       matrix:
         node:
-          - "18"
+          # - "18"
           - "20"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: "v${{ inputs.version }}"
+          ref: "ci-fork"
 
       - name: Corepack
         run: corepack enable
@@ -380,13 +383,13 @@ jobs:
       fail-fast: false
       matrix:
         node:
-          - "18"
+          # - "18"
           - "20"
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: "v${{ inputs.version }}"
+          ref: "ci-fork"
 
       - run: corepack enable
         shell: bash
@@ -420,7 +423,7 @@ jobs:
   #   steps:
   #     - uses: actions/checkout@v4
   # with:
-  #   ref: "v${{ inputs.version }}"
+  #   ref: "ci-fork"
   #     - name: Corepack
   #       run: corepack enable
   #     - name: Download artifacts
@@ -468,7 +471,7 @@ jobs:
   #   steps:
   #     - uses: actions/checkout@v4
   # with:
-  #   ref: "v${{ inputs.version }}"
+  #   ref: "ci-fork"
   #     - name: Corepack
   #       run: corepack enable
   #     - name: Download artifacts
@@ -505,7 +508,7 @@ jobs:
     name: Publish ${{ inputs.version }}
     runs-on: ubuntu-latest
     needs:
-      - test-linux-x64-gnu-binding
+      # - test-linux-x64-gnu-binding
       - test-linux-x64-musl-binding
       # - test-linux-arm-gnueabihf-binding
       - test-macOS-windows-binding
@@ -513,7 +516,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: "v${{ inputs.version }}"
+          ref: "ci-fork"
 
       - uses: ./.github/actions/setup-node
 
@@ -561,7 +564,10 @@ jobs:
           npm config set provenance true
           echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
           echo "npmAlwaysAuth:true\n npmAuthToken: '$NPM_TOKEN'\n" >> ~/.yarnrc
-          (cd packages/core && yarn workspaces foreach -Rt npm publish --tolerate-republish --tag $NPM_TAG)
+          cd packages/core
+          node scripts/update-package-jsons.mjs ${{ inputs.version }}
+          node scripts/update-binding.mjs
+          cat package.json && npm publish --tolerate-republish --tag $NPM_TAG
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
@@ -575,84 +581,84 @@ jobs:
         run: |
           ./scripts/cli_upload_gh_release.sh
 
-  publish-wasm:
-    name: Build - wasm (${{ matrix.settings.npm }})
-    runs-on: ubuntu-latest
-    needs:
-      - publish
-    strategy:
-      fail-fast: false
-      matrix:
-        settings:
-          - crate: "binding_core_wasm"
-            npm: "@swc\\/wasm"
-            target: nodejs
-            out: "pkg"
-          - crate: "binding_core_wasm"
-            npm: "@swc\\/wasm-web"
-            target: web
-            out: "pkg"
-          - crate: "binding_typescript_wasm"
-            build: "./scripts/build.sh"
-            out: "pkg"
-          - crate: "binding_typescript_wasm"
-            build: "./scripts/esm.sh"
-            out: "esm"
+  # publish-wasm:
+  #   name: Build - wasm (${{ matrix.settings.npm }})
+  #   runs-on: ubuntu-latest
+  #   needs:
+  #     - publish
+  #   strategy:
+  #     fail-fast: false
+  #     matrix:
+  #       settings:
+  #         - crate: "binding_core_wasm"
+  #           npm: "@swc\\/wasm"
+  #           target: nodejs
+  #           out: "pkg"
+  #         - crate: "binding_core_wasm"
+  #           npm: "@swc\\/wasm-web"
+  #           target: web
+  #           out: "pkg"
+  #         - crate: "binding_typescript_wasm"
+  #           build: "./scripts/build.sh"
+  #           out: "pkg"
+  #         - crate: "binding_typescript_wasm"
+  #           build: "./scripts/esm.sh"
+  #           out: "esm"
 
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          ref: "v${{ inputs.version }}"
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #       with:
+  #         ref: "ci-fork"
 
-      - name: Corepack
-        run: corepack enable
+  #     - name: Corepack
+  #       run: corepack enable
 
-      - name: Tag npm release
-        run: |
-          if [[ '${{ inputs.version }}' != *"nightly"* ]]; then
-            echo "NPM_TAG=latest" >> $GITHUB_ENV
-          else
-            echo "NPM_TAG=nightly" >> $GITHUB_ENV
-          fi
+  #     - name: Tag npm release
+  #       run: |
+  #         if [[ '${{ inputs.version }}' != *"nightly"* ]]; then
+  #           echo "NPM_TAG=latest" >> $GITHUB_ENV
+  #         else
+  #           echo "NPM_TAG=nightly" >> $GITHUB_ENV
+  #         fi
 
-      - name: Setup node
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
+  #     - name: Setup node
+  #       uses: actions/setup-node@v4
+  #       with:
+  #         node-version: 20
 
-      - name: Cache
-        uses: actions/cache@v3
-        with:
-          path: |
-            ~/.cargo/
-            **/target/
-          key: ${{ runner.os }}-publish-integration
+  #     - name: Cache
+  #       uses: actions/cache@v3
+  #       with:
+  #         path: |
+  #           ~/.cargo/
+  #           **/target/
+  #         key: ${{ runner.os }}-publish-integration
 
-      - name: Install node dependencies
-        run: yarn
+  #     - name: Install node dependencies
+  #       run: yarn
 
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+  #     - name: Install wasm-pack
+  #       run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
 
-      - name: Build
-        working-directory: bindings/${{ matrix.settings.crate }}
-        if: ${{ !matrix.settings.build }}
-        run: |
-          wasm-pack build --out-name wasm --release --scope=swc --target ${{ matrix.settings.target }}
-          sed -i -e 's/"name": "@swc\/${{ matrix.settings.crate }}"/"name": "${{ matrix.settings.npm }}"/g' pkg/package.json
+  #     - name: Build
+  #       working-directory: bindings/${{ matrix.settings.crate }}
+  #       if: ${{ !matrix.settings.build }}
+  #       run: |
+  #         wasm-pack build --out-name wasm --release --scope=swc --target ${{ matrix.settings.target }}
+  #         sed -i -e 's/"name": "@swc\/${{ matrix.settings.crate }}"/"name": "${{ matrix.settings.npm }}"/g' pkg/package.json
 
-      - name: Build
-        working-directory: bindings/${{ matrix.settings.crate }}
-        if: ${{ matrix.settings.build }}
-        run: |
-          ${{ matrix.settings.build }}
+  #     - name: Build
+  #       working-directory: bindings/${{ matrix.settings.crate }}
+  #       if: ${{ matrix.settings.build }}
+  #       run: |
+  #         ${{ matrix.settings.build }}
 
-      - name: Publish
-        if: ${{ !inputs.skipBuild }}
-        run: |
-          npm config set provenance true
-          echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
-          (cd bindings/${{ matrix.settings.crate }}/${{ matrix.settings.out }} && npm publish --access public --tag $NPM_TAG)
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+  #     - name: Publish
+  #       if: ${{ !inputs.skipBuild }}
+  #       run: |
+  #         npm config set provenance true
+  #         echo "//registry.npmjs.org/:_authToken=$NPM_TOKEN" >> ~/.npmrc
+  #         (cd bindings/${{ matrix.settings.crate }}/${{ matrix.settings.out }} && npm publish --access public --tag $NPM_TAG)
+  #       env:
+  #         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+  #         NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
