@@ -34,6 +34,12 @@ export declare function transformFile(src: string, isModule: boolean, options: B
 
 export declare function transformFileSync(s: string, isModule: boolean, opts: Buffer): TransformOutput
 
+export interface TransformOutput {
+  code: string
+  map?: string
+  output?: string
+}
+
 /** Hack for `Type Generation` */
 export interface TransformOutput {
   code: string
